@@ -1,0 +1,41 @@
+ROCKET VIBE 0.6 - RAILWAY DEPLOY
+================================
+
+1) Diese Dateien in dein GitHub-Repo uebernehmen.
+
+2) In VS Code Terminal:
+   git add .
+   git commit -m "Prepare Rocket Vibe for Railway"
+   git push
+
+3) Auf Railway:
+   New Project -> Deploy from GitHub Repo -> dein Repo waehlen.
+
+4) Railway liest railway.json automatisch:
+   Build: npm run build
+   Start: npm start
+   Healthcheck: /health
+
+5) Nach erfolgreichem Deploy:
+   Service -> Settings -> Networking -> Public Networking -> Generate Domain
+
+6) Spielen:
+   - DU oeffnest die Railway-URL zuerst = Spieler 1 / Host
+   - DEIN FREUND oeffnet exakt dieselbe URL danach = Spieler 2
+
+WICHTIG
+-------
+- Nur 1 Railway-Replica verwenden. Der Match-Zustand liegt aktuell im RAM dieses Servers.
+- Ein Redeploy/Restart beendet das aktuelle Match.
+- Die Railway-Version funktioniert ueber Internet, nicht nur im LAN.
+- Lokal bleibt "npm run lan" weiterhin moeglich.
+- "npm run dev" startet weiterhin den Offline-Modus.
+
+LOKALER PRODUCTION-TEST
+-----------------------
+npm install
+npm run build
+npm start
+
+Dann: http://localhost:3000
+Zwei Tabs = zwei Spieler.

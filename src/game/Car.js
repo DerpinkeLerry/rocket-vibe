@@ -9,13 +9,16 @@ const clamp = THREE.MathUtils.clamp;
 const damp = (current, target, lambda, dt) => THREE.MathUtils.lerp(current, target, 1 - Math.exp(-lambda * dt));
 
 export class Car {
-  constructor(scene, world, RAPIER, input) {
+  constructor(scene, world, RAPIER, input, options = {}) {
     this.scene = scene;
     this.world = world;
     this.RAPIER = RAPIER;
     this.input = input;
 
-    this.spawn = new THREE.Vector3(0, 1.25, 34);
+    const spawn = options.spawn ?? { x: 0, y: 1.25, z: 34 };
+    this.spawn = new THREE.Vector3(spawn.x, spawn.y, spawn.z);
+    this.spawnYaw = options.spawnYaw ?? 0;
+    this.paintColor = options.color ?? 0xf46b20;
     this.maxGroundSpeed = 39;
     this.maxBoostSpeed = 52;
     this.driveForce = 12200;
@@ -68,6 +71,7 @@ export class Car {
       .setCanSleep(false);
 
     this.body = this.world.createRigidBody(bodyDesc);
+    this.setSpawnRotation();
 
     const colliderDesc = R.ColliderDesc.cuboid(0.83, 0.39, 1.48)
       .setTranslation(0, -0.06, 0)
@@ -87,7 +91,7 @@ export class Car {
     this.scene.add(this.group);
 
     const paint = new THREE.MeshStandardMaterial({
-      color: 0xf46b20,
+      color: this.paintColor,
       roughness: 0.34,
       metalness: 0.34
     });
@@ -198,6 +202,11 @@ export class Car {
     this.shadow.scale.set(0.72, 1.0, 1.0);
     this.shadow.position.y = 0.017;
     this.scene.add(this.shadow);
+  }
+
+  setSpawnRotation() {
+    const half = this.spawnYaw * 0.5;
+    this.body.setRotation({ x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) }, true);
   }
 
   getTransformBasis() {
@@ -435,7 +444,7 @@ export class Car {
 
   reset() {
     this.body.setTranslation({ x: this.spawn.x, y: this.spawn.y, z: this.spawn.z }, true);
-    this.body.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
+    this.setSpawnRotation();
     this.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
     this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     this.body.resetForces(true);

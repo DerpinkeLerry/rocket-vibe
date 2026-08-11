@@ -143,7 +143,7 @@ export class Ball {
   }
 
   fixedUpdate() {
-    if (this.input.consumePressed('KeyB') || this.body.translation().y < -12) {
+    if (this.body.translation().y < -12) {
       this.reset();
       return;
     }
