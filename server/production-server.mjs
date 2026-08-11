@@ -102,7 +102,7 @@ const server = createServer(async (req, res) => {
       sendJson(res, shuttingDown ? 503 : 200, {
         ok: !shuttingDown,
         service: 'rocket-vibe',
-        version: '0.6.0',
+        version: '0.7.0',
         players: sockets.getPlayerCount()
       });
       return;
@@ -137,7 +137,7 @@ const sockets = attachGameSockets(server, { path: '/lan', label: 'ONLINE' });
 
 server.listen(PORT, HOST, () => {
   console.log('\n==============================================');
-  console.log(' ROCKET VIBE ONLINE 0.6');
+  console.log(' ROCKET VIBE ONLINE 0.7');
   console.log('==============================================');
   console.log(`Listening on ${HOST}:${PORT}`);
   console.log('HTTP healthcheck: /health');

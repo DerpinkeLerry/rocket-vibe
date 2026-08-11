@@ -8,6 +8,7 @@ import { Hud } from './Hud.js';
 import { VirtualInput } from '../network/VirtualInput.js';
 
 const SNAPSHOT_HZ = 30;
+const CLIENT_INPUT_HEARTBEAT_HZ = 20;
 
 export class Game {
   constructor(root, RAPIER, network = null) {
@@ -85,11 +86,19 @@ export class Game {
         if (this.isAuthority) this.setRemoteCarActive(connected);
       };
       if (this.isAuthority) {
-        this.network.onRemoteInput = (packet) => this.remoteInput.applyPacket(packet);
+        this.network.onRemoteInput = (packet, playerId) => {
+          if (playerId === 1) this.remoteInput.applyPacket(packet);
+        };
         this.hud.setNetworkStatus(this.network.peerConnected ? 'HOST · Spieler 2 verbunden' : 'HOST · Warte auf Spieler 2');
       } else {
         this.network.onState = (state) => { this.latestNetworkState = state; };
         this.hud.setNetworkStatus('SPIELER 2 · Mit Host verbunden');
+
+        // Key changes are sent immediately instead of waiting for the render
+        // loop. A low-rate heartbeat resends the current held-key mask so a
+        // remote car can never become unresponsive because of frame timing.
+        this.input.setNetworkChangeHandler(() => this.sendClientInput());
+        this.sendClientInput();
       }
     }
 
@@ -143,9 +152,9 @@ export class Game {
 
     if (this.lanMode && !this.isAuthority) {
       this.inputAccumulator += frameDt;
-      if (this.inputAccumulator >= 1 / 60) {
-        this.inputAccumulator %= 1 / 60;
-        this.network.sendInput(this.input.takeNetworkPacket());
+      if (this.inputAccumulator >= 1 / CLIENT_INPUT_HEARTBEAT_HZ) {
+        this.inputAccumulator %= 1 / CLIENT_INPUT_HEARTBEAT_HZ;
+        this.sendClientInput();
       }
       this.applyNetworkState(frameDt);
     } else {
@@ -172,6 +181,11 @@ export class Game {
     }
 
     requestAnimationFrame(this.loop);
+  }
+
+  sendClientInput() {
+    if (!this.lanMode || this.isAuthority) return;
+    this.network.sendInput(this.input.takeNetworkPacket());
   }
 
   stepAuthority(dt) {

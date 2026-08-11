@@ -1,65 +1,42 @@
-# Rocket Vibe Starter v0.6 - LAN + Railway Online
+# Rocket Vibe Starter v0.7 - Online Input Fix
 
-Three.js + Rapier Arena-Prototyp mit zwei Autos, Ball und 2-Spieler-Multiplayer.
-Die Optik ist Rocket-League-inspiriert, verwendet aber keine gerippten Original-Assets.
+Three.js + Rapier Arena-Prototyp mit zwei Autos, Ball, LAN und Railway-Online-Multiplayer.
+Die Optik ist Rocket-League-inspiriert und verwendet keine gerippten Original-Assets.
 
-## Was in v0.6 neu ist
+## Was in v0.7 neu ist
 
-- fuer Railway Production Hosting vorbereitet
-- Vite wird beim Deploy einmal zu `dist/` gebaut
-- eigener schlanker Node-Production-Server serviert die fertigen Dateien
-- WebSocket und Webseite laufen auf demselben Port
-- Railway `PORT` wird automatisch verwendet
-- Server bindet an `0.0.0.0`
-- `/health` Endpoint fuer Railway Healthchecks
-- `railway.json` mit Build-, Start- und Healthcheck-Konfiguration
-- HTTPS-Seite verbindet automatisch per `wss://`
-- sauberes Herunterfahren bei `SIGTERM`
-- LAN-Modus bleibt weiterhin erhalten
+- Fix fuer die Steuerung von Spieler 2 / blauem Auto
+- Keydown und Keyup von Spieler 2 werden sofort per WebSocket gesendet
+- zusaetzlicher Input-Heartbeat mit 20 Hz als Sicherheitsnetz
+- jedes Input-Paket bekommt eine Sequenznummer
+- Server bestaetigt Input-Pakete an Spieler 2
+- Host behandelt eintreffenden Input automatisch als aktiven Spieler 2
+- Join-Race kann die Steuerung nicht mehr deaktivieren
+- beim ersten bestaetigten Paket zeigt Spieler 2 `STEUERUNG VERBUNDEN`
+- Railway-Log meldet einmal `Erste Eingabe von Spieler 2 empfangen.`
 
-## Railway deployen
+## Railway aktualisieren
 
-### 1. Zu GitHub pushen
+Die neuen Dateien in dein bestehendes GitHub-Repo kopieren und dann:
 
 ```bash
 git add .
-git commit -m "Prepare Rocket Vibe for Railway"
+git commit -m "Fix player 2 controls"
 git push
 ```
 
-### 2. Railway mit GitHub verbinden
+Railway sollte danach automatisch neu deployen.
 
-Auf Railway ein neues Projekt erstellen und **Deploy from GitHub Repo** waehlen.
-Danach dieses Repository auswaehlen.
+Die bestehende Railway-Konfiguration bleibt gleich. Falls du `PORT=3000` und Target Port `3000` gesetzt hast, kannst du das so lassen.
 
-Die `railway.json` im Repository setzt automatisch:
+## Zu zweit spielen
 
-- Build: `npm run build`
-- Start: `npm start`
-- Healthcheck: `/health`
+1. Spieler 1 oeffnet die Railway-Domain zuerst.
+2. Spieler 2 oeffnet dieselbe Domain danach.
+3. Spieler 2 sollte im HUD nach dem Verbinden `SPIELER 2 · STEUERUNG VERBUNDEN` sehen.
+4. In den Railway Deploy Logs erscheint beim ersten Client-Paket einmal `Erste Eingabe von Spieler 2 empfangen.`.
 
-### 3. Oeffentliche Domain erzeugen
-
-Im Railway Service:
-
-`Settings -> Networking -> Public Networking -> Generate Domain`
-
-Danach erhaeltst du eine HTTPS-Adresse wie:
-
-```text
-https://dein-projekt.up.railway.app
-```
-
-### 4. Zu zweit spielen
-
-1. Du oeffnest die Railway-Adresse zuerst -> Spieler 1 / Host.
-2. Dein Freund oeffnet dieselbe Adresse danach -> Spieler 2.
-3. Es ist keine Portweiterleitung und kein gemeinsames WLAN mehr noetig.
-
-## Sehr wichtig: nur eine Railway-Replica
-
-Das aktuelle Matchmaking und die Verbindung der zwei Spieler liegen im Arbeitsspeicher eines Node-Prozesses.
-Darum den Service aktuell **nicht horizontal auf mehrere Replicas skalieren**. Mehrere Instanzen braeuchten spaeter z. B. Redis bzw. eine andere gemeinsame Session-/Match-Architektur.
+Hinweis: Zwei Tabs auf demselben PC sind nur ein Verbindungstest. Fuer echtes gleichzeitiges Tastaturspielen sind zwei getrennte Rechner sinnvoll, weil Browser Hintergrund-Tabs drosseln und nur der aktive Tab Tastatureingaben bekommt.
 
 ## Production lokal testen
 
@@ -69,13 +46,7 @@ npm run build
 npm start
 ```
 
-Danach:
-
-```text
-http://localhost:3000
-```
-
-Zwei Browser-Tabs simulieren Spieler 1 und Spieler 2.
+Danach `http://localhost:3000` oeffnen.
 
 ## LAN weiterhin benutzen
 
@@ -83,8 +54,6 @@ Zwei Browser-Tabs simulieren Spieler 1 und Spieler 2.
 npm install
 npm run lan
 ```
-
-Der Host bekommt lokale LAN-Adressen im Terminal angezeigt. Erster Browser = Spieler 1, zweiter Browser = Spieler 2.
 
 ## Offline-Modus
 
@@ -104,20 +73,19 @@ npm run dev
 
 ## Netzwerkmodell
 
-Die erste verbundene Spielinstanz ist aktuell der autoritative Host fuer Autos und Ball.
-Spieler 2 sendet Inputs an den Host und empfaengt geglaettete Snapshots. Der Railway-Node-Server vermittelt die WebSocket-Nachrichten.
+Die erste verbundene Spielinstanz ist derzeit der autoritative Host fuer Autos und Ball. Spieler 2 sendet seine Eingaben per WebSocket an den Railway-Server; dieser leitet sie an Spieler 1 weiter. Spieler 1 simuliert das blaue Auto und sendet den gemeinsamen Spielzustand zurueck.
 
-Das ist fuer einen privaten 2-Spieler-Prototypen einfach und performant. Fuer spaeteres kompetitives Online-Gameplay sollte die eigentliche Physik auf einen dedizierten autoritativen Gameserver verschoben werden.
+v0.7 macht diesen Input-Pfad robuster. Fuer eine spaetere kompetitive Version sollte die gesamte Spielphysik auf einen dedizierten autoritativen Gameserver verschoben werden, damit das Match nicht vom Browser von Spieler 1 abhaengt.
 
 ## Performance
 
 - Physik 60 Hz
 - Game-State 30 Hz
+- Spieler-2-Input: sofort bei Tastenaenderung + 20-Hz-Heartbeat
 - Rendering maximal 60 FPS
 - Pixel Ratio max. 0.9
 - Antialiasing aus
 - keine Shadowmaps
-- einfache Fake-Shadows
 - vereinfachtes Stadion und Instancing
 
 ## Dependencies

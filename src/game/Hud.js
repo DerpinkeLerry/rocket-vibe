@@ -7,7 +7,7 @@ export class Hud {
     this.el = document.createElement('div');
     this.el.className = 'hud';
     this.el.innerHTML = `
-      <div class="hud__title">ROCKET VIBE // ONLINE 0.6 <span class="hud__perf">PERFORMANCE MODE</span></div>
+      <div class="hud__title">ROCKET VIBE // ONLINE 0.7 <span class="hud__perf">PERFORMANCE MODE</span></div>
       <div class="hud__network">
         <strong>${role}</strong>
         <span data-network>${multiplayer ? 'Spielserver verbunden' : 'Lokaler Modus'}</span>

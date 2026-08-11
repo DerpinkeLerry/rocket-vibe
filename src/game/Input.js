@@ -15,27 +15,43 @@ export class Input {
     this.down = new Set();
     this.pressed = new Set();
     this.networkPressed = new Set();
+    this.networkChangeHandler = null;
 
     window.addEventListener('keydown', (event) => {
-      if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)) {
+      if ([
+        'Space',
+        'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'
+      ].includes(event.code)) {
         event.preventDefault();
       }
+
       if (!event.repeat) {
         this.pressed.add(event.code);
         this.networkPressed.add(event.code);
       }
       this.down.add(event.code);
+
+      // Multiplayer input should not depend on requestAnimationFrame. Send an
+      // update immediately when a key changes so player 2 remains responsive.
+      this.networkChangeHandler?.();
     }, { passive: false });
 
     window.addEventListener('keyup', (event) => {
       this.down.delete(event.code);
+      this.networkChangeHandler?.();
     });
 
     window.addEventListener('blur', () => {
       this.down.clear();
       this.pressed.clear();
       this.networkPressed.clear();
+      // Explicitly send a zeroed packet so a remote key can never get stuck.
+      this.networkChangeHandler?.();
     });
+  }
+
+  setNetworkChangeHandler(handler) {
+    this.networkChangeHandler = typeof handler === 'function' ? handler : null;
   }
 
   isDown(...codes) {

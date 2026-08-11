@@ -5,6 +5,8 @@ export class LanClient {
     this.isHost = true;
     this.connected = false;
     this.peerConnected = false;
+    this.inputSeq = 0;
+    this.lastInputAck = 0;
     this.onRemoteInput = null;
     this.onState = null;
     this.onStatus = null;
@@ -57,7 +59,23 @@ export class LanClient {
         }
 
         if (message.type === 'remote-input' && this.isHost) {
-          this.onRemoteInput?.(message.input);
+          // Treat input itself as proof that player 2 is alive. This protects
+          // against any join-event race and makes the remote car active again.
+          if (!this.peerConnected) {
+            this.peerConnected = true;
+            this.onPeerChange?.(true);
+            this.emitStatus('HOST · Spieler 2 verbunden');
+          }
+          this.onRemoteInput?.(message.input, message.playerId ?? 1, message.seq ?? 0);
+          return;
+        }
+
+        if (message.type === 'input-ack' && !this.isHost) {
+          const previousAck = this.lastInputAck;
+          this.lastInputAck = Math.max(this.lastInputAck, Number(message.seq) || 0);
+          if (previousAck === 0 && this.lastInputAck > 0) {
+            this.emitStatus('SPIELER 2 · Steuerung verbunden');
+          }
           return;
         }
 
@@ -83,7 +101,7 @@ export class LanClient {
         if (message.type === 'server-full') {
           clearTimeout(timeout);
           socket.close();
-          fail('Dieses LAN-Match hat bereits zwei Spieler.');
+          fail('Dieses Match hat bereits zwei Spieler.');
           return;
         }
 
@@ -111,8 +129,10 @@ export class LanClient {
   }
 
   sendInput(input) {
-    if (!this.connected || this.isHost || this.socket?.readyState !== WebSocket.OPEN) return;
-    this.socket.send(JSON.stringify({ type: 'input', input }));
+    if (!this.connected || this.isHost || this.socket?.readyState !== WebSocket.OPEN) return false;
+    const seq = ++this.inputSeq;
+    this.socket.send(JSON.stringify({ type: 'input', seq, input }));
+    return true;
   }
 
   sendState(state) {

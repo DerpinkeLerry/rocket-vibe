@@ -5,6 +5,7 @@ export function attachGameSockets(httpServer, options = {}) {
   const label = options.label ?? 'GAME';
   const wss = new WebSocketServer({ noServer: true });
   const players = new Map();
+  const inputSeen = new WeakSet();
 
   function availablePlayerId() {
     if (![...players.values()].includes(0)) return 0;
@@ -13,7 +14,7 @@ export function attachGameSockets(httpServer, options = {}) {
   }
 
   function send(ws, payload) {
-    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
+    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
   }
 
   function socketForPlayer(id) {
@@ -52,9 +53,27 @@ export function attachGameSockets(httpServer, options = {}) {
       }
 
       const senderId = players.get(ws);
+      if (senderId === undefined) return;
+
       if (senderId === 1 && message.type === 'input') {
         const host = socketForPlayer(0);
-        if (host) send(host, { type: 'remote-input', input: message.input });
+        if (!inputSeen.has(ws)) {
+          inputSeen.add(ws);
+          console.log(`[${label}] Erste Eingabe von Spieler 2 empfangen.`);
+        }
+        const seq = Number(message.seq) || 0;
+        const input = {
+          mask: Number(message.input?.mask) || 0,
+          edges: Number(message.input?.edges) || 0
+        };
+
+        // Acknowledge the client and forward the exact same packet to player 1.
+        // WebSockets are ordered/reliable; the sequence id makes the path
+        // explicit and avoids accidental stale packets in future changes.
+        send(ws, { type: 'input-ack', seq });
+        if (host) {
+          send(host, { type: 'remote-input', playerId: 1, seq, input });
+        }
         return;
       }
 
