@@ -77,6 +77,7 @@ export class Car {
       .setLinearDamping(0.08)
       .setAngularDamping(0.32)
       .setCcdEnabled(true)
+      .setSoftCcdPrediction(0.6)
       .setCanSleep(false);
 
     this.body = this.world.createRigidBody(bodyDesc);
@@ -86,10 +87,11 @@ export class Car {
       .setTranslation(0, -0.06, 0)
       .setDensity(145)
       .setFriction(0.04)
-      .setRestitution(0.06);
+      .setRestitution(0)
+      .setContactSkin(0.015);
 
     this.collider = this.world.createCollider(colliderDesc, this.body);
-    this.body.setAdditionalSolverIterations(4);
+    this.body.setAdditionalSolverIterations(6);
   }
 
   createVisual() {

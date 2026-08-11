@@ -1,0 +1,14 @@
+.git
+.gitignore
+node_modules
+dist
+server
+.tmp-*
+*.rar
+*.zip
+*.log
+README.md
+LAN-START.txt
+RAILWAY-DEPLOY.txt
+start-mac-linux.sh
+start-windows.bat

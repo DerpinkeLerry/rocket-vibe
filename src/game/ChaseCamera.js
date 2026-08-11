@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { clampPointToRoundedArena } from '../shared/arena-tuning.js';
+
+const CAMERA_WALL_MARGIN = 0.72;
 
 // Permanent ball camera.
 // The camera orbits around the local car so the ball stays in view at all
@@ -77,8 +80,14 @@ export class ChaseCamera {
       .addScaledVector(this.orbitDirection, -distance);
     this.desired.y += height;
 
+    // The transparent enclosure is still a real camera boundary. Keeping the
+    // desired point inside the convex rounded rectangle also keeps every
+    // interpolated point inside, so the camera cannot cut through a corner.
+    clampPointToRoundedArena(this.desired, CAMERA_WALL_MARGIN);
+
     const positionT = 1 - Math.exp(-14.5 * dt);
     this.position.lerp(this.desired, positionT);
+    clampPointToRoundedArena(this.position, CAMERA_WALL_MARGIN);
     this.camera.position.copy(this.position);
 
     // Keep the ball itself as the permanent look target. A high response keeps

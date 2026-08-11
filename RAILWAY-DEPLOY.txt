@@ -1,22 +1,22 @@
-ROCKET VIBE 1.2 - RAILWAY / LOW LATENCY / ULTRA VM
+ROCKET VIBE 1.5 - GO + RAILWAY
 
-Build:  npm run build
-Start:  npm start
-Health: /health
-Socket: /lan
+1. Projekt in ein GitHub-Repository pushen.
+2. Railway: New Project -> Deploy from GitHub repo.
+3. Falls Monorepo: diesen Ordner als Root Directory waehlen.
+4. Deploy starten. Railway verwendet automatisch das Dockerfile.
+5. Networking -> Generate Domain.
+6. Dieselbe Domain an alle 1-4 Spieler geben.
 
-SERVER:
-- 1 Replica in EU West (Amsterdam)
-- Server Physics: 120 Hz
-- Snapshots: 60 Hz
-- Binary WebSocket States + Inputs
-- Client-Side Prediction
+Keine Pflichtvariablen. Railway setzt PORT automatisch.
 
-VM / SCHWACHER CLIENT:
-- normale URL: https://DEINE-DOMAIN.up.railway.app
-- Ultra-URL:   https://DEINE-DOMAIN.up.railway.app/?perf=ultra
-- F2 schaltet den Modus pro Browser um
-- Ultra reduziert nur die Grafik/Client-Arbeit dieses Browsers
-- andere Spieler koennen gleichzeitig Normal-Modus nutzen
+Health:    /health
+Config:    /config
+Diagnose:  /debug/game
+WebSocket: /lan
 
-Nach Deploy: Ctrl+F5.
+WICHTIG:
+- Genau 1 Replica verwenden; der Matchzustand liegt im Speicher des Go-Prozesses.
+- Region ist in railway.json auf Amsterdam gesetzt.
+- Serverphysik 120 Hz, binaere Snapshots 60 Hz.
+- Frontend und Go-WebSocket laufen auf derselben Domain.
+- Ein Redeploy trennt eine gerade laufende Runde.

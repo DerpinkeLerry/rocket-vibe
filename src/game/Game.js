@@ -77,6 +77,8 @@ export class Game {
     } else {
       this.world = new RAPIER.World({ x: 0, y: -20.5, z: 0 });
       this.world.timestep = this.fixedDt;
+      this.world.numSolverIterations = 8;
+      this.world.maxCcdSubsteps = 4;
     }
 
     this.input = new Input();

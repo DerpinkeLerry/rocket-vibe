@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CAR_TUNING, INPUT_BITS, INPUT_EDGES } from '../shared/game-tuning.js';
+import { ARENA_TUNING, CAR_HITBOX } from '../shared/arena-tuning.js';
 
 const VEC_FORWARD = new THREE.Vector3(0, 0, -1);
 const VEC_RIGHT = new THREE.Vector3(1, 0, 0);
@@ -97,7 +98,7 @@ export class LocalCarPredictor {
     const boosting = this.isDown(INPUT_BITS.BOOST);
 
     const nearFloor = this.pos.y < 1.55 && this.up.y > 0.35 && Math.abs(this.vel.y) < 6.5;
-    let driveGrounded = this.grounded || nearFloor;
+    let driveGrounded = this.groundLockout <= 0 && (this.grounded || nearFloor);
 
     if (this.consumeEdge(INPUT_EDGES.RESET)) {
       this.car.reset();
@@ -185,11 +186,138 @@ export class LocalCarPredictor {
       this.q.premultiply(this.deltaQ).normalize();
     }
 
+    this.resolveArenaCollision();
+
     this.body.setTranslation({ x: this.pos.x, y: this.pos.y, z: this.pos.z }, false);
     this.body.setRotation({ x: this.q.x, y: this.q.y, z: this.q.z, w: this.q.w }, false);
     this.body.setLinvel({ x: this.vel.x, y: this.vel.y, z: this.vel.z }, false);
     this.body.setAngvel({ x: this.ang.x, y: this.ang.y, z: this.ang.z }, false);
     this.car.grounded = this.grounded;
+  }
+
+  supportAlong(nx, ny, nz) {
+    return Math.abs(this.right.x * nx + this.right.y * ny + this.right.z * nz) * CAR_HITBOX.x
+      + Math.abs(this.up.x * nx + this.up.y * ny + this.up.z * nz) * CAR_HITBOX.y
+      + Math.abs(this.forward.x * nx + this.forward.y * ny + this.forward.z * nz) * CAR_HITBOX.z;
+  }
+
+  stopOutwardVelocity(nx, nz) {
+    const outwardSpeed = this.vel.x * nx + this.vel.z * nz;
+    if (outwardSpeed <= 0) return;
+    this.vel.x -= nx * outwardSpeed;
+    this.vel.z -= nz * outwardSpeed;
+    // Wall contact should slide, not store energy and release it like a spring.
+    this.ang.multiplyScalar(0.985);
+  }
+
+  resolveArenaCollision() {
+    const arena = ARENA_TUNING;
+    const halfWidth = arena.width * 0.5;
+    const halfLength = arena.length * 0.5;
+    const straightX = halfWidth - arena.cornerRadius;
+    const straightZ = halfLength - arena.cornerRadius;
+
+    // Refresh the basis after integrating rotation so the oriented hitbox and
+    // the server use the same support extents for this exact predicted pose.
+    this.forward.copy(VEC_FORWARD).applyQuaternion(this.q).normalize();
+    this.right.copy(VEC_RIGHT).applyQuaternion(this.q).normalize();
+    this.up.copy(VEC_UP).applyQuaternion(this.q).normalize();
+
+    const extentY = this.supportAlong(0, 1, 0);
+    const floorContact = this.pos.y <= extentY + 0.035;
+    if (this.pos.y < extentY) {
+      this.pos.y = extentY;
+      if (this.vel.y < 0) this.vel.y = 0;
+    }
+    const ceilingY = arena.ceiling - extentY;
+    if (this.pos.y > ceilingY) {
+      this.pos.y = ceilingY;
+      if (this.vel.y > 0) this.vel.y = 0;
+    }
+
+    const extentX = this.supportAlong(1, 0, 0);
+    const extentZ = this.supportAlong(0, 0, 1);
+    const absX = Math.abs(this.pos.x);
+    const absZ = Math.abs(this.pos.z);
+    const goalFits = absX + extentX <= arena.goalWidth * 0.5
+      && this.pos.y + extentY <= arena.goalHeight;
+
+    if (absX > straightX && absZ > straightZ) {
+      const signX = Math.sign(this.pos.x || 1);
+      const signZ = Math.sign(this.pos.z || 1);
+      const centerX = signX * straightX;
+      const centerZ = signZ * straightZ;
+      const dx = this.pos.x - centerX;
+      const dz = this.pos.z - centerZ;
+      const distance = Math.hypot(dx, dz);
+      if (distance > 0.000001) {
+        const nx = dx / distance;
+        const nz = dz / distance;
+        const support = this.supportAlong(nx, 0, nz);
+        const maximumDistance = Math.max(0.1, arena.cornerRadius - support);
+        if (distance > maximumDistance) {
+          const penetration = distance - maximumDistance;
+          this.pos.x -= nx * penetration;
+          this.pos.z -= nz * penetration;
+          this.stopOutwardVelocity(nx, nz);
+        }
+      }
+    } else {
+      if (absZ <= straightZ) {
+        const maximumX = halfWidth - extentX;
+        if (this.pos.x > maximumX) {
+          this.pos.x = maximumX;
+          this.stopOutwardVelocity(1, 0);
+        } else if (this.pos.x < -maximumX) {
+          this.pos.x = -maximumX;
+          this.stopOutwardVelocity(-1, 0);
+        }
+      }
+
+      if (absX <= straightX && !goalFits) {
+        const maximumZ = halfLength - extentZ;
+        if (this.pos.z > maximumZ) {
+          this.pos.z = maximumZ;
+          this.stopOutwardVelocity(0, 1);
+        } else if (this.pos.z < -maximumZ) {
+          this.pos.z = -maximumZ;
+          this.stopOutwardVelocity(0, -1);
+        }
+      }
+    }
+
+    if (Math.abs(this.pos.z) > halfLength - 0.02) {
+      const goalHalfWidth = arena.goalWidth * 0.5;
+      const goalBack = halfLength + arena.goalDepth;
+      const maximumGoalX = goalHalfWidth - extentX;
+      if (this.pos.x > maximumGoalX) {
+        this.pos.x = maximumGoalX;
+        this.stopOutwardVelocity(1, 0);
+      } else if (this.pos.x < -maximumGoalX) {
+        this.pos.x = -maximumGoalX;
+        this.stopOutwardVelocity(-1, 0);
+      }
+
+      const goalRoof = arena.goalHeight - extentY;
+      if (this.pos.y > goalRoof) {
+        this.pos.y = goalRoof;
+        if (this.vel.y > 0) this.vel.y = 0;
+      }
+
+      const maximumGoalZ = goalBack - extentZ;
+      if (this.pos.z > maximumGoalZ) {
+        this.pos.z = maximumGoalZ;
+        this.stopOutwardVelocity(0, 1);
+      } else if (this.pos.z < -maximumGoalZ) {
+        this.pos.z = -maximumGoalZ;
+        this.stopOutwardVelocity(0, -1);
+      }
+    }
+
+    if (floorContact && this.up.y > 0.3 && this.groundLockout <= 0) {
+      this.grounded = true;
+      this.airTime = 0;
+    }
   }
 
   reconcile(target, dt, ageSec, rttMs) {
@@ -238,6 +366,7 @@ export class LocalCarPredictor {
       this.ang.lerp(this.authAng, velocityAlpha);
     }
 
+    this.resolveArenaCollision();
     this.body.setTranslation({ x: this.pos.x, y: this.pos.y, z: this.pos.z }, false);
     this.body.setRotation({ x: this.q.x, y: this.q.y, z: this.q.z, w: this.q.w }, false);
     this.body.setLinvel({ x: this.vel.x, y: this.vel.y, z: this.vel.z }, false);
