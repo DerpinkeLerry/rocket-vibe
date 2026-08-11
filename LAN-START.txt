@@ -1,14 +1,10 @@
-ROCKET VIBE 0.6 - LAN START
-===========================
+ROCKET VIBE 0.8 - 4 SPIELER LAN
 
-npm install
-npm run lan
+1. npm install
+2. npm run lan
+3. Host oeffnet http://localhost:5173
+4. Freunde oeffnen die im Terminal angezeigte LAN-IP.
 
-Dann im Terminal:
-Host:   http://localhost:5173
-Freund: http://DEINE-LAN-IP:5173
-
-Erster Browser = Spieler 1 / Host
-Zweiter Browser = Spieler 2
-
-Fuer Railway siehe RAILWAY-DEPLOY.txt.
+Bis zu vier Geraete koennen gleichzeitig verbinden.
+Alle Spieler verwenden WASD / Space / Shift / Q / E.
+Die gesamte Match-Physik laeuft zentral im Node-Server, nicht im Browser von Spieler 1.

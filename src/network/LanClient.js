@@ -2,15 +2,15 @@ export class LanClient {
   constructor() {
     this.socket = null;
     this.playerId = 0;
-    this.isHost = true;
+    this.maxPlayers = 4;
+    this.connectedPlayers = [];
     this.connected = false;
-    this.peerConnected = false;
     this.inputSeq = 0;
     this.lastInputAck = 0;
-    this.onRemoteInput = null;
+    this.activeInputConfirmed = false;
     this.onState = null;
     this.onStatus = null;
-    this.onPeerChange = null;
+    this.onRoster = null;
   }
 
   async connect() {
@@ -28,10 +28,10 @@ export class LanClient {
         reject(new Error(message));
       };
 
-      const timeout = setTimeout(() => fail('Spielserver antwortet nicht.'), 6000);
+      const timeout = setTimeout(() => fail('Spielserver antwortet nicht.'), 8000);
 
       socket.addEventListener('open', () => {
-        this.emitStatus('Verbunden – Rolle wird zugewiesen …');
+        this.emitStatus('Verbunden – Spielerplatz wird zugewiesen …');
       });
 
       socket.addEventListener('message', (event) => {
@@ -43,14 +43,12 @@ export class LanClient {
         }
 
         if (message.type === 'welcome') {
-          this.playerId = message.playerId;
-          this.isHost = message.playerId === 0;
-          this.peerConnected = Boolean(message.peerConnected);
+          this.playerId = Number(message.playerId) || 0;
+          this.maxPlayers = Number(message.maxPlayers) || 4;
+          this.connectedPlayers = Array.isArray(message.connectedPlayers) ? message.connectedPlayers : [this.playerId];
           this.connected = true;
           clearTimeout(timeout);
-          this.emitStatus(this.isHost
-            ? (this.peerConnected ? 'HOST · Spieler 2 verbunden' : 'HOST · Warte auf Spieler 2')
-            : 'SPIELER 2 · Mit Host verbunden');
+          this.emitStatus(this.statusText('ONLINE'));
           if (!settled) {
             settled = true;
             resolve(this);
@@ -58,57 +56,35 @@ export class LanClient {
           return;
         }
 
-        if (message.type === 'remote-input' && this.isHost) {
-          // Treat input itself as proof that player 2 is alive. This protects
-          // against any join-event race and makes the remote car active again.
-          if (!this.peerConnected) {
-            this.peerConnected = true;
-            this.onPeerChange?.(true);
-            this.emitStatus('HOST · Spieler 2 verbunden');
-          }
-          this.onRemoteInput?.(message.input, message.playerId ?? 1, message.seq ?? 0);
-          return;
-        }
-
-        if (message.type === 'input-ack' && !this.isHost) {
+        if (message.type === 'input-ack') {
           const previousAck = this.lastInputAck;
           this.lastInputAck = Math.max(this.lastInputAck, Number(message.seq) || 0);
-          if (previousAck === 0 && this.lastInputAck > 0) {
-            this.emitStatus('SPIELER 2 · Steuerung verbunden');
+          if (message.active) this.activeInputConfirmed = true;
+          if (this.activeInputConfirmed) {
+            this.emitStatus(this.statusText('STEUERUNG OK'));
+          } else if (previousAck === 0 && this.lastInputAck > 0) {
+            this.emitStatus(this.statusText('NETZWERK OK'));
           }
           return;
         }
 
-        if (message.type === 'state' && !this.isHost) {
+        if (message.type === 'state') {
           this.onState?.(message.state);
           return;
         }
 
-        if (message.type === 'peer-joined') {
-          this.peerConnected = true;
-          this.onPeerChange?.(true);
-          this.emitStatus(this.isHost ? 'HOST · Spieler 2 verbunden' : 'SPIELER 2 · Mit Host verbunden');
-          return;
-        }
-
-        if (message.type === 'peer-left') {
-          this.peerConnected = false;
-          this.onPeerChange?.(false);
-          this.emitStatus(this.isHost ? 'HOST · Spieler 2 getrennt' : 'Verbindung zum Host verloren');
+        if (message.type === 'roster') {
+          this.maxPlayers = Number(message.maxPlayers) || this.maxPlayers;
+          this.connectedPlayers = Array.isArray(message.connectedPlayers) ? message.connectedPlayers : this.connectedPlayers;
+          this.onRoster?.(this.connectedPlayers, this.maxPlayers);
+          this.emitStatus(this.statusText(this.activeInputConfirmed ? 'STEUERUNG OK' : (this.lastInputAck > 0 ? 'NETZWERK OK' : 'ONLINE')));
           return;
         }
 
         if (message.type === 'server-full') {
           clearTimeout(timeout);
           socket.close();
-          fail('Dieses Match hat bereits zwei Spieler.');
-          return;
-        }
-
-        if (message.type === 'host-lost') {
-          this.connected = false;
-          this.onPeerChange?.(false);
-          this.emitStatus('Host getrennt – Seite neu laden, sobald der Host wieder läuft.');
+          fail(`Dieses Match hat bereits ${Number(message.maxPlayers) || 4} Spieler.`);
         }
       });
 
@@ -124,19 +100,18 @@ export class LanClient {
     });
   }
 
+  statusText(state) {
+    return `SPIELER ${this.playerId + 1} · ${state} · ${this.connectedPlayers.length}/${this.maxPlayers}`;
+  }
+
   emitStatus(text) {
     this.onStatus?.(text);
   }
 
   sendInput(input) {
-    if (!this.connected || this.isHost || this.socket?.readyState !== WebSocket.OPEN) return false;
+    if (!this.connected || this.socket?.readyState !== WebSocket.OPEN) return false;
     const seq = ++this.inputSeq;
     this.socket.send(JSON.stringify({ type: 'input', seq, input }));
     return true;
-  }
-
-  sendState(state) {
-    if (!this.connected || !this.isHost || !this.peerConnected || this.socket?.readyState !== WebSocket.OPEN) return;
-    this.socket.send(JSON.stringify({ type: 'state', state }));
   }
 }

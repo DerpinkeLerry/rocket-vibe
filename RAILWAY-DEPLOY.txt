@@ -1,41 +1,26 @@
-ROCKET VIBE 0.6 - RAILWAY DEPLOY
-================================
+ROCKET VIBE 0.8 - RAILWAY / 4 PLAYER
 
-1) Diese Dateien in dein GitHub-Repo uebernehmen.
+Das Projekt ist fuer einen einzelnen Railway-Service vorbereitet.
 
-2) In VS Code Terminal:
-   git add .
-   git commit -m "Prepare Rocket Vibe for Railway"
-   git push
+Railway:
+- Build Command: npm run build
+- Start Command: npm start
+- Healthcheck: /health
+- Server lauscht auf 0.0.0.0 und process.env.PORT
+- WebSocket laeuft auf derselben Domain unter /lan
+- 1 Replica verwenden
 
-3) Auf Railway:
-   New Project -> Deploy from GitHub Repo -> dein Repo waehlen.
+Deployment nach GitHub-Aenderungen:
+  git add .
+  git commit -m "4 player authoritative multiplayer"
+  git push
 
-4) Railway liest railway.json automatisch:
-   Build: npm run build
-   Start: npm start
-   Healthcheck: /health
+Danach deployt Railway automatisch.
 
-5) Nach erfolgreichem Deploy:
-   Service -> Settings -> Networking -> Public Networking -> Generate Domain
+Alle Spieler oeffnen exakt dieselbe Railway-URL.
+Die ersten vier Verbindungen erhalten Spieler 1, 2, 3 und 4.
+Ein fuenfter Spieler bekommt "Match voll".
 
-6) Spielen:
-   - DU oeffnest die Railway-URL zuerst = Spieler 1 / Host
-   - DEIN FREUND oeffnet exakt dieselbe URL danach = Spieler 2
-
-WICHTIG
--------
-- Nur 1 Railway-Replica verwenden. Der Match-Zustand liegt aktuell im RAM dieses Servers.
-- Ein Redeploy/Restart beendet das aktuelle Match.
-- Die Railway-Version funktioniert ueber Internet, nicht nur im LAN.
-- Lokal bleibt "npm run lan" weiterhin moeglich.
-- "npm run dev" startet weiterhin den Offline-Modus.
-
-LOKALER PRODUCTION-TEST
------------------------
-npm install
-npm run build
-npm start
-
-Dann: http://localhost:3000
-Zwei Tabs = zwei Spieler.
+WICHTIG:
+Ab 0.8 ist kein Browser mehr der Physik-Host.
+Railway simuliert zentral alle vier Autos und den Ball. Dadurch funktioniert die Steuerung fuer jeden Spieler ueber denselben Input-Pfad.

@@ -1,44 +1,36 @@
-# Rocket Vibe Starter v0.7 - Online Input Fix
+# Rocket Vibe 0.8 - 4 Player Server Physics
 
-Three.js + Rapier Arena-Prototyp mit zwei Autos, Ball, LAN und Railway-Online-Multiplayer.
-Die Optik ist Rocket-League-inspiriert und verwendet keine gerippten Original-Assets.
+Three.js + Rapier Prototyp fuer ein Rocket-League-inspiriertes Browser-Spiel.
 
-## Was in v0.7 neu ist
+## Neu in 0.8
 
-- Fix fuer die Steuerung von Spieler 2 / blauem Auto
-- Keydown und Keyup von Spieler 2 werden sofort per WebSocket gesendet
-- zusaetzlicher Input-Heartbeat mit 20 Hz als Sicherheitsnetz
-- jedes Input-Paket bekommt eine Sequenznummer
-- Server bestaetigt Input-Pakete an Spieler 2
-- Host behandelt eintreffenden Input automatisch als aktiven Spieler 2
-- Join-Race kann die Steuerung nicht mehr deaktivieren
-- beim ersten bestaetigten Paket zeigt Spieler 2 `STEUERUNG VERBUNDEN`
-- Railway-Log meldet einmal `Erste Eingabe von Spieler 2 empfangen.`
+Die Multiplayer-Architektur wurde komplett ersetzt:
 
-## Railway aktualisieren
+- bis zu **4 Spieler** gleichzeitig
+- Spieler 1 ist **nicht mehr Browser-Host**
+- jeder Spieler sendet seine Eingaben direkt an den Node/Railway-Server
+- der Server simuliert zentral **alle 4 Autos + Ball** mit Rapier
+- der Server verteilt 30 State-Snapshots pro Sekunde an alle Browser
+- alle vier Spieler benutzen exakt denselben Input-Code
+- Browser rechnen im Online-Modus keine Match-Physik mehr, was die Client-Performance verbessert
+- vier feste Spawn-Slots (2 pro Spielfeldseite)
+- Railway, echtes LAN und Offline-Modus bleiben vorhanden
 
-Die neuen Dateien in dein bestehendes GitHub-Repo kopieren und dann:
+## Steuerung
 
-```bash
-git add .
-git commit -m "Fix player 2 controls"
-git push
-```
+| Taste | Boden | Luft |
+| --- | --- | --- |
+| W / S | Gas / Rueckwaerts | Pitch |
+| A / D | Lenken | Yaw |
+| Q / E | - | Air Roll |
+| Shift | Boost | Boost |
+| Space | Jump / Double Jump | Jump / Double Jump |
+| R | eigenes Auto resetten | eigenes Auto resetten |
+| B | Ball resetten | Ball resetten |
 
-Railway sollte danach automatisch neu deployen.
+## Railway
 
-Die bestehende Railway-Konfiguration bleibt gleich. Falls du `PORT=3000` und Target Port `3000` gesetzt hast, kannst du das so lassen.
-
-## Zu zweit spielen
-
-1. Spieler 1 oeffnet die Railway-Domain zuerst.
-2. Spieler 2 oeffnet dieselbe Domain danach.
-3. Spieler 2 sollte im HUD nach dem Verbinden `SPIELER 2 · STEUERUNG VERBUNDEN` sehen.
-4. In den Railway Deploy Logs erscheint beim ersten Client-Paket einmal `Erste Eingabe von Spieler 2 empfangen.`.
-
-Hinweis: Zwei Tabs auf demselben PC sind nur ein Verbindungstest. Fuer echtes gleichzeitiges Tastaturspielen sind zwei getrennte Rechner sinnvoll, weil Browser Hintergrund-Tabs drosseln und nur der aktive Tab Tastatureingaben bekommt.
-
-## Production lokal testen
+Die Dateien `railway.json` und `server/production-server.mjs` sind vorbereitet.
 
 ```bash
 npm install
@@ -46,53 +38,46 @@ npm run build
 npm start
 ```
 
-Danach `http://localhost:3000` oeffnen.
+Railway verwendet `process.env.PORT`. Alle Spieler oeffnen dieselbe Railway-Domain. Die ersten vier Verbindungen werden automatisch Spieler 1 bis 4.
 
-## LAN weiterhin benutzen
+Healthcheck:
+
+```text
+/health
+```
+
+Beispielantwort:
+
+```json
+{"ok":true,"service":"rocket-vibe","version":"0.8.0","players":2}
+```
+
+Auf Railway fuer diese Version **1 Replica** verwenden, weil der Match-Zustand im RAM des Node-Prozesses liegt.
+
+## LAN
 
 ```bash
 npm install
 npm run lan
 ```
 
-## Offline-Modus
+Der Host oeffnet `http://localhost:5173`. Andere Rechner im selben Netzwerk oeffnen die im Terminal ausgegebene IP, z. B. `http://192.168.178.42:5173`.
+
+## Offline
 
 ```bash
 npm run dev
 ```
 
-## Steuerung
+Im Offline-Modus wird weiterhin lokal im Browser simuliert.
 
-- `W / S`: Boden Gas/Rueckwaerts, Luft Pitch
-- `A / D`: Boden Lenken, Luft Yaw
-- `Q / E`: Air Roll
-- `Shift`: Boost
-- `Space`: Jump / Double Jump
-- `R`: eigenes Auto zuruecksetzen
-- `B`: Ball zuruecksetzen
+## Architektur
 
-## Netzwerkmodell
+```text
+Spieler 1 Browser --input--\
+Spieler 2 Browser --input---+--> Node/Railway Server --> Rapier Physics --> Snapshots --> alle Browser
+Spieler 3 Browser --input---+
+Spieler 4 Browser --input--/
+```
 
-Die erste verbundene Spielinstanz ist derzeit der autoritative Host fuer Autos und Ball. Spieler 2 sendet seine Eingaben per WebSocket an den Railway-Server; dieser leitet sie an Spieler 1 weiter. Spieler 1 simuliert das blaue Auto und sendet den gemeinsamen Spielzustand zurueck.
-
-v0.7 macht diesen Input-Pfad robuster. Fuer eine spaetere kompetitive Version sollte die gesamte Spielphysik auf einen dedizierten autoritativen Gameserver verschoben werden, damit das Match nicht vom Browser von Spieler 1 abhaengt.
-
-## Performance
-
-- Physik 60 Hz
-- Game-State 30 Hz
-- Spieler-2-Input: sofort bei Tastenaenderung + 20-Hz-Heartbeat
-- Rendering maximal 60 FPS
-- Pixel Ratio max. 0.9
-- Antialiasing aus
-- keine Shadowmaps
-- vereinfachtes Stadion und Instancing
-
-## Dependencies
-
-- Three.js 0.185.1
-- Rapier 0.19.3
-- Vite 8.1.5
-- ws 8.18.3
-
-`node_modules` und `dist` gehoeren nicht ins Git-Repository.
+Damit gibt es keinen Sonderfall mehr, bei dem nur Spieler 1 sein Auto lokal kontrolliert. Jeder Spieler hat denselben Netzwerkpfad zum autoritativen Server.

@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { attachGameSockets } from './game-sockets.mjs';
+import { createAuthoritativeGame } from './authoritative-game.mjs';
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = '0.0.0.0';
@@ -102,7 +103,7 @@ const server = createServer(async (req, res) => {
       sendJson(res, shuttingDown ? 503 : 200, {
         ok: !shuttingDown,
         service: 'rocket-vibe',
-        version: '0.7.0',
+        version: '0.8.0',
         players: sockets.getPlayerCount()
       });
       return;
@@ -133,16 +134,17 @@ const server = createServer(async (req, res) => {
   }
 });
 
-const sockets = attachGameSockets(server, { path: '/lan', label: 'ONLINE' });
+const game = await createAuthoritativeGame();
+const sockets = attachGameSockets(server, { path: '/lan', label: 'ONLINE', game });
 
 server.listen(PORT, HOST, () => {
   console.log('\n==============================================');
-  console.log(' ROCKET VIBE ONLINE 0.7');
+  console.log(' ROCKET VIBE ONLINE 0.8 · 4 PLAYER SERVER');
   console.log('==============================================');
   console.log(`Listening on ${HOST}:${PORT}`);
   console.log('HTTP healthcheck: /health');
   console.log('WebSocket: /lan');
-  console.log('Railway: dieselbe Domain fuer beide Spieler nutzen.');
+  console.log('Railway: dieselbe Domain fuer bis zu vier Spieler nutzen.');
   console.log('==============================================\n');
 });
 

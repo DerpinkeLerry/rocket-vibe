@@ -2,15 +2,18 @@ export class Hud {
   constructor(root, options = {}) {
     const multiplayer = Boolean(options.lan);
     const playerId = options.playerId ?? 0;
-    const role = multiplayer ? (playerId === 0 ? 'SPIELER 1 · HOST' : 'SPIELER 2 · CLIENT') : 'OFFLINE';
+    const playerCount = options.playerCount ?? 1;
+    const maxPlayers = options.maxPlayers ?? 4;
+    const role = multiplayer ? `SPIELER ${playerId + 1}` : 'OFFLINE';
 
     this.el = document.createElement('div');
     this.el.className = 'hud';
     this.el.innerHTML = `
-      <div class="hud__title">ROCKET VIBE // ONLINE 0.7 <span class="hud__perf">PERFORMANCE MODE</span></div>
+      <div class="hud__title">ROCKET VIBE // ONLINE 0.8 <span class="hud__perf">SERVER PHYSICS</span></div>
       <div class="hud__network">
         <strong>${role}</strong>
         <span data-network>${multiplayer ? 'Spielserver verbunden' : 'Lokaler Modus'}</span>
+        <span data-player-count>${playerCount}/${maxPlayers} Spieler</span>
       </div>
       <div class="hud__controls">
         <kbd>W / S</kbd><span>Boden: Gas · Luft: Pitch</span>
@@ -31,10 +34,15 @@ export class Hud {
     this.speed = this.el.querySelector('[data-speed]');
     this.state = this.el.querySelector('[data-state]');
     this.network = this.el.querySelector('[data-network]');
+    this.playerCount = this.el.querySelector('[data-player-count]');
   }
 
   setNetworkStatus(text) {
     this.network.textContent = text;
+  }
+
+  setPlayerCount(count, maxPlayers = 4) {
+    this.playerCount.textContent = `${count}/${maxPlayers} Spieler`;
   }
 
   update(car) {

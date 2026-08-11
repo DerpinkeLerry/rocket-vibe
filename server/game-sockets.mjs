@@ -1,15 +1,20 @@
 import { WebSocketServer, WebSocket } from 'ws';
 
+const MAX_PLAYERS = 4;
+
 export function attachGameSockets(httpServer, options = {}) {
   const path = options.path ?? '/lan';
   const label = options.label ?? 'GAME';
+  const game = options.game;
+  if (!game) throw new Error('attachGameSockets requires an authoritative game instance.');
+
   const wss = new WebSocketServer({ noServer: true });
   const players = new Map();
   const inputSeen = new WeakSet();
 
   function availablePlayerId() {
-    if (![...players.values()].includes(0)) return 0;
-    if (![...players.values()].includes(1)) return 1;
+    const used = new Set(players.values());
+    for (let id = 0; id < MAX_PLAYERS; id++) if (!used.has(id)) return id;
     return -1;
   }
 
@@ -17,32 +22,43 @@ export function attachGameSockets(httpServer, options = {}) {
     if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
   }
 
-  function socketForPlayer(id) {
-    for (const [ws, playerId] of players) {
-      if (playerId === id) return ws;
+  function broadcast(payload) {
+    const data = JSON.stringify(payload);
+    for (const ws of players.keys()) {
+      if (ws.readyState === WebSocket.OPEN) ws.send(data);
     }
-    return null;
   }
 
-  function notifyPeer(type, playerId) {
-    for (const [ws, id] of players) {
-      if (id !== playerId) send(ws, { type, playerId });
-    }
+  function connectedIds() {
+    return [...players.values()].sort((a, b) => a - b);
   }
+
+  function broadcastRoster() {
+    broadcast({ type: 'roster', connectedPlayers: connectedIds(), maxPlayers: MAX_PLAYERS });
+  }
+
+  game.start((state) => {
+    if (players.size > 0) broadcast({ type: 'state', state });
+  });
 
   wss.on('connection', (ws) => {
     const playerId = availablePlayerId();
     if (playerId < 0) {
-      send(ws, { type: 'server-full' });
+      send(ws, { type: 'server-full', maxPlayers: MAX_PLAYERS });
       ws.close(1000, 'Match full');
       return;
     }
 
     players.set(ws, playerId);
-    const peerConnected = socketForPlayer(playerId === 0 ? 1 : 0) !== null;
-    send(ws, { type: 'welcome', playerId, peerConnected });
-    notifyPeer('peer-joined', playerId);
-    console.log(`[${label}] Spieler ${playerId + 1} verbunden.`);
+    game.setPlayerConnected(playerId, true);
+    send(ws, {
+      type: 'welcome',
+      playerId,
+      maxPlayers: MAX_PLAYERS,
+      connectedPlayers: connectedIds()
+    });
+    broadcastRoster();
+    console.log(`[${label}] Spieler ${playerId + 1} verbunden (${players.size}/${MAX_PLAYERS}).`);
 
     ws.on('message', (raw) => {
       let message;
@@ -55,31 +71,19 @@ export function attachGameSockets(httpServer, options = {}) {
       const senderId = players.get(ws);
       if (senderId === undefined) return;
 
-      if (senderId === 1 && message.type === 'input') {
-        const host = socketForPlayer(0);
-        if (!inputSeen.has(ws)) {
-          inputSeen.add(ws);
-          console.log(`[${label}] Erste Eingabe von Spieler 2 empfangen.`);
-        }
+      if (message.type === 'input') {
         const seq = Number(message.seq) || 0;
         const input = {
-          mask: Number(message.input?.mask) || 0,
-          edges: Number(message.input?.edges) || 0
+          mask: (Number(message.input?.mask) || 0) & 0x7f,
+          edges: (Number(message.input?.edges) || 0) & 0x07
         };
-
-        // Acknowledge the client and forward the exact same packet to player 1.
-        // WebSockets are ordered/reliable; the sequence id makes the path
-        // explicit and avoids accidental stale packets in future changes.
-        send(ws, { type: 'input-ack', seq });
-        if (host) {
-          send(host, { type: 'remote-input', playerId: 1, seq, input });
+        game.setInput(senderId, input);
+        const active = input.mask !== 0 || input.edges !== 0;
+        send(ws, { type: 'input-ack', seq, playerId: senderId, active });
+        if (active && !inputSeen.has(ws)) {
+          inputSeen.add(ws);
+          console.log(`[${label}] Aktive Steuerung von Spieler ${senderId + 1} empfangen.`);
         }
-        return;
-      }
-
-      if (senderId === 0 && message.type === 'state') {
-        const client = socketForPlayer(1);
-        if (client) send(client, { type: 'state', state: message.state });
       }
     });
 
@@ -87,16 +91,9 @@ export function attachGameSockets(httpServer, options = {}) {
       const id = players.get(ws);
       players.delete(ws);
       if (id === undefined) return;
-
-      console.log(`[${label}] Spieler ${id + 1} getrennt.`);
-
-      if (id === 0) {
-        const client = socketForPlayer(1);
-        if (client) send(client, { type: 'host-lost' });
-      } else {
-        const host = socketForPlayer(0);
-        if (host) send(host, { type: 'peer-left', playerId: 1 });
-      }
+      game.setPlayerConnected(id, false);
+      console.log(`[${label}] Spieler ${id + 1} getrennt (${players.size}/${MAX_PLAYERS}).`);
+      broadcastRoster();
     });
   });
 
@@ -114,21 +111,16 @@ export function attachGameSockets(httpServer, options = {}) {
       return;
     }
 
-    wss.handleUpgrade(request, socket, head, (ws) => {
-      wss.emit('connection', ws, request);
-    });
+    wss.handleUpgrade(request, socket, head, (ws) => wss.emit('connection', ws, request));
   });
 
   return {
     wss,
     getPlayerCount: () => players.size,
     closeAll(code = 1012, reason = 'Server restarting') {
+      game.stop();
       for (const ws of players.keys()) {
-        try {
-          ws.close(code, reason);
-        } catch {
-          // Ignore sockets that are already gone.
-        }
+        try { ws.close(code, reason); } catch { /* already gone */ }
       }
     }
   };
