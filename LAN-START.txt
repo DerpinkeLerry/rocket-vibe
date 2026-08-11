@@ -1,4 +1,4 @@
-ROCKET VIBE 0.9 - 4 SPIELER LAN
+ROCKET VIBE 1.0 - 4 SPIELER LAN / LOW LATENCY
 
 1. npm install
 2. npm run lan
@@ -6,5 +6,4 @@ ROCKET VIBE 0.9 - 4 SPIELER LAN
 4. Freunde oeffnen die im Terminal angezeigte LAN-IP.
 
 Bis zu vier Geraete koennen gleichzeitig verbinden.
-Alle Spieler verwenden WASD / Space / Shift / Q / E.
-Die gesamte Match-Physik laeuft zentral im Node-Server, nicht im Browser von Spieler 1.
+Server Physics: 120 Hz, Snapshots: 60 Hz, Client Prediction aktiv.

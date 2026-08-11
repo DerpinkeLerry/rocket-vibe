@@ -1,28 +1,27 @@
-ROCKET VIBE 0.9 - RAILWAY / 4 PLAYER
+ROCKET VIBE 1.0 - RAILWAY LOW LATENCY / 4 PLAYER
 
-Das Projekt ist fuer einen einzelnen Railway-Service vorbereitet.
+Build:  npm run build
+Start:  npm start
+Health: /health
+Socket: /lan
 
-Railway:
-- Build Command: npm run build
-- Start Command: npm start
-- Healthcheck: /health
-- Server lauscht auf 0.0.0.0 und process.env.PORT
-- WebSocket laeuft auf derselben Domain unter /lan
-- 1 Replica verwenden
+LOW-LATENCY SETUP:
+- railway.json erzwingt 1 Replica in EU West (Amsterdam).
+- Server Physics: 120 Hz.
+- Netzwerk-Snapshots: 60 Hz.
+- Binary WebSocket States + Inputs.
+- Client-Side Prediction fuer das eigene Auto.
+- Server Reconciliation + Extrapolation fuer andere Autos/Ball.
+- WebSocket-Kompression deaktiviert; alte Snapshot-Queues werden verworfen.
 
-Deployment nach GitHub-Aenderungen:
+Deployment:
   git add .
-  git commit -m "4 player authoritative multiplayer"
+  git commit -m "Low latency netcode"
   git push
 
-Danach deployt Railway automatisch.
+Nach dem Deploy in Railway pruefen:
+- Service -> Settings -> Scale / Regions: EU West
+- Es darf nur 1 Replica aktiv sein.
 
-Alle Spieler oeffnen exakt dieselbe Railway-URL.
-Die ersten vier Verbindungen erhalten Spieler 1, 2, 3 und 4.
-Ein fuenfter Spieler bekommt "Match voll".
-
-WICHTIG:
-Ab 0.9 ist kein Browser mehr der Physik-Host.
-Railway simuliert zentral alle vier Autos und den Ball. Dadurch funktioniert die Steuerung fuer jeden Spieler ueber denselben Input-Pfad.
-
-DEBUG: https://DEINE-DOMAIN/debug/game zeigt den Live-Serverzustand.
+Danach bei allen Spielern Ctrl+F5.
+Im HUD wird der gemessene Ping angezeigt.

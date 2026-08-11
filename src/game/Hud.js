@@ -9,11 +9,12 @@ export class Hud {
     this.el = document.createElement('div');
     this.el.className = 'hud';
     this.el.innerHTML = `
-      <div class="hud__title">ROCKET VIBE // ONLINE 0.9 <span class="hud__perf">SERVER PHYSICS</span></div>
+      <div class="hud__title">ROCKET VIBE // ONLINE 1.0 <span class="hud__perf">LOW LATENCY</span></div>
       <div class="hud__network">
         <strong>${role}</strong>
         <span data-network>${multiplayer ? 'Spielserver verbunden' : 'Lokaler Modus'}</span>
         <span data-player-count>${playerCount}/${maxPlayers} Spieler</span>
+        <span data-ping>Ping -- ms</span>
       </div>
       <div class="hud__controls">
         <kbd>W / S</kbd><span>Boden: Gas · Luft: Pitch</span>
@@ -35,6 +36,7 @@ export class Hud {
     this.state = this.el.querySelector('[data-state]');
     this.network = this.el.querySelector('[data-network]');
     this.playerCount = this.el.querySelector('[data-player-count]');
+    this.ping = this.el.querySelector('[data-ping]');
   }
 
   setNetworkStatus(text) {
@@ -43,6 +45,11 @@ export class Hud {
 
   setPlayerCount(count, maxPlayers = 4) {
     this.playerCount.textContent = `${count}/${maxPlayers} Spieler`;
+  }
+
+  setPing(rttMs) {
+    if (!this.ping) return;
+    this.ping.textContent = `Ping ${Math.round(rttMs)} ms`;
   }
 
   update(car) {

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
+import { CAR_TUNING, INPUT_BITS, INPUT_EDGES } from '../src/shared/game-tuning.js';
 
 const FIELD_W = 110;
 const FIELD_L = 160;
@@ -9,20 +10,20 @@ const GOAL_W = 13.0;
 const GOAL_H = 5.2;
 const GOAL_D = 8.0;
 const BALL_RADIUS = 0.92;
-const FIXED_DT = 1 / 60;
-const SNAPSHOT_EVERY_STEPS = 2; // 30 Hz network snapshots.
+const FIXED_DT = 1 / 120;
+const SNAPSHOT_EVERY_STEPS = 2; // 60 Hz network snapshots.
 
-const BIT_W = 1 << 0;
-const BIT_S = 1 << 1;
-const BIT_A = 1 << 2;
-const BIT_D = 1 << 3;
-const BIT_Q = 1 << 4;
-const BIT_E = 1 << 5;
-const BIT_BOOST = 1 << 6;
+const BIT_W = INPUT_BITS.W;
+const BIT_S = INPUT_BITS.S;
+const BIT_A = INPUT_BITS.A;
+const BIT_D = INPUT_BITS.D;
+const BIT_Q = INPUT_BITS.Q;
+const BIT_E = INPUT_BITS.E;
+const BIT_BOOST = INPUT_BITS.BOOST;
 
-const EDGE_JUMP = 1 << 0;
-const EDGE_RESET = 1 << 1;
-const EDGE_BALL_RESET = 1 << 2;
+const EDGE_JUMP = INPUT_EDGES.JUMP;
+const EDGE_RESET = INPUT_EDGES.RESET;
+const EDGE_BALL_RESET = INPUT_EDGES.BALL_RESET;
 
 const VEC3_UP = new THREE.Vector3(0, 1, 0);
 const VEC3_FORWARD = new THREE.Vector3(0, 0, -1);
@@ -51,21 +52,7 @@ class ServerCar {
     this.mask = 0;
     this.edges = 0;
 
-    this.maxGroundSpeed = 39;
-    this.maxBoostSpeed = 52;
-    this.driveAcceleration = 25.5;
-    this.reverseAcceleration = 20.0;
-    this.brakeAcceleration = 34.0;
-    this.boostAcceleration = 31.0;
-    this.grip = 13.5;
-    this.steerRate = 2.55;
-    this.steerResponse = 10.0;
-    this.airPitchAcceleration = 8.5;
-    this.airYawAcceleration = 7.4;
-    this.airRollAcceleration = 8.0;
-    this.jumpSpeed = 11.8;
-    this.doubleJumpSpeed = 8.4;
-    this.downAcceleration = 5.5;
+    Object.assign(this, CAR_TUNING);
 
     this.grounded = false;
     this.groundNormal = new THREE.Vector3(0, 1, 0);
@@ -255,7 +242,7 @@ class ServerCar {
 
     let nextForward = speedForward;
     if (throttle !== 0) nextForward = moveTowards(speedForward, targetForward, accel * dt);
-    else nextForward = moveTowards(speedForward, 0, 5.5 * dt);
+    else nextForward = moveTowards(speedForward, 0, this.coastDeceleration * dt);
 
     if (boosting) nextForward = moveTowards(nextForward, this.maxBoostSpeed, this.boostAcceleration * dt);
 
@@ -280,9 +267,9 @@ class ServerCar {
     const targetYaw = steer * this.steerRate * steerStrength * reverseSign;
     const ang = this.body.angvel();
     this.body.setAngvel({
-      x: damp(ang.x, 0, 8.5, dt),
+      x: damp(ang.x, 0, this.angularGroundDamping, dt),
       y: damp(ang.y, targetYaw, this.steerResponse, dt),
-      z: damp(ang.z, 0, 8.5, dt)
+      z: damp(ang.z, 0, this.angularGroundDamping, dt)
     }, true);
   }
 
@@ -309,9 +296,8 @@ class ServerCar {
       .addScaledVector(this.up, sideInput * this.airYawAcceleration * dt)
       .addScaledVector(this.forward, rollInput * this.airRollAcceleration * dt);
 
-    const maxAirAngular = 6.5;
     const mag = this.workVec.length();
-    if (mag > maxAirAngular) this.workVec.multiplyScalar(maxAirAngular / mag);
+    if (mag > this.maxAirAngular) this.workVec.multiplyScalar(this.maxAirAngular / mag);
 
     this.body.setAngvel({ x: this.workVec.x, y: this.workVec.y, z: this.workVec.z }, true);
   }
@@ -515,7 +501,7 @@ export class AuthoritativeGame {
   start(onSnapshot) {
     this.onSnapshot = onSnapshot;
     if (this.timer) return;
-    this.timer = setInterval(() => this.step(), 1000 / 60);
+    this.timer = setInterval(() => this.step(), 1000 / 120);
     this.timer.unref?.();
   }
 

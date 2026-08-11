@@ -34,7 +34,7 @@ function lanAddresses() {
 }
 
 console.log('\n==============================================');
-console.log(' ROCKET VIBE LAN 0.9 · 4 PLAYER SERVER');
+console.log(' ROCKET VIBE LAN 1.0 · LOW LATENCY');
 console.log('==============================================');
 console.log(`Host:   http://localhost:${PORT}`);
 for (const ip of lanAddresses()) console.log(`Freund: http://${ip}:${PORT}`);

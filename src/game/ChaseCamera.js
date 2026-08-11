@@ -31,12 +31,12 @@ export class ChaseCamera {
       .addScaledVector(this.forward, -distance)
       .add(this.heightOffset);
 
-    const posT = 1 - Math.exp(-7.5 * dt);
+    const posT = 1 - Math.exp(-13.5 * dt);
     this.position.lerp(this.desired, posT);
     this.camera.position.copy(this.position);
 
     this.target.set(p.x, p.y + 0.55, p.z).addScaledVector(this.forward, 3.0);
-    this.lookAt.lerp(this.target, 1 - Math.exp(-10 * dt));
+    this.lookAt.lerp(this.target, 1 - Math.exp(-17 * dt));
     this.camera.lookAt(this.lookAt);
   }
 }

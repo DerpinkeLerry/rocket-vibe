@@ -6,8 +6,10 @@ import { ChaseCamera } from './ChaseCamera.js';
 import { Input } from './Input.js';
 import { Hud } from './Hud.js';
 import { VirtualInput } from '../network/VirtualInput.js';
+import { LocalCarPredictor } from '../network/LocalCarPredictor.js';
 
-const CLIENT_INPUT_HEARTBEAT_HZ = 30;
+// Key changes are sent immediately. This is only a safety heartbeat for held keys.
+const CLIENT_INPUT_HEARTBEAT_HZ = 15;
 
 const PLAYER_CONFIGS = [
   { spawn: { x: -13, y: 1.25, z: 44 }, spawnYaw: 0, color: 0xf46b20 },
@@ -31,6 +33,7 @@ export class Game {
     this.renderInterval = 1 / 60;
     this.inputAccumulator = 0;
     this.latestNetworkState = null;
+    this.latestNetworkStateReceivedAt = 0;
     this.connectedPlayers = new Set(network?.connectedPlayers ?? (this.networked ? [this.playerId] : [0]));
 
     this.scene = new THREE.Scene();
@@ -55,8 +58,8 @@ export class Game {
     this.renderer.toneMappingExposure = 1.02;
     this.root.appendChild(this.renderer.domElement);
 
-    // In online mode this world is only a cheap transform container for visuals.
-    // The authoritative Rapier simulation runs on Railway, not in any browser.
+    // Online: Rapier in the browser is only a lightweight transform store.
+    // Railway remains authoritative for collisions and final match state.
     this.world = new RAPIER.World({ x: 0, y: -20.5, z: 0 });
     this.world.timestep = this.fixedDt;
 
@@ -75,8 +78,6 @@ export class Game {
     this.ball = new Ball(this.scene, this.world, RAPIER, this.passiveInput);
 
     if (this.networked) {
-      // Browser-side colliders are not used online. This prevents accidental
-      // local physics work and leaves the server as the single source of truth.
       for (const car of this.cars) car.collider.setEnabled(false);
       this.ball.collider.setEnabled(false);
       this.setRoster([...this.connectedPlayers], network?.maxPlayers ?? 4);
@@ -85,6 +86,7 @@ export class Game {
     }
 
     this.car = this.cars[this.playerId] ?? this.car0;
+    this.localPredictor = this.networked ? new LocalCarPredictor(this.car) : null;
     this.chaseCamera = new ChaseCamera(this.camera, this.car);
     this.hud = new Hud(this.root, {
       lan: this.networked,
@@ -95,11 +97,15 @@ export class Game {
 
     if (this.network) {
       this.network.onStatus = (text) => this.hud.setNetworkStatus(text);
-      this.network.onState = (state) => { this.latestNetworkState = state; };
+      this.network.onState = (state) => {
+        this.latestNetworkState = state;
+        this.latestNetworkStateReceivedAt = performance.now() / 1000;
+      };
       this.network.onRoster = (players, maxPlayers) => this.setRoster(players, maxPlayers);
+      this.network.onLatency = (rttMs) => this.hud.setPing(rttMs);
 
-      // Every player, including player 1, uses exactly the same input path.
-      // No browser is special or acts as physics host anymore.
+      // Every key transition is transmitted instantly and also fed into local
+      // prediction before the server round-trip finishes.
       this.input.setNetworkChangeHandler(() => this.sendNetworkInput());
       this.sendNetworkInput();
       this.hud.setNetworkStatus(this.network.statusText('ONLINE'));
@@ -109,6 +115,8 @@ export class Game {
     this.netTargetPos = new THREE.Vector3();
     this.netQuat = new THREE.Quaternion();
     this.netTargetQuat = new THREE.Quaternion();
+    this.netAngAxis = new THREE.Vector3();
+    this.netDeltaQuat = new THREE.Quaternion();
 
     this.addSkyDecoration();
     this.onResize = this.onResize.bind(this);
@@ -165,7 +173,12 @@ export class Game {
         this.inputAccumulator %= 1 / CLIENT_INPUT_HEARTBEAT_HZ;
         this.sendNetworkInput();
       }
-      this.applyNetworkState(frameDt);
+
+      // First reconcile toward the latest authoritative present-time estimate,
+      // then predict this frame from local input. That ordering keeps controls
+      // immediate instead of allowing a snapshot to cancel the newest key press.
+      this.applyNetworkState(frameDt, now);
+      this.localPredictor?.step(frameDt);
     } else {
       this.accumulator += frameDt;
       let steps = 0;
@@ -195,7 +208,9 @@ export class Game {
 
   sendNetworkInput() {
     if (!this.networked) return;
-    this.network.sendInput(this.input.takeNetworkPacket());
+    const packet = this.input.takeNetworkPacket();
+    this.localPredictor?.setInput(packet);
+    this.network.sendInput(packet);
   }
 
   stepOffline(dt) {
@@ -205,7 +220,7 @@ export class Game {
     this.world.step();
   }
 
-  applyNetworkState(dt) {
+  applyNetworkState(dt, now) {
     const state = this.latestNetworkState;
     if (!state?.ball || !Array.isArray(state.cars) || state.cars.length < 4) return;
 
@@ -215,26 +230,45 @@ export class Game {
       this.setRoster(roster, this.network?.maxPlayers ?? 4);
     }
 
+    const packetAge = Math.max(0, now - this.latestNetworkStateReceivedAt);
+    const rttMs = this.network?.rttMs ?? 0;
+
     for (let i = 0; i < this.cars.length; i++) {
       const target = state.cars[i];
       if (!target) continue;
-      this.smoothBody(this.cars[i].body, target, dt, i === this.playerId ? 34 : 24);
-      this.cars[i].grounded = Boolean(target.g);
+
+      if (i === this.playerId) {
+        this.localPredictor?.reconcile(target, dt, packetAge, rttMs);
+      } else {
+        this.smoothRemoteBody(this.cars[i].body, target, dt, packetAge, rttMs, 28, 0.12);
+        this.cars[i].grounded = Boolean(target.g);
+      }
     }
-    this.smoothBody(this.ball.body, state.ball, dt, 26);
+
+    this.smoothRemoteBody(this.ball.body, state.ball, dt, packetAge, rttMs, 30, 0.10);
   }
 
-  smoothBody(body, target, dt, response = 24) {
+  smoothRemoteBody(body, target, dt, packetAge, rttMs, response = 28, maxLead = 0.12) {
     const alpha = 1 - Math.exp(-response * dt);
     const p = body.translation();
     const r = body.rotation();
+    const lead = THREE.MathUtils.clamp(packetAge + Math.max(0, rttMs) * 0.00035, 0, maxLead);
 
     this.netPos.set(p.x, p.y, p.z);
     this.netTargetPos.fromArray(target.p);
+    this.netTargetPos.x += target.v[0] * lead;
+    this.netTargetPos.y += target.v[1] * lead;
+    this.netTargetPos.z += target.v[2] * lead;
     this.netPos.lerp(this.netTargetPos, alpha);
 
     this.netQuat.set(r.x, r.y, r.z, r.w);
-    this.netTargetQuat.fromArray(target.r);
+    this.netTargetQuat.fromArray(target.r).normalize();
+    const angularSpeed = Math.hypot(target.w[0], target.w[1], target.w[2]);
+    if (angularSpeed > 0.00001 && lead > 0) {
+      this.netAngAxis.set(target.w[0], target.w[1], target.w[2]).multiplyScalar(1 / angularSpeed);
+      this.netDeltaQuat.setFromAxisAngle(this.netAngAxis, angularSpeed * lead);
+      this.netTargetQuat.premultiply(this.netDeltaQuat).normalize();
+    }
     this.netQuat.slerp(this.netTargetQuat, alpha);
 
     body.setTranslation({ x: this.netPos.x, y: this.netPos.y, z: this.netPos.z }, false);
