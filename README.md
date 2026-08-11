@@ -1,43 +1,80 @@
-# Rocket Vibe 1.2 - Ultra / VM Performance
+# Rocket Vibe 1.4 – Go Multiplayer / Railway
 
-Three.js Multiplayer-Prototyp fuer bis zu vier Spieler. Railway bleibt autoritativ fuer Autos, Ball und Kollisionen. Das eigene Auto wird lokal vorhergesagt, damit Eingaben nicht auf den Netzwerk-Roundtrip warten.
+Browser-Spiel fuer bis zu vier Spieler mit Three.js-Rendering, lokaler Client-Prediction und einem autoritativen Go-Server. Frontend und Server werden auf Railway als **ein Service** betrieben. Dadurch verwendet der Browser dieselbe HTTPS-Domain fuer Seite und WebSocket (`/lan`); eine separate Backend-URL oder CORS-Konfiguration ist nicht erforderlich.
 
-## Neu in 1.2
+## Architektur
 
-Diese Version hat einen clientseitigen **Ultra / VM Modus**. Dadurch kann ein schwacher oder virtualisierter Rechner deutlich weniger Render- und CPU-Arbeit machen, ohne dass andere Spieler ihre Grafik reduzieren muessen.
+- Der Browser sendet nur Eingaben, niemals vertrauenswuerdige Positionen.
+- Go simuliert Autos, Ball, Schwerkraft und Kollisionen mit 120 Hz.
+- Go sendet 60 binaere Snapshots pro Sekunde.
+- Ein Snapshot fuer vier Autos plus Ball ist 267 Byte gross.
+- Der eigene Browser sagt die lokale Bewegung voraus und korrigiert sanft zum Serverzustand.
+- Andere Autos und der Ball werden zwischen Snapshots extrapoliert und geglaettet.
+- Online wird im Browser kein Rapier/WASM geladen; das spart CPU und RAM auf schwachen Geraeten.
+- `npm run dev` bleibt als lokaler Einspieler-/Rapier-Modus erhalten.
 
-- `?perf=ultra` aktiviert Ultra / VM nur fuer diesen Browser
-- `F2` schaltet Normal <-> Ultra / VM um und laedt die Seite neu
-- Online-Client laedt **kein Rapier/WASM mehr**; echte Physik laeuft nur auf Railway
-- sehr einfache unbeleuchtete Materialien im Ultra-Modus
-- stark vereinfachte Autos und Ball-Geometrie
-- Tribuenen, Sky-Dome, Zusatzlichter, Fake-Shadows und Tone-Mapping entfallen im Ultra-Modus
-- interne Render-Aufloesung startet bei ca. 48 % und passt sich automatisch zwischen 30-56 % an
-- Ziel bleibt 60 FPS; es wird nicht absichtlich auf 30 FPS begrenzt
-- HUD wird im Ultra-Modus nur wenige Male pro Sekunde aktualisiert
-- Client-Prediction nutzt im Ultra-Modus 60 statt 120 Substeps/s
-- dieselbe Server-Snapshot wird fuer das eigene Auto nur noch **einmal** reconciled statt erneut pro Render-Frame
-- Server-Korrekturen sind im Ultra-Modus sanfter, damit Prediction weniger wie Input-Drag wirkt
-- permanente Ball Cam bleibt erhalten
-- 120 Hz Server-Physics / 60 Hz Snapshots bleiben erhalten
+Die Serverphysik rechnet intern mit `float64`. Fuer das Netzwerk werden Position, Quaternion, lineare und Winkelgeschwindigkeit als `float32` uebertragen. Bei vier Spielern sind das grob 16 KB/s je Client bzw. rund 64 KB/s Server-Ausgang plus WebSocket-Overhead.
 
-## Fuer eine virtuelle Sitzung
+## Serverseitige Physik
 
-Normale Railway-URL:
+Der Go-Server ist die einzige Online-Autoritaet und verarbeitet:
 
-```text
-https://DEINE-DOMAIN.up.railway.app
+- Bodenbeschleunigung, Bremsen, Grip, Lenkung und Boost
+- Sprung, Doppelsprung sowie Pitch/Yaw/Roll in der Luft
+- Auto gegen Auto
+- Auto gegen Ball
+- Auto und Ball gegen Boden, Seitenwaende, Endwaende, Torrahmen, Tortunnel und Decke
+- Speed-Caps, Input-Timeout, Reset und Schutz vor nicht-endlichen Zustandswerten
+
+Die Engine ist bewusst klein und fuer dieses Spiel abgestimmt. Sie ist keine allgemeine Rapier-Neuimplementierung, vermeidet aber eine schwere native Physik-Abhaengigkeit im Go-Container.
+
+## Voraussetzungen lokal
+
+- Node.js 22.13 oder neuer
+- Go 1.23 oder neuer
+
+```bash
+npm ci
+npm run build
+go test ./...
+go run ./cmd/server
 ```
 
-Deine VM-Version:
+Danach: `http://localhost:8080`
 
-```text
-https://DEINE-DOMAIN.up.railway.app/?perf=ultra
+Fuer einen LAN-Start inklusive Frontend-Build:
+
+```bash
+npm run lan
 ```
 
-Dein Kollege kann gleichzeitig die normale URL ohne `?perf=ultra` benutzen.
+Freunde im selben Netzwerk oeffnen `http://DEINE-LAN-IP:8080`. Die ersten vier Browser erhalten Spielerplatz 1 bis 4.
 
-Im HUD stehen jetzt FPS und interne Render-Skalierung, z. B. `FPS 60 - Render 42%`.
+## Railway deployen
+
+1. Dieses Verzeichnis in ein GitHub-Repository pushen.
+2. In Railway **New Project → Deploy from GitHub repo** waehlen.
+3. Das Repository bzw. bei einem Monorepo dieses Verzeichnis als Root Directory auswaehlen.
+4. Deploy starten und unter **Networking → Generate Domain** eine Domain erzeugen.
+5. Alle Spieler verwenden dieselbe Railway-Domain.
+
+Railway erkennt das `Dockerfile`; `railway.json` erzwingt den Dockerfile-Builder, `/health` als Healthcheck und genau eine Amsterdam-Replica. Fuer den In-Memory-Match duerfen nicht mehrere Replicas aktiv sein, da sie sonst getrennte Spielwelten erzeugen.
+
+Es sind keine Pflichtvariablen notwendig. Railway setzt `PORT` automatisch. Optional:
+
+- `ALLOWED_ORIGINS=spiel.example.com,*.example.com` erlaubt zusaetzliche Browser-Origin-Patterns. Ohne Wert gilt die sichere Same-Origin-Pruefung.
+- `STATIC_DIR` muss nur geaendert werden, wenn der Server ausserhalb des Dockerfiles gestartet wird und `dist` an einem anderen Ort liegt.
+
+Healthcheck und Diagnose:
+
+```text
+GET /health
+GET /config
+GET /debug/game
+WS  /lan
+```
+
+Ein Deployment beendet laufende Matches beim Containerwechsel. Fuer spaetere Matchmaking-/Mehrraum-Unterstuetzung sollte jede Lobby an genau einen Prozess gebunden oder ueber einen externen Session-Dienst geroutet werden.
 
 ## Steuerung
 
@@ -45,49 +82,26 @@ Im HUD stehen jetzt FPS und interne Render-Skalierung, z. B. `FPS 60 - Render 42
 - A / D: Boden Lenken, Luft Yaw
 - Q / E: Air Roll
 - Shift: Boost
-- Space: Jump / Double Jump
+- Space: Sprung / Doppelsprung
 - R: eigenes Auto resetten
-- B: Ball resetten
-- F2: Normal / Ultra-VM umschalten
-- Kamera: permanent Ball Cam
+- B: Ball resetten (Entwicklungsfunktion)
+- F2: Normal / Ultra-VM umschalten und Seite neu laden
+- Kamera: permanente Ball Cam
 
-## Lokal
+## Schwache Rechner / VM
 
-```bash
-npm install
-npm run dev
+```text
+https://DEINE-DOMAIN.up.railway.app/?perf=ultra
 ```
 
-## LAN
+Der Ultra-Modus reduziert nur die Grafik und lokale Prediction dieses Browsers. Andere Spieler koennen gleichzeitig den normalen Modus nutzen.
 
-```bash
-npm install
-npm run lan
-```
-
-## Railway
+## Qualitaetschecks
 
 ```bash
 npm run build
-npm start
+go test ./...
+go test -race ./...
 ```
 
-`railway.json` behaelt genau eine EU-West-Replica. Alle Spieler verwenden dieselbe Railway-Domain.
-
-## Deploy
-
-```bash
-git add .
-git commit -m "Add ultra VM performance mode"
-git push
-```
-
-Nach dem Railway-Deploy einmal `Ctrl+F5`.
-
-
-## v1.3 Apple Ball
-
-- Ball radius increased from 0.92 to 1.75 (almost 2x diameter).
-- Visual replaced with an original stylized red apple, including stem and leaf.
-- Server and client use the same shared ball tuning.
-- Density was reduced so the larger ball keeps roughly the old gameplay mass.
+Die Tests decken Fahrbewegung, Speed-Cap, Tor-/Wandkollision, Auto-Ball-Impuls, Input-Reihenfolge, das exakte Binaerprotokoll und einen echten HTTP/WebSocket-Verbindungsaufbau ab.
