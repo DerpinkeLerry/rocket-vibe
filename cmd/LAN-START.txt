@@ -1,0 +1,20 @@
+ROCKET VIBE 1.5 - 4 SPIELER LAN / GO SERVER
+
+Voraussetzungen:
+  Node.js 22.13+
+  Go 1.23+
+
+Start:
+  npm ci
+  npm run lan
+
+Host:
+  http://localhost:8080
+
+Freunde:
+  http://DEINE-LAN-IP:8080
+
+Ultra / VM nur fuer einen einzelnen Browser:
+  http://DEINE-LAN-IP:8080/?perf=ultra
+
+Die ersten vier Browser werden Spieler 1-4. F2 schaltet Normal <-> Ultra / VM.
