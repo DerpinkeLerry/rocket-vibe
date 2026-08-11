@@ -1,12 +1,4 @@
-<<<<<<< HEAD
 # Rocket Vibe 1.5 – Go Multiplayer / Railway
-=======
-<<<<<<< HEAD
-# Rocket Vibe 1.5 – Go Multiplayer / Railway
-=======
-# Rocket Vibe 1.4 – Go Multiplayer / Railway
->>>>>>> e4f4ac3d0103e90daad46770ba947151c0f2f96e
->>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
 
 Browser-Spiel fuer bis zu vier Spieler mit Three.js-Rendering, lokaler Client-Prediction und einem autoritativen Go-Server. Frontend und Server werden auf Railway als **ein Service** betrieben. Dadurch verwendet der Browser dieselbe HTTPS-Domain fuer Seite und WebSocket (`/lan`); eine separate Backend-URL oder CORS-Konfiguration ist nicht erforderlich.
 
@@ -21,10 +13,6 @@ Browser-Spiel fuer bis zu vier Spieler mit Three.js-Rendering, lokaler Client-Pr
 - Online wird im Browser kein Rapier/WASM geladen; das spart CPU und RAM auf schwachen Geraeten.
 - `npm run dev` bleibt als lokaler Einspieler-/Rapier-Modus erhalten.
 
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
 Die Arena besitzt eine geschlossene, transparente Einfassung mit abgerundeten Ecken und Glasdecke. Die Kamera bleibt innerhalb dieser Form. Client-Prediction, Go-Server und der lokale Rapier-Modus verwenden dieselbe Grundform, damit Wand- und Bodenkontakte nicht durch spaete Netzwerkkorrekturen zurueckspringen.
 
 Die Serverphysik rechnet intern mit `float64`. Fuer das Netzwerk werden Position, Quaternion, lineare und Winkelgeschwindigkeit als `float32` uebertragen. Bei vier Spielern sind das grob 16 KB/s je Client bzw. rund 64 KB/s Server-Ausgang plus WebSocket-Overhead.
@@ -33,17 +21,6 @@ Die Serverphysik rechnet intern mit `float64`. Fuer das Netzwerk werden Position
 
 Der Go-Server ist die einzige Online-Autoritaet und verarbeitet:
 
-<<<<<<< HEAD
-=======
-=======
-Die Serverphysik rechnet intern mit `float64`. Fuer das Netzwerk werden Position, Quaternion, lineare und Winkelgeschwindigkeit als `float32` uebertragen. Bei vier Spielern sind das grob 16 KB/s je Client bzw. rund 64 KB/s Server-Ausgang plus WebSocket-Overhead.
-
-## Serverseitige Physik
-
-Der Go-Server ist die einzige Online-Autoritaet und verarbeitet:
-
->>>>>>> e4f4ac3d0103e90daad46770ba947151c0f2f96e
->>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
 - Bodenbeschleunigung, Bremsen, Grip, Lenkung und Boost
 - Sprung, Doppelsprung sowie Pitch/Yaw/Roll in der Luft
 - Auto gegen Auto
@@ -125,24 +102,9 @@ Der Ultra-Modus reduziert nur die Grafik und lokale Prediction dieses Browsers. 
 
 ```bash
 npm run build
-<<<<<<< HEAD
 npm run test:js
-=======
-<<<<<<< HEAD
-npm run test:js
-=======
->>>>>>> e4f4ac3d0103e90daad46770ba947151c0f2f96e
->>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
 go test ./...
 go test -race ./...
 ```
 
-<<<<<<< HEAD
 Die Tests decken Fahrbewegung, Speed-Cap, Sprung-Lockout, Boden-Tunneling, abgerundete Wandkollisionen ohne Feder-Rueckstoss, Auto-Ball-Impuls, Input-Reihenfolge, das exakte Binaerprotokoll und einen echten HTTP/WebSocket-Verbindungsaufbau ab.
-=======
-<<<<<<< HEAD
-Die Tests decken Fahrbewegung, Speed-Cap, Sprung-Lockout, Boden-Tunneling, abgerundete Wandkollisionen ohne Feder-Rueckstoss, Auto-Ball-Impuls, Input-Reihenfolge, das exakte Binaerprotokoll und einen echten HTTP/WebSocket-Verbindungsaufbau ab.
-=======
-Die Tests decken Fahrbewegung, Speed-Cap, Tor-/Wandkollision, Auto-Ball-Impuls, Input-Reihenfolge, das exakte Binaerprotokoll und einen echten HTTP/WebSocket-Verbindungsaufbau ab.
->>>>>>> e4f4ac3d0103e90daad46770ba947151c0f2f96e
->>>>>>> aa0410627aafadacad13bfd71149edb51a6841da

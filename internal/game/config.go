@@ -7,10 +7,6 @@ const (
 )
 
 type ArenaConfig struct {
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
 	Width        float64 `json:"width"`
 	Length       float64 `json:"length"`
 	Ceiling      float64 `json:"ceiling"`
@@ -19,18 +15,6 @@ type ArenaConfig struct {
 	GoalWidth    float64 `json:"goalWidth"`
 	GoalHeight   float64 `json:"goalHeight"`
 	GoalDepth    float64 `json:"goalDepth"`
-<<<<<<< HEAD
-=======
-=======
-	Width      float64 `json:"width"`
-	Length     float64 `json:"length"`
-	Ceiling    float64 `json:"ceiling"`
-	WallHeight float64 `json:"wallHeight"`
-	GoalWidth  float64 `json:"goalWidth"`
-	GoalHeight float64 `json:"goalHeight"`
-	GoalDepth  float64 `json:"goalDepth"`
->>>>>>> e4f4ac3d0103e90daad46770ba947151c0f2f96e
->>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
 }
 
 type CarConfig struct {
@@ -90,15 +74,7 @@ func DefaultConfig() Config {
 		SolverSteps: 4,
 		Gravity:     20.5,
 		Arena: ArenaConfig{
-<<<<<<< HEAD
 			Width: 110, Length: 160, Ceiling: 25, WallHeight: 25, CornerRadius: 16,
-=======
-<<<<<<< HEAD
-			Width: 110, Length: 160, Ceiling: 25, WallHeight: 25, CornerRadius: 16,
-=======
-			Width: 110, Length: 160, Ceiling: 25, WallHeight: 9,
->>>>>>> e4f4ac3d0103e90daad46770ba947151c0f2f96e
->>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
 			GoalWidth: 13, GoalHeight: 5.2, GoalDepth: 8,
 		},
 		Car: CarConfig{
@@ -124,15 +100,7 @@ func DefaultConfig() Config {
 			DownAcceleration:     5.5,
 			LinearDamping:        0.08,
 			AngularDamping:       0.32,
-<<<<<<< HEAD
 			Restitution:          0,
-=======
-<<<<<<< HEAD
-			Restitution:          0,
-=======
-			Restitution:          0.08,
->>>>>>> e4f4ac3d0103e90daad46770ba947151c0f2f96e
->>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
 		},
 		Ball: BallConfig{
 			Radius:          1.75,

@@ -56,10 +56,6 @@ func TestBallCanEnterGoalButHitsSolidEndWall(t *testing.T) {
 	}
 }
 
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
 func TestHardLandingCannotTunnelOrBounceBackUp(t *testing.T) {
 	config := DefaultConfig()
 	world := NewWorld(config)
@@ -154,11 +150,6 @@ func TestBallBouncesInsideRoundedCorner(t *testing.T) {
 	}
 }
 
-<<<<<<< HEAD
-=======
-=======
->>>>>>> e4f4ac3d0103e90daad46770ba947151c0f2f96e
->>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
 func TestCarTransfersMomentumToBall(t *testing.T) {
 	config := DefaultConfig()
 	world := NewWorld(config)
