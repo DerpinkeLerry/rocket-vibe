@@ -5,10 +5,10 @@ import { Car } from './Car.js';
 import { ChaseCamera } from './ChaseCamera.js';
 import { Input } from './Input.js';
 import { Hud } from './Hud.js';
+import { getPerformanceProfile, togglePerformanceProfile } from './PerformanceProfile.js';
 import { VirtualInput } from '../network/VirtualInput.js';
 import { LocalCarPredictor } from '../network/LocalCarPredictor.js';
 
-// Key changes are sent immediately. This is only a safety heartbeat for held keys.
 const CLIENT_INPUT_HEARTBEAT_HZ = 15;
 
 const PLAYER_CONFIGS = [
@@ -25,6 +25,7 @@ export class Game {
     this.network = network;
     this.networked = Boolean(network);
     this.playerId = network?.playerId ?? 0;
+    this.profile = getPerformanceProfile(this.networked);
 
     this.fixedDt = 1 / 60;
     this.accumulator = 0;
@@ -32,67 +33,96 @@ export class Game {
     this.lastRenderTime = 0;
     this.renderInterval = 1 / 60;
     this.inputAccumulator = 0;
+    this.hudAccumulator = 0;
     this.latestNetworkState = null;
     this.latestNetworkStateReceivedAt = 0;
+    this.lastReconciledTick = -1;
     this.connectedPlayers = new Set(network?.connectedPlayers ?? (this.networked ? [this.playerId] : [0]));
+
+    this.perfElapsed = 0;
+    this.perfFrames = 0;
+    this.measuredFps = 60;
+    this.renderPixelRatio = Math.min(window.devicePixelRatio || 1, this.profile.initialPixelRatio);
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x07111f);
-    this.scene.fog = new THREE.Fog(0x07111f, 125, 295);
+    this.scene.fog = this.profile.useFog ? new THREE.Fog(0x07111f, 125, 295) : null;
 
-    this.camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, 390);
+    this.camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, this.profile.ultra ? 230 : 390);
     this.camera.position.set(0, 5, 10);
 
     this.renderer = new THREE.WebGLRenderer({
       antialias: false,
+      alpha: false,
       powerPreference: 'high-performance',
+      precision: this.profile.ultra ? 'mediump' : 'highp',
       stencil: false,
-      depth: true
+      depth: true,
+      preserveDrawingBuffer: false
     });
-    this.pixelRatioCap = this.networked ? 0.75 : 0.9;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.pixelRatioCap));
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setPixelRatio(this.renderPixelRatio);
+    this.renderer.setSize(window.innerWidth, window.innerHeight, false);
     this.renderer.shadowMap.enabled = false;
+    this.renderer.sortObjects = !this.profile.ultra;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMapping = this.profile.useToneMapping ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
     this.renderer.toneMappingExposure = 1.02;
     this.root.appendChild(this.renderer.domElement);
+    this.root.classList.toggle('perf-ultra', this.profile.ultra);
 
-    // Online: Rapier in the browser is only a lightweight transform store.
-    // Railway remains authoritative for collisions and final match state.
-    this.world = new RAPIER.World({ x: 0, y: -20.5, z: 0 });
-    this.world.timestep = this.fixedDt;
+    // In online mode Railway owns all real physics. The browser uses tiny JS
+    // transform stores instead of loading/stepping Rapier/WASM.
+    if (this.networked) {
+      this.world = null;
+    } else {
+      this.world = new RAPIER.World({ x: 0, y: -20.5, z: 0 });
+      this.world.timestep = this.fixedDt;
+    }
 
     this.input = new Input();
     this.passiveInput = new VirtualInput();
-    this.arena = new Arena(this.scene, this.world, RAPIER);
+    this.arena = new Arena(this.scene, this.world, RAPIER, {
+      lowDetail: this.profile.lowDetail,
+      createPhysics: !this.networked
+    });
 
     this.cars = PLAYER_CONFIGS.map((config, index) => new Car(
       this.scene,
       this.world,
       RAPIER,
       !this.networked && index === 0 ? this.input : this.passiveInput,
-      config
+      {
+        ...config,
+        lowDetail: this.profile.lowDetail,
+        clientOnly: this.networked
+      }
     ));
     [this.car0, this.car1, this.car2, this.car3] = this.cars;
-    this.ball = new Ball(this.scene, this.world, RAPIER, this.passiveInput);
+    this.ball = new Ball(this.scene, this.world, RAPIER, this.passiveInput, {
+      lowDetail: this.profile.lowDetail,
+      clientOnly: this.networked
+    });
 
     if (this.networked) {
-      for (const car of this.cars) car.collider.setEnabled(false);
-      this.ball.collider.setEnabled(false);
       this.setRoster([...this.connectedPlayers], network?.maxPlayers ?? 4);
     } else {
       for (let i = 1; i < this.cars.length; i++) this.setCarVisible(i, false);
     }
 
     this.car = this.cars[this.playerId] ?? this.car0;
-    this.localPredictor = this.networked ? new LocalCarPredictor(this.car) : null;
+    this.localPredictor = this.networked
+      ? new LocalCarPredictor(this.car, {
+          simulationHz: this.profile.predictionHz,
+          lowLatency: this.profile.ultra
+        })
+      : null;
     this.chaseCamera = new ChaseCamera(this.camera, this.car, this.ball);
     this.hud = new Hud(this.root, {
       lan: this.networked,
       playerId: this.playerId,
       playerCount: this.connectedPlayers.size,
-      maxPlayers: network?.maxPlayers ?? 4
+      maxPlayers: network?.maxPlayers ?? 4,
+      performanceProfile: this.profile.name
     });
 
     if (this.network) {
@@ -104,8 +134,7 @@ export class Game {
       this.network.onRoster = (players, maxPlayers) => this.setRoster(players, maxPlayers);
       this.network.onLatency = (rttMs) => this.hud.setPing(rttMs);
 
-      // Every key transition is transmitted instantly and also fed into local
-      // prediction before the server round-trip finishes.
+      // Key transitions bypass requestAnimationFrame and go to Railway immediately.
       this.input.setNetworkChangeHandler(() => this.sendNetworkInput());
       this.sendNetworkInput();
       this.hud.setNetworkStatus(this.network.statusText('ONLINE'));
@@ -118,17 +147,26 @@ export class Game {
     this.netAngAxis = new THREE.Vector3();
     this.netDeltaQuat = new THREE.Quaternion();
 
-    this.addSkyDecoration();
+    if (this.profile.useSky) this.addSkyDecoration();
+
     this.onResize = this.onResize.bind(this);
     this.loop = this.loop.bind(this);
+    this.onPerfToggle = this.onPerfToggle.bind(this);
     window.addEventListener('resize', this.onResize);
+    window.addEventListener('keydown', this.onPerfToggle, { passive: false });
+  }
+
+  onPerfToggle(event) {
+    if (event.code !== 'F2' || event.repeat) return;
+    event.preventDefault();
+    togglePerformanceProfile();
   }
 
   setCarVisible(index, visible) {
     const car = this.cars[index];
     if (!car) return;
     car.group.visible = visible;
-    car.shadow.visible = visible;
+    if (car.shadow) car.shadow.visible = visible;
   }
 
   setRoster(players, maxPlayers = 4) {
@@ -159,6 +197,7 @@ export class Game {
   start() {
     for (const car of this.cars) car.syncVisual();
     this.ball.syncVisual();
+    this.hud.setPerformance(this.profile.name, this.measuredFps, this.renderPixelRatio);
     requestAnimationFrame(this.loop);
   }
 
@@ -167,6 +206,10 @@ export class Game {
     const frameDt = Math.min(now - this.lastTime, 0.08);
     this.lastTime = now;
 
+    this.perfElapsed += frameDt;
+    this.perfFrames += 1;
+    this.updateAdaptivePerformance();
+
     if (this.networked) {
       this.inputAccumulator += frameDt;
       if (this.inputAccumulator >= 1 / CLIENT_INPUT_HEARTBEAT_HZ) {
@@ -174,9 +217,6 @@ export class Game {
         this.sendNetworkInput();
       }
 
-      // First reconcile toward the latest authoritative present-time estimate,
-      // then predict this frame from local input. That ordering keeps controls
-      // immediate instead of allowing a snapshot to cancel the newest key press.
       this.applyNetworkState(frameDt, now);
       this.localPredictor?.step(frameDt);
     } else {
@@ -194,16 +234,45 @@ export class Game {
       const renderDt = this.lastRenderTime === 0 ? frameDt : Math.min(now - this.lastRenderTime, 0.08);
       this.lastRenderTime = now;
 
-      for (const car of this.cars) {
-        if (car.group.visible) car.syncVisual();
-      }
+      for (const car of this.cars) if (car.group.visible) car.syncVisual();
       this.ball.syncVisual();
       this.chaseCamera.update(renderDt);
-      this.hud.update(this.car);
+
+      this.hudAccumulator += renderDt;
+      if (this.hudAccumulator >= 1 / this.profile.hudHz) {
+        this.hudAccumulator = 0;
+        this.hud.update(this.car);
+      }
+
       this.renderer.render(this.scene, this.camera);
     }
 
     requestAnimationFrame(this.loop);
+  }
+
+  updateAdaptivePerformance() {
+    if (this.perfElapsed < 1.5) return;
+
+    const fps = this.perfFrames / this.perfElapsed;
+    this.measuredFps = this.measuredFps * 0.55 + fps * 0.45;
+    this.perfElapsed = 0;
+    this.perfFrames = 0;
+
+    if (this.profile.adaptiveResolution) {
+      let next = this.renderPixelRatio;
+      if (this.measuredFps < 52) next -= 0.06;
+      else if (this.measuredFps > 59) next += 0.02;
+
+      const dpr = window.devicePixelRatio || 1;
+      next = THREE.MathUtils.clamp(next, this.profile.minPixelRatio, Math.min(this.profile.maxPixelRatio, dpr));
+      if (Math.abs(next - this.renderPixelRatio) >= 0.015) {
+        this.renderPixelRatio = next;
+        this.renderer.setPixelRatio(this.renderPixelRatio);
+        this.renderer.setSize(window.innerWidth, window.innerHeight, false);
+      }
+    }
+
+    this.hud.setPerformance(this.profile.name, this.measuredFps, this.renderPixelRatio);
   }
 
   sendNetworkInput() {
@@ -232,13 +301,16 @@ export class Game {
 
     const packetAge = Math.max(0, now - this.latestNetworkStateReceivedAt);
     const rttMs = this.network?.rttMs ?? 0;
+    const newSnapshot = state.tick !== this.lastReconciledTick;
 
     for (let i = 0; i < this.cars.length; i++) {
       const target = state.cars[i];
       if (!target) continue;
 
       if (i === this.playerId) {
-        this.localPredictor?.reconcile(target, dt, packetAge, rttMs);
+        // Reconcile each authoritative snapshot once. Re-applying the same old
+        // snapshot every render frame creates an artificial "rubber band" delay.
+        if (newSnapshot) this.localPredictor?.reconcile(target, dt, packetAge, rttMs);
       } else {
         this.smoothRemoteBody(this.cars[i].body, target, dt, packetAge, rttMs, 28, 0.12);
         this.cars[i].grounded = Boolean(target.g);
@@ -246,6 +318,7 @@ export class Game {
     }
 
     this.smoothRemoteBody(this.ball.body, state.ball, dt, packetAge, rttMs, 30, 0.10);
+    if (newSnapshot) this.lastReconciledTick = state.tick;
   }
 
   smoothRemoteBody(body, target, dt, packetAge, rttMs, response = 28, maxLead = 0.12) {
@@ -280,7 +353,6 @@ export class Game {
   onResize() {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.pixelRatioCap));
+    this.renderer.setSize(window.innerWidth, window.innerHeight, false);
   }
 }

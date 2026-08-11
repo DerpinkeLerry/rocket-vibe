@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { TransformBody } from '../network/TransformBody.js';
 
 const BALL_RADIUS = 0.92;
 
@@ -79,11 +80,13 @@ function makeBallTexture() {
 }
 
 export class Ball {
-  constructor(scene, world, RAPIER, input) {
+  constructor(scene, world, RAPIER, input, options = {}) {
     this.scene = scene;
     this.world = world;
     this.RAPIER = RAPIER;
     this.input = input;
+    this.lowDetail = Boolean(options.lowDetail);
+    this.clientOnly = Boolean(options.clientOnly);
     this.radius = BALL_RADIUS;
     this.spawn = new THREE.Vector3(0, 4.2, 0);
     this.maxSpeed = 56;
@@ -94,6 +97,12 @@ export class Ball {
   }
 
   createPhysics() {
+    if (this.clientOnly) {
+      this.body = new TransformBody(this.spawn, 0);
+      this.collider = null;
+      return;
+    }
+
     const R = this.RAPIER;
     const bodyDesc = R.RigidBodyDesc.dynamic()
       .setTranslation(this.spawn.x, this.spawn.y, this.spawn.z)
@@ -103,9 +112,6 @@ export class Ball {
       .setCanSleep(true);
 
     this.body = this.world.createRigidBody(bodyDesc);
-
-    // ~30 kg ball against the current car mass. High restitution gives the
-    // familiar lively arena-ball bounce without becoming a superball.
     const colliderDesc = R.ColliderDesc.ball(this.radius)
       .setDensity(9.1)
       .setFriction(0.24)
@@ -116,6 +122,15 @@ export class Ball {
   }
 
   createVisual() {
+    if (this.lowDetail) {
+      const geometry = new THREE.SphereGeometry(this.radius, 12, 8);
+      const material = new THREE.MeshBasicMaterial({ color: 0xbacbd1 });
+      this.mesh = new THREE.Mesh(geometry, material);
+      this.scene.add(this.mesh);
+      this.shadow = null;
+      return;
+    }
+
     const texture = makeBallTexture();
     const geometry = new THREE.SphereGeometry(this.radius, 24, 16);
     const material = new THREE.MeshStandardMaterial({
@@ -129,7 +144,6 @@ export class Ball {
     this.mesh = new THREE.Mesh(geometry, material);
     this.scene.add(this.mesh);
 
-    // Cheap fake shadow: no shadow-map render pass required.
     const shadowMat = new THREE.MeshBasicMaterial({
       color: 0x000000,
       transparent: true,
@@ -170,12 +184,14 @@ export class Ball {
     this.mesh.position.set(p.x, p.y, p.z);
     this.mesh.quaternion.set(r.x, r.y, r.z, r.w);
 
-    this.shadow.position.x = p.x;
-    this.shadow.position.z = p.z;
-    const height = Math.max(0, p.y - this.radius);
-    const scale = THREE.MathUtils.clamp(1.12 - height * 0.045, 0.5, 1.12);
-    this.shadow.scale.setScalar(scale);
-    this.shadow.material.opacity = THREE.MathUtils.clamp(0.3 - height * 0.016, 0.06, 0.3);
+    if (this.shadow) {
+      this.shadow.position.x = p.x;
+      this.shadow.position.z = p.z;
+      const height = Math.max(0, p.y - this.radius);
+      const scale = THREE.MathUtils.clamp(1.12 - height * 0.045, 0.5, 1.12);
+      this.shadow.scale.setScalar(scale);
+      this.shadow.material.opacity = THREE.MathUtils.clamp(0.3 - height * 0.016, 0.06, 0.3);
+    }
   }
 
   reset() {

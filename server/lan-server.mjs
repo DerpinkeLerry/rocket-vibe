@@ -34,7 +34,7 @@ function lanAddresses() {
 }
 
 console.log('\n==============================================');
-console.log(' ROCKET VIBE LAN 1.1 · BALL CAM');
+console.log(' ROCKET VIBE LAN 1.2 · ULTRA VM');
 console.log('==============================================');
 console.log(`Host:   http://localhost:${PORT}`);
 for (const ip of lanAddresses()) console.log(`Freund: http://${ip}:${PORT}`);

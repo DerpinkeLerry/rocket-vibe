@@ -12,8 +12,10 @@ const moveTowards = (current, target, maxDelta) => {
 const damp = (current, target, lambda, dt) => THREE.MathUtils.lerp(current, target, 1 - Math.exp(-lambda * dt));
 
 export class LocalCarPredictor {
-  constructor(car) {
+  constructor(car, options = {}) {
     this.car = car;
+    this.simulationHz = Math.max(30, Number(options.simulationHz) || 120);
+    this.lowLatency = Boolean(options.lowLatency);
     this.body = car.body;
     this.mask = 0;
     this.edges = 0;
@@ -68,7 +70,7 @@ export class LocalCarPredictor {
     this.groundLockout = Math.max(0, this.groundLockout - frameDt);
     let remaining = Math.min(frameDt, 0.05);
     while (remaining > 0.00001) {
-      const dt = Math.min(remaining, 1 / 120);
+      const dt = Math.min(remaining, 1 / this.simulationHz);
       this.stepSubframe(dt);
       remaining -= dt;
     }
@@ -214,17 +216,22 @@ export class LocalCarPredictor {
     this.targetQ.fromArray(target.r).normalize();
     const rotError = this.q.angleTo(this.targetQ);
 
-    if (posError > 7.5 || rotError > 1.5) {
+    const snapDistance = this.lowLatency ? 10.0 : 7.5;
+    const snapRotation = this.lowLatency ? 1.8 : 1.5;
+    if (posError > snapDistance || rotError > snapRotation) {
       this.pos.copy(this.authPos);
       this.q.copy(this.targetQ);
       this.vel.copy(this.authVel);
       this.ang.copy(this.authAng);
     } else {
-      // Corrections are deliberately gentle. Input remains immediate while the
-      // authoritative server continuously pulls us back toward the true result.
-      const positionAlpha = 1 - Math.exp(-4.5 * dt);
-      const rotationAlpha = 1 - Math.exp(-6.0 * dt);
-      const velocityAlpha = 1 - Math.exp(-3.5 * dt);
+      // Ultra/VM mode deliberately trusts local prediction more. The server is
+      // still authoritative, but correction no longer feels like input drag.
+      const positionResponse = this.lowLatency ? 2.0 : 4.5;
+      const rotationResponse = this.lowLatency ? 3.2 : 6.0;
+      const velocityResponse = this.lowLatency ? 1.8 : 3.5;
+      const positionAlpha = 1 - Math.exp(-positionResponse * dt);
+      const rotationAlpha = 1 - Math.exp(-rotationResponse * dt);
+      const velocityAlpha = 1 - Math.exp(-velocityResponse * dt);
       this.pos.lerp(this.authPos, positionAlpha);
       this.q.slerp(this.targetQ, rotationAlpha);
       this.vel.lerp(this.authVel, velocityAlpha);

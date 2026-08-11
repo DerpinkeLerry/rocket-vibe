@@ -118,3 +118,16 @@ canvas { display: block; width: 100%; height: 100%; }
 .hud__network strong { display: block; color: #8be6ff; margin-bottom: 3px; }
 .hud__network span { display: block; color: rgba(255,255,255,0.68); }
 .hud__network [data-player-count] { margin-top: 3px; color: rgba(139,230,255,0.72); }
+
+/* Ultra/VM profile: keep the DOM compositor cheap as well. */
+.perf-ultra .hud__controls {
+  display: none;
+}
+.perf-ultra .hud__network,
+.perf-ultra .hud__speed {
+  background: rgba(5, 12, 24, 0.90);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+.perf-ultra canvas {
+  image-rendering: auto;
+}

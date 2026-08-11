@@ -10,21 +10,34 @@ const GOAL_H = 5.2;
 const GOAL_D = 8.0;
 
 export class Arena {
-  constructor(scene, world, RAPIER) {
+  constructor(scene, world, RAPIER, options = {}) {
     this.scene = scene;
     this.world = world;
     this.RAPIER = RAPIER;
+    this.lowDetail = Boolean(options.lowDetail);
+    this.enablePhysics = options.createPhysics !== false;
     this.group = new THREE.Group();
     this.scene.add(this.group);
 
     this.createField();
-    this.createPhysics();
-    this.createStands();
-    this.createLights();
+    if (this.enablePhysics) this.createPhysics();
+    if (!this.lowDetail) {
+      this.createStands();
+      this.createLights();
+    }
+
+    // The whole arena is static. Avoid rebuilding local matrices every frame.
+    this.group.traverse((object) => {
+      object.updateMatrix();
+      object.matrixAutoUpdate = false;
+    });
+    this.group.updateMatrixWorld(true);
   }
 
   createField() {
-    const turfMat = new THREE.MeshStandardMaterial({ color: 0x196958, roughness: 0.9, metalness: 0.0 });
+    const turfMat = this.lowDetail
+      ? new THREE.MeshBasicMaterial({ color: 0x1b7563 })
+      : new THREE.MeshStandardMaterial({ color: 0x196958, roughness: 0.9, metalness: 0.0 });
     const turf = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_W, FIELD_L), turfMat);
     turf.rotation.x = -Math.PI / 2;
     this.group.add(turf);
@@ -36,17 +49,19 @@ export class Arena {
     centerLine.position.y = 0.012;
     this.group.add(centerLine);
 
-    const circle = new THREE.Mesh(new THREE.RingGeometry(10.5, 10.68, 48), lineMaterial);
+    const circle = new THREE.Mesh(new THREE.RingGeometry(10.5, 10.68, this.lowDetail ? 24 : 48), lineMaterial);
     circle.rotation.x = -Math.PI / 2;
     circle.position.y = 0.014;
     this.group.add(circle);
 
-    const centerDot = new THREE.Mesh(new THREE.CircleGeometry(0.38, 16), lineMaterial);
+    const centerDot = new THREE.Mesh(new THREE.CircleGeometry(0.38, this.lowDetail ? 8 : 16), lineMaterial);
     centerDot.rotation.x = -Math.PI / 2;
     centerDot.position.y = 0.016;
     this.group.add(centerDot);
 
-    const wallMat = new THREE.MeshStandardMaterial({ color: 0x0c2234, roughness: 0.58, metalness: 0.12 });
+    const wallMat = this.lowDetail
+      ? new THREE.MeshBasicMaterial({ color: 0x0c2234 })
+      : new THREE.MeshStandardMaterial({ color: 0x0c2234, roughness: 0.58, metalness: 0.12 });
 
     // Side walls are full length. End walls are split around a real goal mouth,
     // so both car and ball can actually enter the goal tunnel.
@@ -55,15 +70,15 @@ export class Arena {
     this.addEndWallVisual(1, wallMat);
     this.addEndWallVisual(-1, wallMat);
 
-    const trimMat = new THREE.MeshBasicMaterial({ color: 0x42d9ff });
-    const trims = [
-      [0, 0.10, FIELD_L / 2 - 0.14, FIELD_W, 0.13, 0.13],
-      [0, 0.10, -FIELD_L / 2 + 0.14, FIELD_W, 0.13, 0.13],
-      [FIELD_W / 2 - 0.14, 0.10, 0, 0.13, 0.13, FIELD_L],
-      [-FIELD_W / 2 + 0.14, 0.10, 0, 0.13, 0.13, FIELD_L]
-    ];
-    for (const [x, y, z, w, h, d] of trims) {
-      this.addBoxVisual(x, y, z, w, h, d, trimMat);
+    if (!this.lowDetail) {
+      const trimMat = new THREE.MeshBasicMaterial({ color: 0x42d9ff });
+      const trims = [
+        [0, 0.10, FIELD_L / 2 - 0.14, FIELD_W, 0.13, 0.13],
+        [0, 0.10, -FIELD_L / 2 + 0.14, FIELD_W, 0.13, 0.13],
+        [FIELD_W / 2 - 0.14, 0.10, 0, 0.13, 0.13, FIELD_L],
+        [-FIELD_W / 2 + 0.14, 0.10, 0, 0.13, 0.13, FIELD_L]
+      ];
+      for (const [x, y, z, w, h, d] of trims) this.addBoxVisual(x, y, z, w, h, d, trimMat);
     }
 
     this.createGoal(1, wallMat);
@@ -93,16 +108,34 @@ export class Arena {
     const zCenter = sign * (FIELD_L / 2 + GOAL_D / 2);
     const zBack = sign * (FIELD_L / 2 + GOAL_D);
 
+    if (this.lowDetail) {
+      // One draw call per goal in Ultra/VM mode. The server still has the full
+      // physical goal tunnel; the client only needs a readable goal outline.
+      const half = GOAL_W / 2;
+      const points = [
+        -half, 0, zFront, -half, GOAL_H, zFront,
+         half, 0, zFront,  half, GOAL_H, zFront,
+        -half, GOAL_H, zFront, half, GOAL_H, zFront
+      ];
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+      const goalLine = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: 0xc9f2ff }));
+      this.group.add(goalLine);
+      return;
+    }
+
     const goal = new THREE.Group();
     goal.position.set(0, 0, zFront);
     goal.rotation.y = sign > 0 ? Math.PI : 0;
 
-    const frameMat = new THREE.MeshStandardMaterial({
-      color: 0xe8f8ff,
-      emissive: 0x123a47,
-      emissiveIntensity: 0.8,
-      roughness: 0.5
-    });
+    const frameMat = this.lowDetail
+      ? new THREE.MeshBasicMaterial({ color: 0xc9f2ff })
+      : new THREE.MeshStandardMaterial({
+          color: 0xe8f8ff,
+          emissive: 0x123a47,
+          emissiveIntensity: 0.8,
+          roughness: 0.5
+        });
     const postGeo = new THREE.BoxGeometry(0.3, GOAL_H, 0.3);
     const barGeo = new THREE.BoxGeometry(GOAL_W, 0.3, 0.3);
 
@@ -123,7 +156,9 @@ export class Arena {
     this.addBoxVisual(0, GOAL_H, zCenter, GOAL_W, sideT, GOAL_D, wallMat);
     this.addBoxVisual(0, GOAL_H / 2, zBack, GOAL_W, GOAL_H, sideT, wallMat);
 
-    const goalFloorMat = new THREE.MeshStandardMaterial({ color: 0x123b45, roughness: 0.92, metalness: 0 });
+    const goalFloorMat = this.lowDetail
+      ? new THREE.MeshBasicMaterial({ color: 0x123b45 })
+      : new THREE.MeshStandardMaterial({ color: 0x123b45, roughness: 0.92, metalness: 0 });
     const goalFloor = new THREE.Mesh(new THREE.PlaneGeometry(GOAL_W, GOAL_D), goalFloorMat);
     goalFloor.rotation.x = -Math.PI / 2;
     goalFloor.position.set(0, 0.004, zCenter);

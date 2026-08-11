@@ -1,17 +1,22 @@
-import RAPIER from '@dimforge/rapier3d-compat';
 import { Game } from './game/Game.js';
 import { LanClient } from './network/LanClient.js';
 import './style.css';
 
 async function boot() {
-  await RAPIER.init();
   const app = document.querySelector('#app');
+  const multiplayerEnabled = import.meta.env.MODE === 'lan' || import.meta.env.PROD;
 
   let network = null;
-  const multiplayerEnabled = import.meta.env.MODE === 'lan' || import.meta.env.PROD;
+  let RAPIER = null;
+
   if (multiplayerEnabled) {
     network = new LanClient();
     await network.connect();
+    // No Rapier import in the browser for online play. Railway owns physics.
+  } else {
+    const rapierModule = await import('@dimforge/rapier3d-compat');
+    RAPIER = rapierModule.default;
+    await RAPIER.init();
   }
 
   const game = new Game(app, RAPIER, network);

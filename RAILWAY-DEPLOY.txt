@@ -1,27 +1,22 @@
-ROCKET VIBE 1.0 - RAILWAY LOW LATENCY / 4 PLAYER
+ROCKET VIBE 1.2 - RAILWAY / LOW LATENCY / ULTRA VM
 
 Build:  npm run build
 Start:  npm start
 Health: /health
 Socket: /lan
 
-LOW-LATENCY SETUP:
-- railway.json erzwingt 1 Replica in EU West (Amsterdam).
-- Server Physics: 120 Hz.
-- Netzwerk-Snapshots: 60 Hz.
-- Binary WebSocket States + Inputs.
-- Client-Side Prediction fuer das eigene Auto.
-- Server Reconciliation + Extrapolation fuer andere Autos/Ball.
-- WebSocket-Kompression deaktiviert; alte Snapshot-Queues werden verworfen.
+SERVER:
+- 1 Replica in EU West (Amsterdam)
+- Server Physics: 120 Hz
+- Snapshots: 60 Hz
+- Binary WebSocket States + Inputs
+- Client-Side Prediction
 
-Deployment:
-  git add .
-  git commit -m "Low latency netcode"
-  git push
+VM / SCHWACHER CLIENT:
+- normale URL: https://DEINE-DOMAIN.up.railway.app
+- Ultra-URL:   https://DEINE-DOMAIN.up.railway.app/?perf=ultra
+- F2 schaltet den Modus pro Browser um
+- Ultra reduziert nur die Grafik/Client-Arbeit dieses Browsers
+- andere Spieler koennen gleichzeitig Normal-Modus nutzen
 
-Nach dem Deploy in Railway pruefen:
-- Service -> Settings -> Scale / Regions: EU West
-- Es darf nur 1 Replica aktiv sein.
-
-Danach bei allen Spielern Ctrl+F5.
-Im HUD wird der gemessene Ping angezeigt.
+Nach Deploy: Ctrl+F5.

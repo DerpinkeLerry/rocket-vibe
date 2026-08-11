@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { TransformBody } from '../network/TransformBody.js';
 
 const VEC3_UP = new THREE.Vector3(0, 1, 0);
 const VEC3_FORWARD = new THREE.Vector3(0, 0, -1);
@@ -14,6 +15,8 @@ export class Car {
     this.world = world;
     this.RAPIER = RAPIER;
     this.input = input;
+    this.lowDetail = Boolean(options.lowDetail);
+    this.clientOnly = Boolean(options.clientOnly);
 
     const spawn = options.spawn ?? { x: 0, y: 1.25, z: 34 };
     this.spawn = new THREE.Vector3(spawn.x, spawn.y, spawn.z);
@@ -62,6 +65,12 @@ export class Car {
   }
 
   createPhysics() {
+    if (this.clientOnly) {
+      this.body = new TransformBody(this.spawn, this.spawnYaw);
+      this.collider = null;
+      return;
+    }
+
     const R = this.RAPIER;
     const bodyDesc = R.RigidBodyDesc.dynamic()
       .setTranslation(this.spawn.x, this.spawn.y, this.spawn.z)
@@ -76,9 +85,6 @@ export class Car {
     const colliderDesc = R.ColliderDesc.cuboid(0.83, 0.39, 1.48)
       .setTranslation(0, -0.06, 0)
       .setDensity(145)
-      // Very low physical friction on purpose. Ground grip is handled by the
-      // arcade controller below. High collider friction makes a box-shaped
-      // car stick to the floor instead of driving like a wheeled vehicle.
       .setFriction(0.04)
       .setRestitution(0.06);
 
@@ -87,6 +93,10 @@ export class Car {
   }
 
   createVisual() {
+    if (this.lowDetail) {
+      this.createLowDetailVisual();
+      return;
+    }
     this.group = new THREE.Group();
     this.scene.add(this.group);
 
@@ -202,6 +212,62 @@ export class Car {
     this.shadow.scale.set(0.72, 1.0, 1.0);
     this.shadow.position.y = 0.017;
     this.scene.add(this.shadow);
+  }
+
+
+  createLowDetailVisual() {
+    this.group = new THREE.Group();
+    this.scene.add(this.group);
+
+    const paint = new THREE.MeshBasicMaterial({ color: this.paintColor });
+    const dark = new THREE.MeshBasicMaterial({ color: 0x071019 });
+    const glass = new THREE.MeshBasicMaterial({ color: 0x18354d });
+
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.66, 0.62, 2.95), paint);
+    body.position.y = 0.02;
+    this.group.add(body);
+
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.38, 0.52, 1.12), glass);
+    cabin.position.set(0, 0.60, 0.18);
+    this.group.add(cabin);
+
+    const bumper = new THREE.Mesh(new THREE.BoxGeometry(1.72, 0.18, 0.22), dark);
+    bumper.position.set(0, -0.12, -1.50);
+    this.group.add(bumper);
+    const rear = bumper.clone();
+    rear.position.z = 1.50;
+    this.group.add(rear);
+
+    const wheelGeo = new THREE.CylinderGeometry(0.34, 0.34, 0.26, 8);
+    const wheels = new THREE.InstancedMesh(wheelGeo, dark, 4);
+    const dummy = new THREE.Object3D();
+    const positions = [
+      [-0.86, -0.20, -0.92], [0.86, -0.20, -0.92],
+      [-0.86, -0.20, 0.96], [0.86, -0.20, 0.96]
+    ];
+    for (let i = 0; i < positions.length; i++) {
+      const [x, y, z] = positions[i];
+      dummy.position.set(x, y, z);
+      dummy.rotation.set(0, 0, Math.PI / 2);
+      dummy.updateMatrix();
+      wheels.setMatrixAt(i, dummy.matrix);
+    }
+    wheels.instanceMatrix.needsUpdate = true;
+    this.group.add(wheels);
+
+    this.wheels = [];
+    this.frontWheelPivots = [];
+    this.exhaust = [];
+    this.boostLight = null;
+    this.shadow = null;
+
+    // Ultra car parts never animate independently. Freeze their local matrices;
+    // only the root group moves each render frame.
+    this.group.traverse((object) => {
+      if (object === this.group) return;
+      object.updateMatrix();
+      object.matrixAutoUpdate = false;
+    });
   }
 
   setSpawnRotation() {
@@ -429,12 +495,14 @@ export class Car {
     this.group.position.set(p.x, p.y, p.z);
     this.group.quaternion.set(r.x, r.y, r.z, r.w);
 
-    this.shadow.position.x = p.x;
-    this.shadow.position.z = p.z;
-    const height = Math.max(0, p.y - 0.45);
-    const shadowScale = THREE.MathUtils.clamp(1.0 - height * 0.035, 0.58, 1.0);
-    this.shadow.scale.set(0.72 * shadowScale, shadowScale, 1);
-    this.shadow.material.opacity = THREE.MathUtils.clamp(0.24 - height * 0.01, 0.05, 0.24);
+    if (this.shadow) {
+      this.shadow.position.x = p.x;
+      this.shadow.position.z = p.z;
+      const height = Math.max(0, p.y - 0.45);
+      const shadowScale = THREE.MathUtils.clamp(1.0 - height * 0.035, 0.58, 1.0);
+      this.shadow.scale.set(0.72 * shadowScale, shadowScale, 1);
+      this.shadow.material.opacity = THREE.MathUtils.clamp(0.24 - height * 0.01, 0.05, 0.24);
+    }
   }
 
   getSpeedKmh() {

@@ -1,9 +1,16 @@
-ROCKET VIBE 1.0 - 4 SPIELER LAN / LOW LATENCY
+ROCKET VIBE 1.2 - 4 SPIELER LAN / ULTRA VM
 
-1. npm install
-2. npm run lan
-3. Host oeffnet http://localhost:5173
-4. Freunde oeffnen die im Terminal angezeigte LAN-IP.
+Start:
+  npm install
+  npm run lan
 
-Bis zu vier Geraete koennen gleichzeitig verbinden.
-Server Physics: 120 Hz, Snapshots: 60 Hz, Client Prediction aktiv.
+Host:
+  http://localhost:5173
+
+Freunde:
+  die im Terminal angezeigte LAN-IP
+
+Ultra / VM nur fuer einen einzelnen Browser:
+  http://HOST:5173/?perf=ultra
+
+F2 schaltet Normal <-> Ultra / VM.
