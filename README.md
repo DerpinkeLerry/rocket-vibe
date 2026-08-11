@@ -83,3 +83,11 @@ git push
 ```
 
 Nach dem Railway-Deploy einmal `Ctrl+F5`.
+
+
+## v1.3 Apple Ball
+
+- Ball radius increased from 0.92 to 1.75 (almost 2x diameter).
+- Visual replaced with an original stylized red apple, including stem and leaf.
+- Server and client use the same shared ball tuning.
+- Density was reduced so the larger ball keeps roughly the old gameplay mass.

@@ -1,82 +1,39 @@
 import * as THREE from 'three';
 import { TransformBody } from '../network/TransformBody.js';
+import { BALL_TUNING } from '../shared/game-tuning.js';
 
-const BALL_RADIUS = 0.92;
+function createAppleBodyGeometry(radius, lowDetail) {
+  // Revolved silhouette: wide shoulders, rounded belly, tapered bottom and a
+  // small top indentation. The widest point stays inside the physics sphere.
+  const r = radius;
+  const profile = [
+    [0.10, -0.96],
+    [0.43, -0.86],
+    [0.73, -0.64],
+    [0.91, -0.34],
+    [0.97,  0.02],
+    [0.95,  0.34],
+    [0.84,  0.61],
+    [0.61,  0.80],
+    [0.30,  0.88],
+    [0.13,  0.82]
+  ];
 
-function makeBallTexture() {
-  const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 256;
-  const ctx = canvas.getContext('2d');
+  const points = profile.map(([radial, y]) => new THREE.Vector2(radial * r, y * r));
+  const geometry = new THREE.LatheGeometry(points, lowDetail ? 12 : 24);
+  geometry.computeVertexNormals();
+  return geometry;
+}
 
-  const bg = ctx.createLinearGradient(0, 0, 0, canvas.height);
-  bg.addColorStop(0, '#dbe5e8');
-  bg.addColorStop(0.5, '#9eaeb5');
-  bg.addColorStop(1, '#687981');
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  // A lightweight, original sci-fi panel pattern inspired by arena footballs.
-  // It is deliberately not a copy of Rocket League's texture/asset.
-  const hexR = 28;
-  const hexH = Math.sqrt(3) * hexR;
-  const cols = 8;
-  const rows = 5;
-
-  function hexPath(cx, cy, r) {
-    ctx.beginPath();
-    for (let i = 0; i < 6; i++) {
-      const a = Math.PI / 3 * i + Math.PI / 6;
-      const x = cx + Math.cos(a) * r;
-      const y = cy + Math.sin(a) * r;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.closePath();
-  }
-
-  for (let row = -1; row <= rows; row++) {
-    for (let col = -1; col <= cols; col++) {
-      const cx = col * hexR * 1.52 + (row % 2 ? hexR * 0.76 : 0) + 20;
-      const cy = row * hexH * 0.86 + 26;
-      const hash = Math.abs((row * 17 + col * 31) % 7);
-      const darkPanel = hash === 0 || hash === 3;
-
-      hexPath(cx, cy, hexR * 0.78);
-      ctx.fillStyle = darkPanel ? '#18242b' : 'rgba(238,246,248,0.18)';
-      ctx.fill();
-      ctx.lineWidth = darkPanel ? 4 : 2;
-      ctx.strokeStyle = darkPanel ? '#071016' : 'rgba(28,48,58,0.52)';
-      ctx.stroke();
-
-      if (darkPanel) {
-        hexPath(cx, cy, hexR * 0.48);
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = '#47dfff';
-        ctx.stroke();
-      }
-    }
-  }
-
-  // Small orange accents keep the ball readable at distance.
-  ctx.globalAlpha = 0.9;
-  ctx.strokeStyle = '#ff8a2a';
-  ctx.lineWidth = 4;
-  for (let x = -30; x < canvas.width + 40; x += 128) {
-    ctx.beginPath();
-    ctx.moveTo(x, canvas.height * 0.2);
-    ctx.lineTo(x + 50, canvas.height * 0.28);
-    ctx.stroke();
-  }
-  ctx.globalAlpha = 1;
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 1;
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.ClampToEdgeWrapping;
-  texture.needsUpdate = true;
-  return texture;
+function createLeafGeometry(radius) {
+  const shape = new THREE.Shape();
+  const s = radius;
+  shape.moveTo(0, 0);
+  shape.quadraticCurveTo(0.34 * s, 0.14 * s, 0.56 * s, 0.06 * s);
+  shape.quadraticCurveTo(0.35 * s, -0.18 * s, 0, 0);
+  const geometry = new THREE.ShapeGeometry(shape, 2);
+  geometry.translate(0.02 * s, 0, 0);
+  return geometry;
 }
 
 export class Ball {
@@ -87,10 +44,10 @@ export class Ball {
     this.input = input;
     this.lowDetail = Boolean(options.lowDetail);
     this.clientOnly = Boolean(options.clientOnly);
-    this.radius = BALL_RADIUS;
-    this.spawn = new THREE.Vector3(0, 4.2, 0);
-    this.maxSpeed = 56;
-    this.maxAngularSpeed = 32;
+    this.radius = BALL_TUNING.radius;
+    this.spawn = new THREE.Vector3(0, BALL_TUNING.spawnY, 0);
+    this.maxSpeed = BALL_TUNING.maxSpeed;
+    this.maxAngularSpeed = BALL_TUNING.maxAngularSpeed;
 
     this.createPhysics();
     this.createVisual();
@@ -113,7 +70,9 @@ export class Ball {
 
     this.body = this.world.createRigidBody(bodyDesc);
     const colliderDesc = R.ColliderDesc.ball(this.radius)
-      .setDensity(9.1)
+      // Radius is much larger than before. Lower density keeps total ball mass
+      // close to v1.2 so cars can still launch it instead of hitting a boulder.
+      .setDensity(BALL_TUNING.density)
       .setFriction(0.24)
       .setRestitution(0.62);
 
@@ -122,27 +81,54 @@ export class Ball {
   }
 
   createVisual() {
+    this.mesh = new THREE.Group();
+
+    const appleMaterial = this.lowDetail
+      ? new THREE.MeshBasicMaterial({ color: 0xd92b2b })
+      : new THREE.MeshStandardMaterial({
+          color: 0xe53b35,
+          roughness: 0.68,
+          metalness: 0.0
+        });
+
+    const body = new THREE.Mesh(createAppleBodyGeometry(this.radius, this.lowDetail), appleMaterial);
+    this.mesh.add(body);
+
+    const stemMaterial = this.lowDetail
+      ? new THREE.MeshBasicMaterial({ color: 0x5f371c })
+      : new THREE.MeshStandardMaterial({ color: 0x5a341c, roughness: 0.95, metalness: 0 });
+    const stem = new THREE.Mesh(
+      new THREE.CylinderGeometry(
+        this.radius * 0.055,
+        this.radius * 0.075,
+        this.radius * 0.43,
+        this.lowDetail ? 6 : 10
+      ),
+      stemMaterial
+    );
+    stem.position.set(0, this.radius * 1.01, 0);
+    stem.rotation.z = -0.12;
+    this.mesh.add(stem);
+
+    const leafMaterial = this.lowDetail
+      ? new THREE.MeshBasicMaterial({ color: 0x36a84a, side: THREE.DoubleSide })
+      : new THREE.MeshStandardMaterial({
+          color: 0x3ca653,
+          roughness: 0.82,
+          metalness: 0,
+          side: THREE.DoubleSide
+        });
+    const leaf = new THREE.Mesh(createLeafGeometry(this.radius), leafMaterial);
+    leaf.position.set(this.radius * 0.04, this.radius * 1.08, 0);
+    leaf.rotation.set(-0.38, 0.48, 0.24);
+    this.mesh.add(leaf);
+
+    this.scene.add(this.mesh);
+
     if (this.lowDetail) {
-      const geometry = new THREE.SphereGeometry(this.radius, 12, 8);
-      const material = new THREE.MeshBasicMaterial({ color: 0xbacbd1 });
-      this.mesh = new THREE.Mesh(geometry, material);
-      this.scene.add(this.mesh);
       this.shadow = null;
       return;
     }
-
-    const texture = makeBallTexture();
-    const geometry = new THREE.SphereGeometry(this.radius, 24, 16);
-    const material = new THREE.MeshStandardMaterial({
-      map: texture,
-      roughness: 0.48,
-      metalness: 0.36,
-      emissive: new THREE.Color(0x062735),
-      emissiveIntensity: 0.42
-    });
-
-    this.mesh = new THREE.Mesh(geometry, material);
-    this.scene.add(this.mesh);
 
     const shadowMat = new THREE.MeshBasicMaterial({
       color: 0x000000,
@@ -150,7 +136,7 @@ export class Ball {
       opacity: 0.28,
       depthWrite: false
     });
-    this.shadow = new THREE.Mesh(new THREE.CircleGeometry(this.radius * 1.1, 16), shadowMat);
+    this.shadow = new THREE.Mesh(new THREE.CircleGeometry(this.radius * 1.08, 16), shadowMat);
     this.shadow.rotation.x = -Math.PI / 2;
     this.shadow.position.y = 0.018;
     this.scene.add(this.shadow);
@@ -162,7 +148,6 @@ export class Ball {
       return;
     }
 
-    // Prevent rare tunnelling/energy spikes after hard car-wall-ball impacts.
     const v = this.body.linvel();
     const speed = Math.hypot(v.x, v.y, v.z);
     if (speed > this.maxSpeed) {

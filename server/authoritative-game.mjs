@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { CAR_TUNING, INPUT_BITS, INPUT_EDGES } from '../src/shared/game-tuning.js';
+import { BALL_TUNING, CAR_TUNING, INPUT_BITS, INPUT_EDGES } from '../src/shared/game-tuning.js';
 
 const FIELD_W = 110;
 const FIELD_L = 160;
@@ -9,7 +9,6 @@ const WALL_T = 1.0;
 const GOAL_W = 13.0;
 const GOAL_H = 5.2;
 const GOAL_D = 8.0;
-const BALL_RADIUS = 0.92;
 const FIXED_DT = 1 / 120;
 const SNAPSHOT_EVERY_STEPS = 2; // 60 Hz network snapshots.
 
@@ -319,9 +318,9 @@ class ServerCar {
 class ServerBall {
   constructor(world, R) {
     this.world = world;
-    this.spawn = { x: 0, y: 4.2, z: 0 };
-    this.maxSpeed = 56;
-    this.maxAngularSpeed = 32;
+    this.spawn = { x: 0, y: BALL_TUNING.spawnY, z: 0 };
+    this.maxSpeed = BALL_TUNING.maxSpeed;
+    this.maxAngularSpeed = BALL_TUNING.maxAngularSpeed;
     this.body = world.createRigidBody(
       R.RigidBodyDesc.dynamic()
         .setTranslation(this.spawn.x, this.spawn.y, this.spawn.z)
@@ -331,8 +330,8 @@ class ServerBall {
         .setCanSleep(true)
     );
     this.collider = world.createCollider(
-      R.ColliderDesc.ball(BALL_RADIUS)
-        .setDensity(9.1)
+      R.ColliderDesc.ball(BALL_TUNING.radius)
+        .setDensity(BALL_TUNING.density)
         .setFriction(0.24)
         .setRestitution(0.62),
       this.body

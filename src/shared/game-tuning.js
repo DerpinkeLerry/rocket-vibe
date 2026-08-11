@@ -37,3 +37,13 @@ export const CAR_TUNING = Object.freeze({
   linearDamping: 0.08,
   angularDamping: 0.32
 });
+
+export const BALL_TUNING = Object.freeze({
+  // v1.2 used radius 0.92. 1.75 makes the ball almost 2x the diameter.
+  radius: 1.75,
+  spawnY: 5.0,
+  // Density compensates for the larger volume to keep mass near the old ball.
+  density: 1.32,
+  maxSpeed: 56,
+  maxAngularSpeed: 32
+});

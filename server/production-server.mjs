@@ -103,7 +103,7 @@ const server = createServer(async (req, res) => {
       sendJson(res, shuttingDown ? 503 : 200, {
         ok: !shuttingDown,
         service: 'rocket-vibe',
-        version: '1.2.0',
+        version: '1.3.0',
         players: sockets.getPlayerCount()
       });
       return;
