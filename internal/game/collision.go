@@ -9,6 +9,10 @@ func resolveCarArena(car *Car, config Config) {
 
 	halfWidth := config.Arena.Width * 0.5
 	halfLength := config.Arena.Length * 0.5
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
 	straightX := halfWidth - config.Arena.CornerRadius
 	straightZ := halfLength - config.Arena.CornerRadius
 	absX := math.Abs(car.Position.X)
@@ -25,6 +29,21 @@ func resolveCarArena(car *Car, config Config) {
 		resolveBodyMinimum(&car.Body, 0, -halfWidth, extentX, config.Car.Restitution)
 		resolveBodyMaximum(&car.Body, 0, halfWidth, extentX, config.Car.Restitution)
 	case absX <= straightX && !goalFits:
+<<<<<<< HEAD
+=======
+=======
+	insideFieldDepth := math.Abs(car.Position.Z) <= halfLength+extentZ
+	if insideFieldDepth && car.Position.Y-extentY < config.Arena.WallHeight {
+		resolveBodyMinimum(&car.Body, 0, -halfWidth, extentX, config.Car.Restitution)
+		resolveBodyMaximum(&car.Body, 0, halfWidth, extentX, config.Car.Restitution)
+	}
+
+	goalHalfWidth := config.Arena.GoalWidth * 0.5
+	goalFits := math.Abs(car.Position.X)+extentX <= goalHalfWidth &&
+		car.Position.Y+extentY <= config.Arena.GoalHeight
+	if !goalFits && car.Position.Y-extentY < config.Arena.WallHeight {
+>>>>>>> e4f4ac3d0103e90daad46770ba947151c0f2f96e
+>>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
 		resolveBodyMinimum(&car.Body, 2, -halfLength, extentZ, config.Car.Restitution)
 		resolveBodyMaximum(&car.Body, 2, halfLength, extentZ, config.Car.Restitution)
 	}
@@ -40,6 +59,10 @@ func resolveCarFloorAndCeiling(car *Car, config Config, extentY float64) {
 		if penetration > 0 {
 			car.Position.Y += penetration
 			if car.Velocity.Y < 0 {
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
 				// Cars settle on the floor. Returning landing energy here made a
 				// late network correction look like a spring launching the car.
 				car.Velocity.Y = 0
@@ -47,6 +70,20 @@ func resolveCarFloorAndCeiling(car *Car, config Config, extentY float64) {
 		}
 		up := car.Rotation.Rotate(Vec3{Y: 1})
 		if penetration >= -0.04 && up.Y > 0.3 && car.GroundLockout <= 0 {
+<<<<<<< HEAD
+=======
+=======
+				if car.Velocity.Y < -1.2 {
+					car.Velocity.Y = -car.Velocity.Y * config.Car.Restitution
+				} else {
+					car.Velocity.Y = 0
+				}
+			}
+		}
+		up := car.Rotation.Rotate(Vec3{Y: 1})
+		if penetration > -0.04 && up.Y > 0.3 && car.GroundLockout <= 0 {
+>>>>>>> e4f4ac3d0103e90daad46770ba947151c0f2f96e
+>>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
 			car.Grounded = true
 		}
 	}
@@ -54,6 +91,10 @@ func resolveCarFloorAndCeiling(car *Car, config Config, extentY float64) {
 	resolveBodyMaximum(&car.Body, 1, config.Arena.Ceiling, extentY, config.Car.Restitution)
 }
 
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
 func resolveCarRoundedCorner(car *Car, config Config, straightX, straightZ float64) {
 	center := Vec3{
 		X: nonZeroSign(car.Position.X) * straightX,
@@ -76,6 +117,11 @@ func resolveCarRoundedCorner(car *Car, config Config, straightX, straightZ float
 	car.AngularVelocity = car.AngularVelocity.Mul(0.985)
 }
 
+<<<<<<< HEAD
+=======
+=======
+>>>>>>> e4f4ac3d0103e90daad46770ba947151c0f2f96e
+>>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
 func resolveGoalCar(car *Car, config Config, extentX, extentY, extentZ float64) {
 	halfLength := config.Arena.Length * 0.5
 	goalHalfWidth := config.Arena.GoalWidth * 0.5
@@ -99,8 +145,17 @@ func resolveBallArena(ball *Ball, config Config) {
 	radius := config.Ball.Radius
 	halfWidth := config.Arena.Width * 0.5
 	halfLength := config.Arena.Length * 0.5
+<<<<<<< HEAD
 	straightX := halfWidth - config.Arena.CornerRadius
 	straightZ := halfLength - config.Arena.CornerRadius
+=======
+<<<<<<< HEAD
+	straightX := halfWidth - config.Arena.CornerRadius
+	straightZ := halfLength - config.Arena.CornerRadius
+=======
+	insideFieldDepth := math.Abs(ball.Position.Z) <= halfLength+radius
+>>>>>>> e4f4ac3d0103e90daad46770ba947151c0f2f96e
+>>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
 
 	if floorExistsAt(ball.Position, config.Arena) {
 		penetration := radius - ball.Position.Y
@@ -121,6 +176,10 @@ func resolveBallArena(ball *Ball, config Config) {
 	}
 	resolveBodyMaximum(&ball.Body, 1, config.Arena.Ceiling, radius, config.Ball.Restitution)
 
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
 	absX := math.Abs(ball.Position.X)
 	absZ := math.Abs(ball.Position.Z)
 	goalHalfWidth := config.Arena.GoalWidth * 0.5
@@ -134,6 +193,20 @@ func resolveBallArena(ball *Ball, config Config) {
 		resolveBodyMinimum(&ball.Body, 0, -halfWidth, radius, config.Ball.Restitution)
 		resolveBodyMaximum(&ball.Body, 0, halfWidth, radius, config.Ball.Restitution)
 	case absX <= straightX && !goalFits:
+<<<<<<< HEAD
+=======
+=======
+	if insideFieldDepth && ball.Position.Y-radius < config.Arena.WallHeight {
+		resolveBodyMinimum(&ball.Body, 0, -halfWidth, radius, config.Ball.Restitution)
+		resolveBodyMaximum(&ball.Body, 0, halfWidth, radius, config.Ball.Restitution)
+	}
+
+	goalHalfWidth := config.Arena.GoalWidth * 0.5
+	goalFits := math.Abs(ball.Position.X)+radius <= goalHalfWidth &&
+		ball.Position.Y+radius <= config.Arena.GoalHeight
+	if !goalFits && ball.Position.Y-radius < config.Arena.WallHeight {
+>>>>>>> e4f4ac3d0103e90daad46770ba947151c0f2f96e
+>>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
 		resolveBodyMinimum(&ball.Body, 2, -halfLength, radius, config.Ball.Restitution)
 		resolveBodyMaximum(&ball.Body, 2, halfLength, radius, config.Ball.Restitution)
 	}
@@ -151,6 +224,10 @@ func resolveBallArena(ball *Ball, config Config) {
 	}
 }
 
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
 func resolveBallRoundedCorner(ball *Ball, config Config, straightX, straightZ float64) {
 	center := Vec3{
 		X: nonZeroSign(ball.Position.X) * straightX,
@@ -170,6 +247,11 @@ func resolveBallRoundedCorner(ball *Ball, config Config, straightX, straightZ fl
 	}
 }
 
+<<<<<<< HEAD
+=======
+=======
+>>>>>>> e4f4ac3d0103e90daad46770ba947151c0f2f96e
+>>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
 func floorExistsAt(position Vec3, arena ArenaConfig) bool {
 	halfLength := arena.Length * 0.5
 	if math.Abs(position.Z) <= halfLength {
@@ -179,6 +261,10 @@ func floorExistsAt(position Vec3, arena ArenaConfig) bool {
 		math.Abs(position.X) <= arena.GoalWidth*0.5+1
 }
 
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
 func orientedBoxSupport(rotation Quat, half Vec3, normal Vec3) float64 {
 	right := rotation.Rotate(Vec3{X: 1})
 	up := rotation.Rotate(Vec3{Y: 1})
@@ -199,6 +285,11 @@ func resolveBodyAgainstNormal(body *Body, normal Vec3, penetration, restitution 
 	}
 }
 
+<<<<<<< HEAD
+=======
+=======
+>>>>>>> e4f4ac3d0103e90daad46770ba947151c0f2f96e
+>>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
 // projectedExtents returns the world-axis AABB extents of an oriented box.
 func projectedExtents(rotation Quat, half Vec3) (float64, float64, float64) {
 	right := rotation.Rotate(Vec3{X: 1})
@@ -260,9 +351,20 @@ func setAxisValue(vector *Vec3, axis int, value float64) {
 }
 
 func resolveCarCar(first, second *Car, config CarConfig) {
+<<<<<<< HEAD
 	_, firstExtentY, _ := projectedExtents(first.Rotation, config.HalfExtents)
 	_, secondExtentY, _ := projectedExtents(second.Rotation, config.HalfExtents)
 	if math.Abs(second.Position.Y-first.Position.Y) >= firstExtentY+secondExtentY+0.02 {
+=======
+<<<<<<< HEAD
+	_, firstExtentY, _ := projectedExtents(first.Rotation, config.HalfExtents)
+	_, secondExtentY, _ := projectedExtents(second.Rotation, config.HalfExtents)
+	if math.Abs(second.Position.Y-first.Position.Y) >= firstExtentY+secondExtentY+0.02 {
+=======
+	verticalExtent := config.HalfExtents.Y + 0.35
+	if math.Abs(second.Position.Y-first.Position.Y) >= verticalExtent*2 {
+>>>>>>> e4f4ac3d0103e90daad46770ba947151c0f2f96e
+>>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
 		return
 	}
 

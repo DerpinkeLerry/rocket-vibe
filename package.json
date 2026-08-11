@@ -1,6 +1,14 @@
 {
   "name": "rocket-vibe",
+<<<<<<< HEAD
   "version": "1.5.0",
+=======
+<<<<<<< HEAD
+  "version": "1.5.0",
+=======
+  "version": "1.4.0",
+>>>>>>> e4f4ac3d0103e90daad46770ba947151c0f2f96e
+>>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
   "private": true,
   "type": "module",
   "engines": {
@@ -12,10 +20,22 @@
     "server": "go run ./cmd/server",
     "lan": "npm run build && npm run server",
     "start": "npm run server",
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
     "test:js": "node --test src/network/LocalCarPredictor.test.js",
     "test:go": "go test ./...",
     "smoke": "node scripts/smoke-websocket.mjs",
     "check": "npm run build && npm run test:js && npm run test:go"
+<<<<<<< HEAD
+=======
+=======
+    "test:go": "go test ./...",
+    "smoke": "node scripts/smoke-websocket.mjs",
+    "check": "npm run build && npm run test:go"
+>>>>>>> e4f4ac3d0103e90daad46770ba947151c0f2f96e
+>>>>>>> aa0410627aafadacad13bfd71149edb51a6841da
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.19.3",
