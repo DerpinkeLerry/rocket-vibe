@@ -66,6 +66,7 @@ export class Ball {
       .setLinearDamping(0.035)
       .setAngularDamping(0.06)
       .setCcdEnabled(true)
+      .setSoftCcdPrediction(0.45)
       .setCanSleep(true);
 
     this.body = this.world.createRigidBody(bodyDesc);
@@ -74,10 +75,12 @@ export class Ball {
       // close to v1.2 so cars can still launch it instead of hitting a boulder.
       .setDensity(BALL_TUNING.density)
       .setFriction(0.24)
-      .setRestitution(0.62);
+      .setRestitution(0.62)
+      .setRestitutionCombineRule(R.CoefficientCombineRule.Max)
+      .setContactSkin(0.01);
 
     this.collider = this.world.createCollider(colliderDesc, this.body);
-    this.body.setAdditionalSolverIterations(2);
+    this.body.setAdditionalSolverIterations(4);
   }
 
   createVisual() {
