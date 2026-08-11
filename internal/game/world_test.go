@@ -56,6 +56,7 @@ func TestBallCanEnterGoalButHitsSolidEndWall(t *testing.T) {
 	}
 }
 
+<<<<<<< HEAD
 func TestHardLandingCannotTunnelOrBounceBackUp(t *testing.T) {
 	config := DefaultConfig()
 	world := NewWorld(config)
@@ -150,6 +151,8 @@ func TestBallBouncesInsideRoundedCorner(t *testing.T) {
 	}
 }
 
+=======
+>>>>>>> e4f4ac3d0103e90daad46770ba947151c0f2f96e
 func TestCarTransfersMomentumToBall(t *testing.T) {
 	config := DefaultConfig()
 	world := NewWorld(config)

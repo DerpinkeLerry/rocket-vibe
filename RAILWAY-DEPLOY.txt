@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 ROCKET VIBE 1.5 - GO + RAILWAY
+=======
+ROCKET VIBE 1.4 - GO + RAILWAY
+>>>>>>> e4f4ac3d0103e90daad46770ba947151c0f2f96e
 
 1. Projekt in ein GitHub-Repository pushen.
 2. Railway: New Project -> Deploy from GitHub repo.
