@@ -1,9 +1,0 @@
-node_modules/
-dist/
-rocket-server
-.tmp-*
-.env
-.env.*
-!.env.example
-.DS_Store
-*.log
