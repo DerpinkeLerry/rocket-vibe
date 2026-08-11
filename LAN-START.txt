@@ -1,4 +1,4 @@
-ROCKET VIBE 0.8 - 4 SPIELER LAN
+ROCKET VIBE 0.9 - 4 SPIELER LAN
 
 1. npm install
 2. npm run lan

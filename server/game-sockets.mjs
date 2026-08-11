@@ -11,6 +11,8 @@ export function attachGameSockets(httpServer, options = {}) {
   const wss = new WebSocketServer({ noServer: true });
   const players = new Map();
   const inputSeen = new WeakSet();
+  const motionConfirmed = new WeakSet();
+  const motionProbePending = new WeakSet();
 
   function availablePlayerId() {
     const used = new Set(players.values());
@@ -83,6 +85,36 @@ export function attachGameSockets(httpServer, options = {}) {
         if (active && !inputSeen.has(ws)) {
           inputSeen.add(ws);
           console.log(`[${label}] Aktive Steuerung von Spieler ${senderId + 1} empfangen.`);
+        }
+
+        if (active && !motionConfirmed.has(ws) && !motionProbePending.has(ws)) {
+          motionProbePending.add(ws);
+          const timer = setTimeout(() => {
+            motionProbePending.delete(ws);
+            if (players.get(ws) !== senderId) return;
+            const diag = game.diagnostics(senderId);
+            if (!diag) return;
+            const [vx, vy, vz] = diag.velocity;
+            const [wx, wy, wz] = diag.angularVelocity;
+            const horizontalSpeed = Math.hypot(vx, vz);
+            const angularSpeed = Math.hypot(wx, wy, wz);
+            const wantsTranslation = Boolean(input.mask & ((1 << 0) | (1 << 1) | (1 << 6)));
+            const wantsRotation = Boolean(input.mask & ((1 << 2) | (1 << 3) | (1 << 4) | (1 << 5)));
+            const wantsJump = Boolean(input.edges & (1 << 0));
+            const movedAsRequested =
+              (wantsTranslation && horizontalSpeed > 0.2) ||
+              (wantsRotation && angularSpeed > 0.05) ||
+              (wantsJump && Math.abs(vy) > 0.2);
+
+            if (movedAsRequested) {
+              motionConfirmed.add(ws);
+              send(ws, { type: 'motion-ack', playerId: senderId, speed: horizontalSpeed, angularSpeed });
+              console.log(`[${label}] Serverbewegung von Spieler ${senderId + 1} bestaetigt (vXZ=${horizontalSpeed.toFixed(2)}, w=${angularSpeed.toFixed(2)}).`);
+            } else {
+              console.warn(`[${label}] Input da, aber Spieler ${senderId + 1} reagiert noch nicht. mask=${diag.mask} enabled=${diag.enabled} grounded=${diag.grounded} mass=${diag.mass.toFixed(2)} v=${diag.velocity.map((n) => n.toFixed(2)).join(',')} w=${diag.angularVelocity.map((n) => n.toFixed(2)).join(',')} pos=${diag.position.map((n) => n.toFixed(2)).join(',')}`);
+            }
+          }, 350);
+          timer.unref?.();
         }
       }
     });

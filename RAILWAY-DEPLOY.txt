@@ -1,4 +1,4 @@
-ROCKET VIBE 0.8 - RAILWAY / 4 PLAYER
+ROCKET VIBE 0.9 - RAILWAY / 4 PLAYER
 
 Das Projekt ist fuer einen einzelnen Railway-Service vorbereitet.
 
@@ -22,5 +22,7 @@ Die ersten vier Verbindungen erhalten Spieler 1, 2, 3 und 4.
 Ein fuenfter Spieler bekommt "Match voll".
 
 WICHTIG:
-Ab 0.8 ist kein Browser mehr der Physik-Host.
+Ab 0.9 ist kein Browser mehr der Physik-Host.
 Railway simuliert zentral alle vier Autos und den Ball. Dadurch funktioniert die Steuerung fuer jeden Spieler ueber denselben Input-Pfad.
+
+DEBUG: https://DEINE-DOMAIN/debug/game zeigt den Live-Serverzustand.

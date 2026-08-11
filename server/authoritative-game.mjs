@@ -29,6 +29,10 @@ const VEC3_FORWARD = new THREE.Vector3(0, 0, -1);
 const VEC3_RIGHT = new THREE.Vector3(1, 0, 0);
 const clamp = THREE.MathUtils.clamp;
 const damp = (current, target, lambda, dt) => THREE.MathUtils.lerp(current, target, 1 - Math.exp(-lambda * dt));
+const moveTowards = (current, target, maxDelta) => {
+  if (Math.abs(target - current) <= maxDelta) return target;
+  return current + Math.sign(target - current) * maxDelta;
+};
 
 export const PLAYER_SLOTS = [
   { spawn: { x: -13, y: 1.25, z: 44 }, yaw: 0 },
@@ -49,17 +53,19 @@ class ServerCar {
 
     this.maxGroundSpeed = 39;
     this.maxBoostSpeed = 52;
-    this.driveForce = 12200;
-    this.reverseForce = 9200;
-    this.boostForce = 16800;
+    this.driveAcceleration = 25.5;
+    this.reverseAcceleration = 20.0;
+    this.brakeAcceleration = 34.0;
+    this.boostAcceleration = 31.0;
     this.grip = 13.5;
     this.steerRate = 2.55;
     this.steerResponse = 10.0;
-    this.airPitchTorque = 1650;
-    this.airYawTorque = 1320;
-    this.airRollTorque = 1500;
-    this.jumpImpulse = 4300;
-    this.downforce = 3300;
+    this.airPitchAcceleration = 8.5;
+    this.airYawAcceleration = 7.4;
+    this.airRollAcceleration = 8.0;
+    this.jumpSpeed = 11.8;
+    this.doubleJumpSpeed = 8.4;
+    this.downAcceleration = 5.5;
 
     this.grounded = false;
     this.groundNormal = new THREE.Vector3(0, 1, 0);
@@ -96,21 +102,24 @@ class ServerCar {
     this.collider = world.createCollider(
       R.ColliderDesc.cuboid(0.83, 0.39, 1.48)
         .setTranslation(0, -0.06, 0)
-        .setDensity(145)
+        .setMass(420)
         .setFriction(0.04)
         .setRestitution(0.06),
       this.body
     );
     this.body.setAdditionalSolverIterations(4);
-    this.collider.setEnabled(false);
+    this.body.setEnabled(false);
   }
 
   setConnected(connected) {
     this.connected = Boolean(connected);
     this.mask = 0;
     this.edges = 0;
-    this.collider.setEnabled(this.connected);
-    this.reset();
+    this.body.setEnabled(this.connected);
+    if (this.connected) {
+      this.body.recomputeMassPropertiesFromColliders();
+      this.reset();
+    }
   }
 
   setInput(packet) {
@@ -181,12 +190,8 @@ class ServerCar {
   }
 
   fixedUpdate(dt) {
-    if (!this.connected) {
-      this.body.setTranslation({ x: this.spawn.x, y: this.spawn.y, z: this.spawn.z }, false);
-      this.body.setLinvel({ x: 0, y: 0, z: 0 }, false);
-      this.body.setAngvel({ x: 0, y: 0, z: 0 }, false);
-      return;
-    }
+    if (!this.connected) return;
+
     if (this.consumeEdge(EDGE_RESET) || this.body.translation().y < -8) {
       this.reset();
       return;
@@ -207,108 +212,108 @@ class ServerCar {
     const speedLateral = this.velocityVec.dot(this.right);
     const flatSpeed = Math.hypot(vRaw.x, vRaw.z);
 
-    if (this.grounded) {
+    // The server uses a small flat-pitch fallback in addition to raycasts.
+    // That guarantees drive controls stay active even if a query update is one tick late.
+    const pos = this.body.translation();
+    const nearPitch = pos.y < 1.55 && this.up.y > 0.35 && Math.abs(vRaw.y) < 6.5;
+    const driveGrounded = this.grounded || nearPitch;
+
+    if (driveGrounded) {
       this.applyGroundDrive(dt, forwardInput, sideInput, speedForward, speedLateral, flatSpeed, boosting);
     } else {
       this.applyAirControl(dt, forwardInput, sideInput, rollInput);
-    }
-
-    if (boosting) {
-      const speed = this.velocityVec.dot(this.forward);
-      if (speed < this.maxBoostSpeed) {
-        const impulse = this.boostForce * dt;
-        this.body.applyImpulse({
-          x: this.forward.x * impulse,
-          y: this.forward.y * impulse,
-          z: this.forward.z * impulse
-        }, true);
-      }
+      if (boosting) this.applyBoostVelocity(dt);
     }
 
     if (this.consumeEdge(EDGE_JUMP)) {
-      if (this.grounded && this.jumpCount === 0) {
-        this.body.applyImpulse({
-          x: this.groundNormal.x * this.jumpImpulse * 0.08,
-          y: this.jumpImpulse,
-          z: this.groundNormal.z * this.jumpImpulse * 0.08
-        }, true);
+      const current = this.body.linvel();
+      if (driveGrounded && this.jumpCount === 0) {
+        this.body.setLinvel({ x: current.x, y: Math.max(current.y, this.jumpSpeed), z: current.z }, true);
         this.jumpCount = 1;
         this.grounded = false;
-        this.groundContactLockout = 0.16;
-      } else if (!this.grounded && this.jumpCount === 1 && this.airTime < 1.4) {
-        this.body.applyImpulse({ x: 0, y: this.jumpImpulse * 0.82, z: 0 }, true);
+        this.groundContactLockout = 0.18;
+      } else if (!driveGrounded && this.jumpCount === 1 && this.airTime < 1.4) {
+        this.body.setLinvel({ x: current.x, y: current.y + this.doubleJumpSpeed, z: current.z }, true);
         this.jumpCount = 2;
       }
     }
 
-    if (this.grounded) {
-      const downImpulse = this.downforce * dt;
-      this.body.applyImpulse({
-        x: -this.groundNormal.x * downImpulse,
-        y: -this.groundNormal.y * downImpulse,
-        z: -this.groundNormal.z * downImpulse
-      }, true);
+    if (driveGrounded) {
+      const lin = this.body.linvel();
+      this.body.setLinvel({ x: lin.x, y: lin.y - this.downAcceleration * dt, z: lin.z }, true);
     }
   }
 
   applyGroundDrive(dt, throttle, steer, speedForward, speedLateral, flatSpeed, boosting) {
     const maxSpeed = boosting ? this.maxBoostSpeed : this.maxGroundSpeed;
-    const force = throttle >= 0 ? this.driveForce : this.reverseForce;
+    const targetForward = throttle * (throttle < 0 ? this.maxGroundSpeed * 0.68 : maxSpeed);
+    let accel = throttle < 0 ? this.reverseAcceleration : this.driveAcceleration;
 
-    if (throttle !== 0 && (Math.abs(speedForward) < maxSpeed || Math.sign(throttle) !== Math.sign(speedForward))) {
-      const impulse = force * throttle * dt;
-      this.body.applyImpulse({
-        x: this.forward.x * impulse,
-        y: 0,
-        z: this.forward.z * impulse
-      }, true);
+    if (throttle !== 0 && Math.sign(speedForward) !== 0 && Math.sign(throttle) !== Math.sign(speedForward)) {
+      accel = this.brakeAcceleration;
     }
 
+    let nextForward = speedForward;
+    if (throttle !== 0) nextForward = moveTowards(speedForward, targetForward, accel * dt);
+    else nextForward = moveTowards(speedForward, 0, 5.5 * dt);
+
+    if (boosting) nextForward = moveTowards(nextForward, this.maxBoostSpeed, this.boostAcceleration * dt);
+
+    const nextLateral = speedLateral * Math.exp(-this.grip * dt);
     const lin = this.body.linvel();
-    const gripAmount = clamp(this.grip * dt, 0, 1);
-    const corrected = this.workVec.set(lin.x, lin.y, lin.z)
-      .addScaledVector(this.right, -speedLateral * gripAmount);
 
-    if (Math.abs(throttle) < 0.01) {
-      const coast = Math.exp(-1.25 * dt);
-      const along = corrected.dot(this.forward);
-      corrected.addScaledVector(this.forward, along * (coast - 1));
-    }
+    const fx = this.forward.x;
+    const fz = this.forward.z;
+    const fl = Math.hypot(fx, fz) || 1;
+    const rx = this.right.x;
+    const rz = this.right.z;
+    const rl = Math.hypot(rx, rz) || 1;
 
-    this.body.setLinvel({ x: corrected.x, y: corrected.y, z: corrected.z }, true);
+    this.body.setLinvel({
+      x: (fx / fl) * nextForward + (rx / rl) * nextLateral,
+      y: lin.y,
+      z: (fz / fl) * nextForward + (rz / rl) * nextLateral
+    }, true);
 
-    const steerStrength = clamp(Math.abs(speedForward) / 6, 0, 1) * clamp(1 - flatSpeed / 58, 0.35, 1);
-    const reverseSign = Math.sign(speedForward || throttle || 1);
+    const steerStrength = clamp(Math.max(Math.abs(nextForward), 1.5) / 7, 0.18, 1) * clamp(1 - flatSpeed / 62, 0.38, 1);
+    const reverseSign = Math.sign(nextForward || throttle || 1);
     const targetYaw = steer * this.steerRate * steerStrength * reverseSign;
     const ang = this.body.angvel();
     this.body.setAngvel({
-      x: damp(ang.x, 0, 7.5, dt),
+      x: damp(ang.x, 0, 8.5, dt),
       y: damp(ang.y, targetYaw, this.steerResponse, dt),
-      z: damp(ang.z, 0, 7.5, dt)
+      z: damp(ang.z, 0, 8.5, dt)
     }, true);
   }
 
+  applyBoostVelocity(dt) {
+    const lin = this.body.linvel();
+    const add = this.boostAcceleration * dt;
+    let nx = lin.x + this.forward.x * add;
+    let ny = lin.y + this.forward.y * add;
+    let nz = lin.z + this.forward.z * add;
+    const speed = Math.hypot(nx, ny, nz);
+    if (speed > this.maxBoostSpeed) {
+      const scale = this.maxBoostSpeed / speed;
+      nx *= scale;
+      ny *= scale;
+      nz *= scale;
+    }
+    this.body.setLinvel({ x: nx, y: ny, z: nz }, true);
+  }
+
   applyAirControl(dt, forwardInput, sideInput, rollInput) {
-    const torque = this.workVec.set(0, 0, 0)
-      .addScaledVector(this.right, -forwardInput * this.airPitchTorque)
-      .addScaledVector(this.up, sideInput * this.airYawTorque)
-      .addScaledVector(this.forward, rollInput * this.airRollTorque);
-
-    if (torque.lengthSq() > 0) {
-      this.body.applyTorqueImpulse({
-        x: torque.x * dt,
-        y: torque.y * dt,
-        z: torque.z * dt
-      }, true);
-    }
-
     const ang = this.body.angvel();
-    const mag = Math.hypot(ang.x, ang.y, ang.z);
+    this.workVec.set(ang.x, ang.y, ang.z)
+      .addScaledVector(this.right, -forwardInput * this.airPitchAcceleration * dt)
+      .addScaledVector(this.up, sideInput * this.airYawAcceleration * dt)
+      .addScaledVector(this.forward, rollInput * this.airRollAcceleration * dt);
+
     const maxAirAngular = 6.5;
-    if (mag > maxAirAngular) {
-      const scale = maxAirAngular / mag;
-      this.body.setAngvel({ x: ang.x * scale, y: ang.y * scale, z: ang.z * scale }, true);
-    }
+    const mag = this.workVec.length();
+    if (mag > maxAirAngular) this.workVec.multiplyScalar(maxAirAngular / mag);
+
+    this.body.setAngvel({ x: this.workVec.x, y: this.workVec.y, z: this.workVec.z }, true);
   }
 
   reset() {
@@ -481,6 +486,30 @@ export class AuthoritativeGame {
       cars: this.cars.map((car) => bodySnapshot(car.body, car.grounded)),
       ball: bodySnapshot(this.ball.body, false)
     };
+  }
+
+
+  diagnostics(playerId) {
+    const car = this.cars[playerId];
+    if (!car) return null;
+    const p = car.body.translation();
+    const v = car.body.linvel();
+    const w = car.body.angvel();
+    return {
+      connected: car.connected,
+      enabled: car.body.isEnabled(),
+      mask: car.mask,
+      grounded: car.grounded,
+      mass: car.body.mass(),
+      invMass: car.body.invMass(),
+      position: [p.x, p.y, p.z],
+      velocity: [v.x, v.y, v.z],
+      angularVelocity: [w.x, w.y, w.z]
+    };
+  }
+
+  debugState() {
+    return { tick: this.stepCount, players: this.cars.map((_, i) => this.diagnostics(i)) };
   }
 
   start(onSnapshot) {

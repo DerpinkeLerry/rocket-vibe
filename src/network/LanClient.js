@@ -8,6 +8,7 @@ export class LanClient {
     this.inputSeq = 0;
     this.lastInputAck = 0;
     this.activeInputConfirmed = false;
+    this.motionConfirmed = false;
     this.onState = null;
     this.onStatus = null;
     this.onRoster = null;
@@ -61,10 +62,16 @@ export class LanClient {
           this.lastInputAck = Math.max(this.lastInputAck, Number(message.seq) || 0);
           if (message.active) this.activeInputConfirmed = true;
           if (this.activeInputConfirmed) {
-            this.emitStatus(this.statusText('STEUERUNG OK'));
+            this.emitStatus(this.statusText('INPUT OK'));
           } else if (previousAck === 0 && this.lastInputAck > 0) {
             this.emitStatus(this.statusText('NETZWERK OK'));
           }
+          return;
+        }
+
+        if (message.type === 'motion-ack') {
+          this.motionConfirmed = true;
+          this.emitStatus(this.statusText('PHYSIK OK'));
           return;
         }
 
@@ -77,7 +84,7 @@ export class LanClient {
           this.maxPlayers = Number(message.maxPlayers) || this.maxPlayers;
           this.connectedPlayers = Array.isArray(message.connectedPlayers) ? message.connectedPlayers : this.connectedPlayers;
           this.onRoster?.(this.connectedPlayers, this.maxPlayers);
-          this.emitStatus(this.statusText(this.activeInputConfirmed ? 'STEUERUNG OK' : (this.lastInputAck > 0 ? 'NETZWERK OK' : 'ONLINE')));
+          this.emitStatus(this.statusText(this.motionConfirmed ? 'PHYSIK OK' : (this.activeInputConfirmed ? 'INPUT OK' : (this.lastInputAck > 0 ? 'NETZWERK OK' : 'ONLINE'))));
           return;
         }
 
