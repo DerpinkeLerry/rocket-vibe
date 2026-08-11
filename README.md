@@ -1,6 +1,16 @@
-# Rocket Vibe 1.0 - Low Latency Multiplayer
+# Rocket Vibe 1.1 - Permanent Ball Cam
 
 Three.js + Rapier Prototyp fuer bis zu vier Spieler. Railway ist autoritativ fuer Autos, Ball und Kollisionen; das eigene Auto wird im Browser sofort vorhergesagt und danach sanft mit dem Server abgeglichen.
+
+## Neu in 1.1
+
+- permanente Ball Camera ohne Toggle
+- Kamera orbitiert automatisch um das eigene Auto, damit der Ball im Blick bleibt
+- Ball bleibt permanent das Look-Target
+- stabiler Welt-Horizont auch bei Aerials / Air Roll
+- Schutz gegen hektisches Kamera-Flattern, wenn der Ball direkt ueber dem Auto ist
+- dynamischer Kameraabstand bei Tempo und grosser Ball-Distanz
+- bestehender Low-Latency-Netcode und 4-Spieler-Multiplayer bleiben erhalten
 
 ## Start lokal
 
@@ -51,13 +61,14 @@ npm start
 - Space: Jump / Double Jump
 - R: eigenes Auto resetten
 - B: Ball resetten
+- Kamera: permanent Ball Cam, kein Toggle
 
 ## Deploy
 
 ```bash
 git add .
-git commit -m "Low latency netcode"
+git commit -m "Add permanent ball camera"
 git push
 ```
 
-Nach dem Railway-Deploy alle Browser mit `Ctrl+F5` neu laden. Im Railway-Dashboard sollte die aktive Region `EU West` sein und nur eine Replica laufen.
+Nach dem Railway-Deploy alle Browser mit `Ctrl+F5` neu laden.

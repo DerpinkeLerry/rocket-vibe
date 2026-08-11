@@ -9,7 +9,7 @@ export class Hud {
     this.el = document.createElement('div');
     this.el.className = 'hud';
     this.el.innerHTML = `
-      <div class="hud__title">ROCKET VIBE // ONLINE 1.0 <span class="hud__perf">LOW LATENCY</span></div>
+      <div class="hud__title">ROCKET VIBE // ONLINE 1.1 <span class="hud__perf">BALL CAM</span></div>
       <div class="hud__network">
         <strong>${role}</strong>
         <span data-network>${multiplayer ? 'Spielserver verbunden' : 'Lokaler Modus'}</span>
@@ -17,6 +17,7 @@ export class Hud {
         <span data-ping>Ping -- ms</span>
       </div>
       <div class="hud__controls">
+        <kbd>CAM</kbd><span>Permanent Ball Cam</span>
         <kbd>W / S</kbd><span>Boden: Gas · Luft: Pitch</span>
         <kbd>A / D</kbd><span>Boden: Lenken · Luft: Yaw</span>
         <kbd>SPACE</kbd><span>Jump / Double Jump</span>

@@ -87,7 +87,7 @@ export class Game {
 
     this.car = this.cars[this.playerId] ?? this.car0;
     this.localPredictor = this.networked ? new LocalCarPredictor(this.car) : null;
-    this.chaseCamera = new ChaseCamera(this.camera, this.car);
+    this.chaseCamera = new ChaseCamera(this.camera, this.car, this.ball);
     this.hud = new Hud(this.root, {
       lan: this.networked,
       playerId: this.playerId,
