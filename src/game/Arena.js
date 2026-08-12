@@ -44,12 +44,14 @@ export class Arena {
     this.group = new THREE.Group();
     this.scene.add(this.group);
 
+    this.createExteriorGround();
     this.createField();
     if (this.enablePhysics) this.createPhysics();
-    if (!this.lowDetail) {
-      this.createStands();
-      this.createLights();
-    }
+    // All decoration below is static and mostly instanced/unlit. Keeping it in
+    // low-detail mode makes the arena feel alive without adding shadow cost.
+    this.createStands();
+    this.createExteriorDecoration();
+    this.createLights();
 
     // The whole arena is static. Avoid rebuilding local matrices every frame.
     this.group.traverse((object) => {
@@ -59,10 +61,23 @@ export class Arena {
     this.group.updateMatrixWorld(true);
   }
 
+  createExteriorGround() {
+    // A large visual-only apron prevents the camera from revealing a black void
+    // when it moves behind the transparent arena walls.
+    const material = this.lowDetail
+      ? new THREE.MeshBasicMaterial({ color: 0x76957c })
+      : new THREE.MeshStandardMaterial({ color: 0x78967f, roughness: 1.0, metalness: 0.0 });
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(250, 320), material);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -0.055;
+    ground.userData.cameraOcclusionIgnore = true;
+    this.group.add(ground);
+  }
+
   createField() {
     const turfMat = this.lowDetail
-      ? new THREE.MeshBasicMaterial({ color: 0x1b7563 })
-      : new THREE.MeshStandardMaterial({ color: 0x196958, roughness: 0.9, metalness: 0.0 });
+      ? new THREE.MeshBasicMaterial({ color: 0x2b8767 })
+      : new THREE.MeshStandardMaterial({ color: 0x287f63, roughness: 0.9, metalness: 0.0 });
     const turf = new THREE.Mesh(
       roundedRectGeometry(FIELD_W, FIELD_L, CORNER_R, this.lowDetail ? 4 : 10),
       turfMat
@@ -263,8 +278,8 @@ export class Arena {
     const rampPanels = panels.filter((panel) => panel.ramp !== false);
     const geometry = new THREE.BoxGeometry(1, 1, 1);
     const material = this.lowDetail
-      ? new THREE.MeshBasicMaterial({ color: 0x174b50 })
-      : new THREE.MeshStandardMaterial({ color: 0x1c5357, roughness: 0.78, metalness: 0.08 });
+      ? new THREE.MeshBasicMaterial({ color: 0x356b68 })
+      : new THREE.MeshStandardMaterial({ color: 0x3a706c, roughness: 0.78, metalness: 0.08 });
     const ramps = new THREE.InstancedMesh(geometry, material, rampPanels.length * RAMP_SEGMENTS);
     const matrix = new THREE.Matrix4();
     const basis = new THREE.Matrix4();
@@ -630,41 +645,213 @@ export class Arena {
   }
 
   createStands() {
-    const standMat = new THREE.MeshStandardMaterial({ color: 0x091724, roughness: 0.9, metalness: 0.02 });
-    const outerW = FIELD_W + 30;
-    const outerL = FIELD_L + 30;
-    const pieces = [
-      [0, 5.0, outerL / 2, outerW, 9.5, 4.0],
-      [0, 5.0, -outerL / 2, outerW, 9.5, 4.0],
-      [outerW / 2, 5.0, 0, 4.0, 9.5, outerL - 8],
-      [-outerW / 2, 5.0, 0, 4.0, 9.5, outerL - 8]
-    ];
-    for (const [x, y, z, w, h, d] of pieces) this.addBoxVisual(x, y, z, w, h, d, standMat);
+    const concreteMat = this.lowDetail
+      ? new THREE.MeshBasicMaterial({ color: 0x748795 })
+      : new THREE.MeshStandardMaterial({ color: 0x788b98, roughness: 0.93, metalness: 0.02 });
+    const darkMat = this.lowDetail
+      ? new THREE.MeshBasicMaterial({ color: 0x405866 })
+      : new THREE.MeshStandardMaterial({ color: 0x465d69, roughness: 0.88, metalness: 0.04 });
 
-    const accentMat = new THREE.MeshBasicMaterial({ color: 0xff7a18 });
-    const accentGeo = new THREE.BoxGeometry(7, 0.28, 0.28);
-    const accents = new THREE.InstancedMesh(accentGeo, accentMat, 9);
+    // Tiered stand blocks are one instanced draw call instead of many meshes.
+    const blockGeometry = new THREE.BoxGeometry(1, 1, 1);
+    const tierMatrices = [];
     const dummy = new THREE.Object3D();
-    for (let index = 0; index < 9; index++) {
-      dummy.position.set((index - 4) * 12.0, 8.0, FIELD_L / 2 + 15.0);
-      dummy.updateMatrix();
-      accents.setMatrixAt(index, dummy.matrix);
+    for (const sign of [-1, 1]) {
+      for (let tier = 0; tier < 3; tier++) {
+        dummy.position.set(0, 1.75 + tier * 1.65, sign * (FIELD_L * 0.5 + 8.5 + tier * 3.0));
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(FIELD_W + 31 - tier * 2.0, 3.5 + tier * 0.55, 4.2);
+        dummy.updateMatrix();
+        tierMatrices.push(dummy.matrix.clone());
+      }
     }
-    accents.instanceMatrix.needsUpdate = true;
-    this.group.add(accents);
+    for (const sign of [-1, 1]) {
+      for (let tier = 0; tier < 3; tier++) {
+        dummy.position.set(sign * (FIELD_W * 0.5 + 8.5 + tier * 3.0), 1.75 + tier * 1.65, 0);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(4.2, 3.5 + tier * 0.55, FIELD_L + 14 - tier * 2.0);
+        dummy.updateMatrix();
+        tierMatrices.push(dummy.matrix.clone());
+      }
+    }
+    const tiers = new THREE.InstancedMesh(blockGeometry, concreteMat, tierMatrices.length);
+    tierMatrices.forEach((matrix, index) => tiers.setMatrixAt(index, matrix));
+    tiers.instanceMatrix.needsUpdate = true;
+    this.group.add(tiers);
+
+    // Dark fascia underneath the first row gives the arena depth without lights.
+    const fascia = new THREE.InstancedMesh(blockGeometry, darkMat, 4);
+    const fasciaData = [
+      [0, 2.5, FIELD_L * 0.5 + 6.1, FIELD_W + 27, 5.0, 1.15],
+      [0, 2.5, -FIELD_L * 0.5 - 6.1, FIELD_W + 27, 5.0, 1.15],
+      [FIELD_W * 0.5 + 6.1, 2.5, 0, 1.15, 5.0, FIELD_L + 11],
+      [-FIELD_W * 0.5 - 6.1, 2.5, 0, 1.15, 5.0, FIELD_L + 11]
+    ];
+    fasciaData.forEach(([x, y, z, w, h, d], index) => {
+      dummy.position.set(x, y, z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(w, h, d);
+      dummy.updateMatrix();
+      fascia.setMatrixAt(index, dummy.matrix);
+    });
+    fascia.instanceMatrix.needsUpdate = true;
+    this.group.add(fascia);
+
+    this.createCrowd();
+    this.createStandBanners();
+  }
+
+  createCrowd() {
+    // Each block represents a small cluster of spectators. Hundreds of visible
+    // "people" still cost a single draw call thanks to InstancedMesh.
+    const positions = [];
+    const rowCount = this.lowDetail ? 1 : 2;
+    const longStep = this.lowDetail ? 8.0 : 4.6;
+    const endStep = this.lowDetail ? 7.0 : 4.1;
+
+    for (const side of [-1, 1]) {
+      for (let row = 0; row < rowCount; row++) {
+        for (let z = -FIELD_L * 0.5 + 4; z <= FIELD_L * 0.5 - 4; z += longStep) {
+          positions.push([side * (FIELD_W * 0.5 + 7.3 + row * 2.2), 4.1 + row * 1.65, z, Math.PI / 2]);
+        }
+        for (let x = -FIELD_W * 0.5 + 4; x <= FIELD_W * 0.5 - 4; x += endStep) {
+          positions.push([x, 4.1 + row * 1.65, side * (FIELD_L * 0.5 + 7.3 + row * 2.2), 0]);
+        }
+      }
+    }
+
+    const crowdGeometry = new THREE.BoxGeometry(0.82, 0.68, 0.72);
+    const crowdMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const crowd = new THREE.InstancedMesh(crowdGeometry, crowdMaterial, positions.length);
+    const dummy = new THREE.Object3D();
+    const palette = [
+      new THREE.Color(0xff8a3c), new THREE.Color(0x3f91e8), new THREE.Color(0xf0d066),
+      new THREE.Color(0xe7edf2), new THREE.Color(0x365767), new THREE.Color(0x6fc58c)
+    ];
+    positions.forEach(([x, y, z, yaw], index) => {
+      const wobble = Math.sin(index * 12.9898) * 0.16;
+      dummy.position.set(x, y + wobble, z);
+      dummy.rotation.set(0, yaw, 0);
+      dummy.scale.set(1, 0.86 + Math.abs(wobble), 1);
+      dummy.updateMatrix();
+      crowd.setMatrixAt(index, dummy.matrix);
+      crowd.setColorAt(index, palette[index % palette.length]);
+    });
+    crowd.instanceMatrix.needsUpdate = true;
+    if (crowd.instanceColor) crowd.instanceColor.needsUpdate = true;
+    this.group.add(crowd);
+  }
+
+  createStandBanners() {
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const banners = [];
+    const spacing = this.lowDetail ? 22 : 13;
+    for (let x = -FIELD_W * 0.5; x <= FIELD_W * 0.5; x += spacing) {
+      banners.push([x, 7.9, FIELD_L * 0.5 + 5.45, 5.2, 1.0, 0.15, 0]);
+      banners.push([x, 7.9, -FIELD_L * 0.5 - 5.45, 5.2, 1.0, 0.15, 0]);
+    }
+    for (let z = -FIELD_L * 0.5 + 10; z <= FIELD_L * 0.5 - 10; z += spacing) {
+      banners.push([FIELD_W * 0.5 + 5.45, 7.9, z, 0.15, 1.0, 5.2, Math.PI / 2]);
+      banners.push([-FIELD_W * 0.5 - 5.45, 7.9, z, 0.15, 1.0, 5.2, Math.PI / 2]);
+    }
+
+    const mesh = new THREE.InstancedMesh(geometry, material, banners.length);
+    const dummy = new THREE.Object3D();
+    const orange = new THREE.Color(0xff7a18);
+    const blue = new THREE.Color(0x238cff);
+    banners.forEach(([x, y, z, w, h, d, yaw], index) => {
+      dummy.position.set(x, y, z);
+      dummy.rotation.set(0, yaw, 0);
+      dummy.scale.set(w, h, d);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(index, dummy.matrix);
+      mesh.setColorAt(index, index % 2 === 0 ? orange : blue);
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    this.group.add(mesh);
+  }
+
+  createExteriorDecoration() {
+    this.createTrees();
+    if (!this.lowDetail) this.createSkyline();
+  }
+
+  createTrees() {
+    const count = this.lowDetail ? 14 : 28;
+    const trunkGeometry = new THREE.CylinderGeometry(0.28, 0.38, 3.0, 5);
+    const crownGeometry = new THREE.ConeGeometry(2.2, 5.4, 6);
+    const trunkMaterial = new THREE.MeshBasicMaterial({ color: 0x6f5439 });
+    const crownMaterial = new THREE.MeshBasicMaterial({ color: 0x3e7851 });
+    const trunks = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, count);
+    const crowns = new THREE.InstancedMesh(crownGeometry, crownMaterial, count);
+    const dummy = new THREE.Object3D();
+    for (let index = 0; index < count; index++) {
+      const angle = (index / count) * Math.PI * 2 + 0.14;
+      const wave = Math.sin(index * 2.37) * 3.5;
+      const x = Math.sin(angle) * (FIELD_W * 0.5 + 27 + wave);
+      const z = Math.cos(angle) * (FIELD_L * 0.5 + 27 + wave * 1.5);
+      const scale = 0.78 + (index % 5) * 0.07;
+      dummy.position.set(x, 1.5 * scale, z);
+      dummy.rotation.set(0, angle, 0);
+      dummy.scale.set(scale, scale, scale);
+      dummy.updateMatrix();
+      trunks.setMatrixAt(index, dummy.matrix);
+
+      dummy.position.set(x, 5.1 * scale, z);
+      dummy.rotation.set(0, angle, 0);
+      dummy.scale.set(scale, scale, scale);
+      dummy.updateMatrix();
+      crowns.setMatrixAt(index, dummy.matrix);
+    }
+    trunks.instanceMatrix.needsUpdate = true;
+    crowns.instanceMatrix.needsUpdate = true;
+    this.group.add(trunks, crowns);
+  }
+
+  createSkyline() {
+    const count = 24;
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const material = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: true });
+    const buildings = new THREE.InstancedMesh(geometry, material, count);
+    const dummy = new THREE.Object3D();
+    const colors = [
+      new THREE.Color(0x8ba1ac), new THREE.Color(0x718c9b), new THREE.Color(0xa0adb0),
+      new THREE.Color(0x6f8790)
+    ];
+    for (let index = 0; index < count; index++) {
+      const angle = (index / count) * Math.PI * 2 + 0.05;
+      const radiusX = FIELD_W * 0.5 + 62 + (index % 3) * 5;
+      const radiusZ = FIELD_L * 0.5 + 62 + (index % 4) * 4;
+      const height = 10 + (index % 7) * 2.8;
+      const width = 6 + (index % 4) * 1.7;
+      const depth = 6 + ((index + 2) % 4) * 1.5;
+      dummy.position.set(Math.sin(angle) * radiusX, height * 0.5 - 0.05, Math.cos(angle) * radiusZ);
+      dummy.rotation.set(0, -angle * 0.32, 0);
+      dummy.scale.set(width, height, depth);
+      dummy.updateMatrix();
+      buildings.setMatrixAt(index, dummy.matrix);
+      buildings.setColorAt(index, colors[index % colors.length]);
+    }
+    buildings.instanceMatrix.needsUpdate = true;
+    if (buildings.instanceColor) buildings.instanceColor.needsUpdate = true;
+    this.group.add(buildings);
   }
 
   createLights() {
-    const hemi = new THREE.HemisphereLight(0x9bdfff, 0x152431, 2.15);
+    // Daylight without shadows: three tiny light objects, no shadow-map pass.
+    const hemi = new THREE.HemisphereLight(0xd6efff, 0x5e765c, this.lowDetail ? 1.85 : 2.15);
     this.scene.add(hemi);
 
-    const sun = new THREE.DirectionalLight(0xffffff, 2.55);
-    sun.position.set(30, 48, 22);
+    const sun = new THREE.DirectionalLight(0xfff2d0, this.lowDetail ? 1.65 : 2.35);
+    sun.position.set(-34, 62, -28);
     sun.castShadow = false;
     this.scene.add(sun);
 
-    const rim = new THREE.DirectionalLight(0x2cbcff, 0.7);
-    rim.position.set(-28, 16, -35);
-    this.scene.add(rim);
+    const fill = new THREE.DirectionalLight(0xaedcff, this.lowDetail ? 0.34 : 0.52);
+    fill.position.set(32, 24, 38);
+    fill.castShadow = false;
+    this.scene.add(fill);
   }
 }

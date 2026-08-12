@@ -15,7 +15,9 @@ export function getPerformanceProfile(networked) {
     predictionHz: ultra ? 60 : 120,
     hudHz: ultra ? 6 : 15,
     useFog: !ultra,
-    useSky: !ultra,
+    // The daylight dome is a single low-poly unlit draw call and stays enabled
+    // even in ULTRA so the arena never falls back to a black void.
+    useSky: true,
     useToneMapping: !ultra
   };
 }

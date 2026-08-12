@@ -52,8 +52,11 @@ export class Game {
     this.renderPixelRatio = Math.min(window.devicePixelRatio || 1, this.profile.initialPixelRatio);
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x07111f);
-    this.scene.fog = this.profile.useFog ? new THREE.Fog(0x07111f, 125, 295) : null;
+    // Bright daylight is intentionally cheap: a flat background + light fog do
+    // most of the work, while the sky dome below is a single unlit draw call.
+    const daylightSky = 0x9fd3ed;
+    this.scene.background = new THREE.Color(daylightSky);
+    this.scene.fog = this.profile.useFog ? new THREE.Fog(0xb8d7e3, 150, 345) : null;
 
     this.camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, this.profile.ultra ? 230 : 390);
     this.camera.position.set(0, 5, 10);
@@ -73,7 +76,7 @@ export class Game {
     this.renderer.sortObjects = !this.profile.ultra;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = this.profile.useToneMapping ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
-    this.renderer.toneMappingExposure = 1.02;
+    this.renderer.toneMappingExposure = 1.08;
     this.root.appendChild(this.renderer.domElement);
     this.root.classList.toggle('perf-ultra', this.profile.ultra);
 
@@ -210,20 +213,93 @@ export class Game {
   }
 
   addSkyDecoration() {
-    const dome = new THREE.Mesh(
-      new THREE.SphereGeometry(220, 20, 10),
-      new THREE.MeshBasicMaterial({ color: 0x0b2038, side: THREE.BackSide, fog: false })
+    // One very low-poly vertex-coloured dome gives us a daylight gradient with
+    // no texture lookup, post processing, shadow map, or dynamic update cost.
+    const radius = 260;
+    const domeGeometry = new THREE.SphereGeometry(
+      radius,
+      this.profile.lowDetail ? 16 : 24,
+      this.profile.lowDetail ? 8 : 12
     );
-    dome.position.y = 26;
+    const positions = domeGeometry.getAttribute('position');
+    const colors = new Float32Array(positions.count * 3);
+    const horizon = new THREE.Color(0xdce8e3);
+    const midSky = new THREE.Color(0x92cae8);
+    const zenith = new THREE.Color(0x5eafe0);
+    const color = new THREE.Color();
+    for (let index = 0; index < positions.count; index++) {
+      const h = THREE.MathUtils.clamp(positions.getY(index) / radius, -1, 1);
+      if (h < 0.18) {
+        color.copy(horizon).lerp(midSky, THREE.MathUtils.clamp((h + 0.18) / 0.36, 0, 1));
+      } else {
+        color.copy(midSky).lerp(zenith, THREE.MathUtils.clamp((h - 0.18) / 0.82, 0, 1));
+      }
+      colors[index * 3] = color.r;
+      colors[index * 3 + 1] = color.g;
+      colors[index * 3 + 2] = color.b;
+    }
+    domeGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+    const dome = new THREE.Mesh(
+      domeGeometry,
+      new THREE.MeshBasicMaterial({
+        vertexColors: true,
+        side: THREE.BackSide,
+        fog: false,
+        depthWrite: false
+      })
+    );
+    dome.position.y = 18;
+    dome.renderOrder = -10;
+    dome.userData.cameraOcclusionIgnore = true;
     this.scene.add(dome);
 
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(102, 0.16, 6, 64),
-      new THREE.MeshBasicMaterial({ color: 0x2bcaff, transparent: true, opacity: 0.28, fog: false })
-    );
-    ring.rotation.x = Math.PI / 2;
-    ring.position.y = 36;
-    this.scene.add(ring);
+    // Static sun sprite. No shadow casting: the directional light supplies the
+    // daylight cue without allocating a shadow texture.
+    const sun = new THREE.Sprite(new THREE.SpriteMaterial({
+      color: 0xfff1b0,
+      transparent: true,
+      opacity: 0.92,
+      depthWrite: false,
+      depthTest: true,
+      fog: false
+    }));
+    sun.position.set(-118, 104, -156);
+    sun.scale.set(24, 24, 1);
+    sun.userData.cameraOcclusionIgnore = true;
+    this.scene.add(sun);
+
+    // A handful of flattened, instanced cloud blobs break up the empty sky.
+    // Even in normal mode this remains one draw call.
+    const cloudGeometry = new THREE.SphereGeometry(1, this.profile.lowDetail ? 5 : 7, 4);
+    const cloudMaterial = new THREE.MeshBasicMaterial({
+      color: 0xf7fbff,
+      transparent: true,
+      opacity: this.profile.lowDetail ? 0.34 : 0.46,
+      depthWrite: false,
+      fog: false
+    });
+    const cloudGroups = this.profile.lowDetail ? 6 : 11;
+    const blobsPerCloud = 3;
+    const clouds = new THREE.InstancedMesh(cloudGeometry, cloudMaterial, cloudGroups * blobsPerCloud);
+    const dummy = new THREE.Object3D();
+    let instance = 0;
+    for (let group = 0; group < cloudGroups; group++) {
+      const angle = -2.65 + group * (5.3 / Math.max(1, cloudGroups - 1));
+      const baseX = Math.sin(angle) * 150;
+      const baseZ = Math.cos(angle) * 185;
+      const baseY = 44 + (group % 3) * 7;
+      for (let blob = 0; blob < blobsPerCloud; blob++) {
+        dummy.position.set(baseX + (blob - 1) * 5.2, baseY + (blob === 1 ? 1.4 : 0), baseZ);
+        dummy.rotation.set(0, angle * 0.4, 0);
+        dummy.scale.set(8.5 - blob * 0.8, 1.8 + (blob === 1 ? 0.5 : 0), 3.6 + blob * 0.5);
+        dummy.updateMatrix();
+        clouds.setMatrixAt(instance++, dummy.matrix);
+      }
+    }
+    clouds.instanceMatrix.needsUpdate = true;
+    clouds.userData.cameraOcclusionIgnore = true;
+    this.scene.add(clouds);
   }
 
   start() {
