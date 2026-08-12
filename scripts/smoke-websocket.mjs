@@ -1,5 +1,5 @@
 const target = process.env.GAME_WS_URL || 'ws://localhost:8080/lan';
-const expectedStateBytes = 271;
+const expectedStateBytes = 283;
 const timeoutMs = 5000;
 
 const socket = new WebSocket(target);

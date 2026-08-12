@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ARENA_TUNING } from '../shared/arena-tuning.js';
+import { BOOST_PADS } from '../shared/boost-tuning.js';
 
 const FIELD_W = ARENA_TUNING.width;
 const FIELD_L = ARENA_TUNING.length;
@@ -125,6 +126,175 @@ export class Arena {
     this.group.add(ground);
   }
 
+  drawFieldSurfaceGraphics(ctx, canvas, highDetail = false) {
+    const width = canvas.width;
+    const height = canvas.height;
+    const scaleX = width / FIELD_W;
+    const scaleZ = height / FIELD_L;
+    const lineScale = (scaleX + scaleZ) * 0.5;
+    const worldPoint = (x, z) => ({
+      x: (x / FIELD_W + 0.5) * width,
+      y: (z / FIELD_L + 0.5) * height
+    });
+    const drawPath = (points, color, widthWorld, alpha = 1, dash = []) => {
+      if (!points?.length) return;
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = alpha;
+      ctx.lineWidth = Math.max(1, widthWorld * lineScale);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.setLineDash(dash.map((value) => value * lineScale));
+      ctx.beginPath();
+      const first = worldPoint(points[0][0], points[0][1]);
+      ctx.moveTo(first.x, first.y);
+      for (let index = 1; index < points.length; index++) {
+        const point = worldPoint(points[index][0], points[index][1]);
+        ctx.lineTo(point.x, point.y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    };
+    const drawWorldArc = (centerX, centerZ, radiusX, radiusZ, start, end, color, widthWorld, alpha = 1, dash = []) => {
+      const center = worldPoint(centerX, centerZ);
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = alpha;
+      ctx.lineWidth = Math.max(1, widthWorld * lineScale);
+      ctx.lineCap = 'round';
+      ctx.setLineDash(dash.map((value) => value * lineScale));
+      ctx.beginPath();
+      ctx.ellipse(center.x, center.y, radiusX * scaleX, radiusZ * scaleZ, 0, start, end);
+      ctx.stroke();
+      ctx.restore();
+    };
+    const fillWorldPolygon = (points, color, alpha = 1) => {
+      if (!points?.length) return;
+      ctx.save();
+      ctx.fillStyle = color;
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      const first = worldPoint(points[0][0], points[0][1]);
+      ctx.moveTo(first.x, first.y);
+      for (let index = 1; index < points.length; index++) {
+        const point = worldPoint(points[index][0], points[index][1]);
+        ctx.lineTo(point.x, point.y);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    };
+
+    const blue = '#1687ff';
+    const blueSoft = '#39a5ff';
+    const orange = '#ff6a12';
+    const orangeSoft = '#ff9a3d';
+    const ink = '#081d1a';
+    const white = '#edf8ef';
+
+    // Broad, low-cost team geometry is baked straight into the turf texture.
+    // The shapes make each half readable from the chase camera without adding
+    // meshes, lights or post-processing passes.
+    fillWorldPolygon([[-52, -76], [-34, -76], [-12, -8], [-26, -8]], blue, 0.11);
+    fillWorldPolygon([[52, -76], [34, -76], [12, -8], [26, -8]], blue, 0.11);
+    fillWorldPolygon([[-52, 76], [-34, 76], [-12, 8], [-26, 8]], orange, 0.11);
+    fillWorldPolygon([[52, 76], [34, 76], [12, 8], [26, 8]], orange, 0.11);
+
+    // Dark technical insets around both goal approaches, followed by the
+    // coloured semicircle/crease seen in arena-style Soccar fields.
+    for (const sign of [-1, 1]) {
+      const color = sign < 0 ? blue : orange;
+      const soft = sign < 0 ? blueSoft : orangeSoft;
+      const goalZ = sign * (FIELD_L * 0.5 - 0.25);
+      const fieldDirection = -sign;
+      const arcStart = sign < 0 ? 0 : Math.PI;
+      const arcEnd = sign < 0 ? Math.PI : Math.PI * 2;
+
+      fillWorldPolygon([
+        [-19.5, sign * 78.5], [19.5, sign * 78.5],
+        [25.0, sign * 62.0], [16.5, sign * 56.5],
+        [-16.5, sign * 56.5], [-25.0, sign * 62.0]
+      ], ink, highDetail ? 0.34 : 0.29);
+
+      drawWorldArc(0, goalZ, 23.5, 21.0, arcStart, arcEnd, ink, 2.15, 0.64);
+      drawWorldArc(0, goalZ, 23.5, 21.0, arcStart, arcEnd, color, 0.80, 0.92);
+      drawWorldArc(0, goalZ, 18.4, 16.2, arcStart, arcEnd, soft, 0.20, 0.72, [1.1, 0.85]);
+
+      // Goal-lane rails and shoulder traces.
+      drawPath([[-16.8, sign * 77], [-16.8, sign * 67], [-24, sign * 58], [-24, sign * 37]], ink, 1.25, 0.58);
+      drawPath([[16.8, sign * 77], [16.8, sign * 67], [24, sign * 58], [24, sign * 37]], ink, 1.25, 0.58);
+      drawPath([[-16.8, sign * 77], [-16.8, sign * 67], [-24, sign * 58], [-24, sign * 37]], color, 0.34, 0.74);
+      drawPath([[16.8, sign * 77], [16.8, sign * 67], [24, sign * 58], [24, sign * 37]], color, 0.34, 0.74);
+
+      // Centre boost lane and two diagonal rotation lanes.
+      const routes = [
+        [[0, sign * 72], [0, sign * 68], [0, sign * 46], [0, sign * 17], [0, 0]],
+        [[-42, sign * 66], [-24, sign * 68], [-13, sign * 53], [-24, sign * 37], [-28, sign * 17], [-14, 0]],
+        [[42, sign * 66], [24, sign * 68], [13, sign * 53], [24, sign * 37], [28, sign * 17], [14, 0]],
+        [[-42, sign * 66], [-48, sign * 40], [-49, 0]],
+        [[42, sign * 66], [48, sign * 40], [49, 0]],
+        [[-24, sign * 37], [0, sign * 46], [24, sign * 37]],
+        [[-28, sign * 17], [0, sign * 17], [28, sign * 17]],
+        [[-24, sign * 68], [0, sign * 68], [24, sign * 68]]
+      ];
+      for (const route of routes) {
+        drawPath(route, ink, 0.90, 0.43);
+        drawPath(route, color, highDetail ? 0.24 : 0.20, highDetail ? 0.48 : 0.41);
+      }
+
+      // Small arrow chevrons keep the long side lanes visually active without
+      // any animated geometry. They point from each goal toward midfield.
+      for (const side of [-1, 1]) {
+        for (let row = 0; row < 4; row++) {
+          const z = sign * (60 - row * 10);
+          const x = side * (39 - row * 1.2);
+          const tipZ = z + fieldDirection * 2.2;
+          drawPath([[x - side * 2.5, z], [x, tipZ], [x + side * 2.5, z]], color, 0.40, 0.34);
+        }
+      }
+    }
+
+    // Midfield technical rings. The white gameplay circle mesh stays on top;
+    // these are subtle coloured underlays, like illuminated circuit markings.
+    drawWorldArc(0, 0, 16.8, 16.8, 0, Math.PI, orange, 0.36, 0.32, [1.0, 0.8]);
+    drawWorldArc(0, 0, 16.8, 16.8, Math.PI, Math.PI * 2, blue, 0.36, 0.32, [1.0, 0.8]);
+    drawWorldArc(0, 0, 25.0, 25.0, 0, Math.PI * 2, white, 0.16, 0.18, [1.4, 1.2]);
+
+    // Every boost location gets a permanent floor locator. Full pads have a
+    // large double halo, small pads a compact ring, so the 100/12 layout reads
+    // immediately even when a pickup is temporarily respawning.
+    for (const pad of BOOST_PADS) {
+      const point = worldPoint(pad.x, pad.z);
+      const large = pad.kind === 'large';
+      const radiusWorld = large ? 3.25 : 1.65;
+      const radiusX = radiusWorld * scaleX;
+      const radiusZ = radiusWorld * scaleZ;
+      ctx.save();
+      ctx.translate(point.x, point.y);
+      ctx.strokeStyle = large ? '#ffd83d' : '#ffcf4a';
+      ctx.globalAlpha = large ? 0.72 : 0.46;
+      ctx.lineWidth = Math.max(1.2, (large ? 0.34 : 0.22) * lineScale);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, radiusX, radiusZ, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      if (large) {
+        ctx.globalAlpha = 0.24;
+        ctx.lineWidth = Math.max(1, 0.18 * lineScale);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, radiusX * 1.34, radiusZ * 1.34, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // Crisp coloured half markers immediately inside the side walls. These are
+    // deliberately broad enough to be visible from a low chase-camera angle.
+    drawPath([[-51.2, -52], [-51.2, -8]], blue, 0.75, 0.58);
+    drawPath([[51.2, -52], [51.2, -8]], blue, 0.75, 0.58);
+    drawPath([[-51.2, 8], [-51.2, 52]], orange, 0.75, 0.58);
+    drawPath([[51.2, 8], [51.2, 52]], orange, 0.75, 0.58);
+  }
+
   createTurfTexture(highDetail = false) {
     const canvas = document.createElement('canvas');
     canvas.width = highDetail ? 1024 : 512;
@@ -225,6 +395,8 @@ export class Arena {
       ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.fill();
     }
+
+    this.drawFieldSurfaceGraphics(ctx, canvas, highDetail);
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
@@ -566,6 +738,32 @@ export class Arena {
           // wider than their origin, so use a generous margin around markings.
           const centreRadius = Math.hypot(x, z);
           if (Math.abs(z) < 0.30 || centreRadius < 0.62 || (centreRadius > 10.15 && centreRadius < 10.92)) continue;
+
+          // Keep the baked boost locators and the coloured goal arcs readable.
+          // The turf itself remains continuous underneath; only the tall 3D
+          // cards are omitted in these small marking zones.
+          let blocksMarking = false;
+          for (const pad of BOOST_PADS) {
+            const clearRadius = pad.kind === 'large' ? 3.55 : 2.05;
+            const dx = x - pad.x;
+            const dz = z - pad.z;
+            if (dx * dx + dz * dz < clearRadius * clearRadius) {
+              blocksMarking = true;
+              break;
+            }
+          }
+          if (blocksMarking) continue;
+          for (const sign of [-1, 1]) {
+            const goalZ = sign * (FIELD_L * 0.5 - 0.25);
+            const onFieldSide = sign < 0 ? z > goalZ : z < goalZ;
+            if (!onFieldSide) continue;
+            const arcDistance = Math.hypot(x / 23.5, (z - goalZ) / 21.0);
+            if (Math.abs(arcDistance - 1) < 0.055) {
+              blocksMarking = true;
+              break;
+            }
+          }
+          if (blocksMarking) continue;
 
           const scale = 0.82 + random() * 0.35;
           dummy.position.set(x, 0.006, z);

@@ -1,4 +1,4 @@
-# Rocket Vibe 1.10.8 – Go Multiplayer / Railway
+# Rocket Vibe 1.10.9 – Boost Layout / Active Field Visuals
 
 Browser-Spiel fuer bis zu vier Spieler mit Three.js-Rendering, lokaler Client-Prediction und einem autoritativen Go-Server. Frontend und Server werden auf Railway als **ein Service** betrieben. Dadurch verwendet der Browser dieselbe HTTPS-Domain fuer Seite und WebSocket (`/lan`); eine separate Backend-URL oder CORS-Konfiguration ist nicht erforderlich.
 
@@ -7,7 +7,7 @@ Browser-Spiel fuer bis zu vier Spieler mit Three.js-Rendering, lokaler Client-Pr
 - Der Browser sendet nur Eingaben, niemals vertrauenswuerdige Positionen.
 - Go simuliert Autos, Ball, Schwerkraft und Kollisionen mit 120 Hz.
 - Go sendet 60 binaere Snapshots pro Sekunde.
-- Ein Snapshot fuer vier Autos, Ball, Spielstand, Booststaende und Boost-Pad-Maske ist 277 Byte gross.
+- Ein Snapshot fuer vier Autos, Ball, Spielstand, Booststaende und Boost-Pad-Maske ist 283 Byte gross.
 - Der eigene Browser sagt die lokale Bewegung voraus und korrigiert sanft zum Serverzustand.
 - Andere Autos und der Ball werden zwischen Snapshots extrapoliert und geglaettet.
 - Online wird im Browser kein Rapier/WASM geladen; das spart CPU und RAM auf schwachen Geraeten.
@@ -19,13 +19,20 @@ Beim Start werden Spielername und eine von vier rein optischen, Rocket-League-in
 
 Die Serverphysik rechnet intern mit `float64`. Fuer das Netzwerk werden Position, Quaternion, lineare und Winkelgeschwindigkeit als `float32` uebertragen. Bei vier Spielern sind das grob 16 KB/s je Client bzw. rund 64 KB/s Server-Ausgang plus WebSocket-Overhead.
 
+
+## Feld- und Boost-Layout
+
+Das Feld verwendet jetzt 34 Boost-Pads nach dem Soccar-Referenzlayout: sechs grosse 100er-Pads (vier tiefe Eckpads plus zwei an der Mittellinie nahe der Seitenwand) und 28 kleine +12-Pads. Die Pad-Maske im binaeren Snapshot wurde deshalb von 16 auf 64 Bit erweitert; die Browserseite liest weiterhin auch die vorherigen 16-Pad- und Legacy-Snapshots.
+
+Die Turf-Textur enthaelt statisch gebackene Blau-/Orange-Teamzonen, farbige Tor-Halbkreise, Center-Ringe, Rotations-/Boost-Linien, Seiten-Chevrons und permanente Locator-Ringe unter allen Boost-Pads. Diese Details verursachen keine zusaetzlichen Licht- oder Post-Processing-Paesse. Ultra High laesst im Bereich der Pad-Locators und Torboegen bewusst weniger 3D-Gras wachsen, damit die Markierungen aus der Chase-Cam lesbar bleiben.
+
 ## Serverseitige Physik
 
 Der Go-Server ist die einzige Online-Autoritaet und verarbeitet:
 
 - Rocket-League-artige Bodenbeschleunigung, Bremsen, Grip, Lenkung und verbrauchbaren Boost
 - Fahrtempo ca. 70 km/h normal und maximal 120 km/h mit Boost; einmal aufgebaute Boost-Geschwindigkeit oberhalb 70 km/h bleibt ohne automatisches Zurueckbremsen erhalten, bis gebremst oder anderweitig Tempo verloren wird
-- Vier grosse 100-%-Boostpads in den Ecken sowie zwoelf kleine +20-%-Pads mit 10/4 Sekunden Respawn
+- Sechs grosse 100-%-Boostpads und 28 kleine +12-%-Pads im Soccar-artigen Rotationslayout mit 10/4 Sekunden Respawn
 - Variabler Sprung durch gehaltenes Space, neutraler Doppelsprung und gerichtete Dodge/Flips mit exakt einer kontrollierten 360-Grad-Rotation
 - Pitch/Yaw/Roll in der Luft mit begrenzter, kontrollierbarer Winkelgeschwindigkeit
 - Surface-Adhesion: Rampen und senkrechte Waende halten das Auto bis zum aktiven Absprung
@@ -222,12 +229,3 @@ Nach jedem Tor startet serverweit eine Wiederholung aus der Ball-Cam-Perspektive
 Während der Wiederholung steht das Live-Match serverseitig still. Jeder Spieler, der beim Tor bereits in der Lobby war, bekommt einen `REPLAY ÜBERSPRINGEN`-Button. Der Server zählt jeden Skip genau einmal und beendet die Wiederholung sofort, sobald alle Replay-Teilnehmer geskippt haben. Verlässt jemand die Lobby, wird die notwendige Stimmenzahl entsprechend reduziert. Spieler, die erst während eines laufenden Replays beitreten, warten auf den nächsten Kickoff und blockieren die Abstimmung nicht.
 
 Nach Replay-Ende werden Ball, Autos und Boost-Pads auf Kickoff zurückgesetzt, der aktuelle Spielstand bleibt bestehen und der bekannte 3-Sekunden-Countdown startet. Falls während des Replays durch einen Join gerade ein neues faires 1v1/2v2 entstanden ist, greift weiterhin die bestehende Regel und der Match-Spielstand wird für dieses neue Duell zurückgesetzt.
-
-
-## Goal Explosion + 120 km/h Boost v1.10.8
-
-- Eigener Nametag wird fuer den lokalen Spieler ausgeblendet; sichtbar bleiben nur die Namen anderer Spieler.
-- Normales Tempolimit bleibt 70 km/h, Boost-Hard-Cap steigt auf 120 km/h und behaelt weiterhin aufgebautes Boost-Momentum bis zum Bremsen/Kollisionsverlust.
-- Normal und Ultra High zeigen nach jedem Tor eine leichte, instanzierte Goal Explosion; Ultra Low laesst den Effekt zugunsten maximaler Performance weg.
-- Der Server gibt allen verbundenen Autos nach einem Tor einen radialen Knockback mit vertikalem Lift und Tumble. Die kurze Celebration wird live synchronisiert und erst danach startet das vorhandene Scorer-POV-Replay.
-- Blau/Orange-LEDs an den Arena-Waenden sind groesser, mehrreihig und markieren beide Spielfeldhaelften deutlich, bleiben aber reine Instanced-Meshes ohne echte Zusatzlichter.

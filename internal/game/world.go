@@ -23,7 +23,7 @@ const (
 	TeamOrange = "orange"
 	TeamBlue   = "blue"
 
-	BoostPadCount = 16
+	BoostPadCount = 34
 )
 
 type Input struct {
@@ -89,7 +89,7 @@ type Snapshot struct {
 	OrangeScore   uint16                  `json:"orangeScore"`
 	BlueScore     uint16                  `json:"blueScore"`
 	Boost         [MaxPlayers]uint8       `json:"boost"`
-	BoostPadMask  uint16                  `json:"boostPadMask"`
+	BoostPadMask  uint64                  `json:"boostPadMask"`
 	Cars          [MaxPlayers]EntityState `json:"cars"`
 	Ball          EntityState             `json:"ball"`
 }
@@ -135,22 +135,43 @@ var playerSpawns = [MaxPlayers]struct {
 }
 
 var boostPadSpecs = [BoostPadCount]BoostPad{
-	{Position: Vec3{X: -43, Z: -68}, Amount: 100, Radius: 2.8, RespawnSeconds: 10, Full: true},
-	{Position: Vec3{X: 43, Z: -68}, Amount: 100, Radius: 2.8, RespawnSeconds: 10, Full: true},
-	{Position: Vec3{X: -43, Z: 68}, Amount: 100, Radius: 2.8, RespawnSeconds: 10, Full: true},
-	{Position: Vec3{X: 43, Z: 68}, Amount: 100, Radius: 2.8, RespawnSeconds: 10, Full: true},
-	{Position: Vec3{X: -28, Z: -45}, Amount: 20, Radius: 1.65, RespawnSeconds: 4},
-	{Position: Vec3{X: 0, Z: -52}, Amount: 20, Radius: 1.65, RespawnSeconds: 4},
-	{Position: Vec3{X: 28, Z: -45}, Amount: 20, Radius: 1.65, RespawnSeconds: 4},
-	{Position: Vec3{X: -24, Z: -20}, Amount: 20, Radius: 1.65, RespawnSeconds: 4},
-	{Position: Vec3{X: 0, Z: -26}, Amount: 20, Radius: 1.65, RespawnSeconds: 4},
-	{Position: Vec3{X: 24, Z: -20}, Amount: 20, Radius: 1.65, RespawnSeconds: 4},
-	{Position: Vec3{X: -24, Z: 20}, Amount: 20, Radius: 1.65, RespawnSeconds: 4},
-	{Position: Vec3{X: 0, Z: 26}, Amount: 20, Radius: 1.65, RespawnSeconds: 4},
-	{Position: Vec3{X: 24, Z: 20}, Amount: 20, Radius: 1.65, RespawnSeconds: 4},
-	{Position: Vec3{X: -28, Z: 45}, Amount: 20, Radius: 1.65, RespawnSeconds: 4},
-	{Position: Vec3{X: 0, Z: 52}, Amount: 20, Radius: 1.65, RespawnSeconds: 4},
-	{Position: Vec3{X: 28, Z: 45}, Amount: 20, Radius: 1.65, RespawnSeconds: 4},
+	// Full boost pads (100): four deep corners plus the two midfield wall pads.
+	{Position: Vec3{X: -42, Z: -66}, Amount: 100, Radius: 2.8, RespawnSeconds: 10, Full: true},
+	{Position: Vec3{X: 42, Z: -66}, Amount: 100, Radius: 2.8, RespawnSeconds: 10, Full: true},
+	{Position: Vec3{X: -49, Z: 0}, Amount: 100, Radius: 2.8, RespawnSeconds: 10, Full: true},
+	{Position: Vec3{X: 49, Z: 0}, Amount: 100, Radius: 2.8, RespawnSeconds: 10, Full: true},
+	{Position: Vec3{X: -42, Z: 66}, Amount: 100, Radius: 2.8, RespawnSeconds: 10, Full: true},
+	{Position: Vec3{X: 42, Z: 66}, Amount: 100, Radius: 2.8, RespawnSeconds: 10, Full: true},
+
+	// Small boost pads (12), matching the reference rotation lanes.
+	{Position: Vec3{X: 0, Z: -68}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: -24, Z: -68}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: 24, Z: -68}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: -13, Z: -53}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: 13, Z: -53}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: 0, Z: -46}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: -48, Z: -40}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: 48, Z: -40}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: -24, Z: -37}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: 24, Z: -37}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: -28, Z: -17}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: 0, Z: -17}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: 28, Z: -17}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: -14, Z: 0}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: 14, Z: 0}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: -28, Z: 17}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: 0, Z: 17}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: 28, Z: 17}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: -24, Z: 37}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: 24, Z: 37}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: -48, Z: 40}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: 48, Z: 40}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: 0, Z: 46}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: -13, Z: 53}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: 13, Z: 53}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: -24, Z: 68}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: 0, Z: 68}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	{Position: Vec3{X: 24, Z: 68}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
 }
 
 func NewWorld(config Config) *World {

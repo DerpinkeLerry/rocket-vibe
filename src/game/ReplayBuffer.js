@@ -1,3 +1,5 @@
+import { ALL_BOOST_PADS_MASK } from '../shared/boost-tuning.js';
+
 const clamp01 = (value) => Math.max(0, Math.min(1, Number(value) || 0));
 
 function copyEntity(entity = {}) {
@@ -16,7 +18,7 @@ export function cloneReplayState(state) {
     tick: Math.max(0, Number(state?.tick) || 0),
     orangeScore: Math.max(0, Number(state?.orangeScore) || 0),
     blueScore: Math.max(0, Number(state?.blueScore) || 0),
-    boostPadMask: Number.isFinite(Number(state?.boostPadMask)) ? Number(state.boostPadMask) : 0xffff,
+    boostPadMask: Number.isFinite(Number(state?.boostPadMask)) ? Number(state.boostPadMask) : ALL_BOOST_PADS_MASK,
     connected: Array.from(state?.connected ?? [0, 0, 0, 0], (value) => Number(value) ? 1 : 0),
     cars: Array.from({ length: 4 }, (_, index) => copyEntity(state?.cars?.[index])),
     ball: copyEntity(state?.ball)

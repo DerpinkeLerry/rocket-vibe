@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ALL_BOOST_PADS_MASK, BOOST_PADS } from '../shared/boost-tuning.js';
+import { ALL_BOOST_PADS_MASK, BOOST_PADS, isBoostPadActive, withBoostPadActive } from '../shared/boost-tuning.js';
 
 export class BoostPads {
   constructor(scene, options = {}) {
@@ -83,9 +83,9 @@ export class BoostPads {
 
   setActiveMask(mask) {
     if (!Number.isFinite(Number(mask))) return;
-    this.activeMask = Number(mask) & ALL_BOOST_PADS_MASK;
+    this.activeMask = Math.max(0, Math.min(ALL_BOOST_PADS_MASK, Math.floor(Number(mask))));
     for (const pad of this.pads) {
-      const active = Boolean(this.activeMask & (1 << pad.spec.id));
+      const active = isBoostPadActive(this.activeMask, pad.spec.id);
       if (pad.active === active) continue;
       pad.active = active;
       pad.respawnRemaining = 0;
@@ -102,7 +102,7 @@ export class BoostPads {
         pad.respawnRemaining = Math.max(0, pad.respawnRemaining - dt);
         if (pad.respawnRemaining <= 0) {
           pad.active = true;
-          this.activeMask |= 1 << pad.spec.id;
+          this.activeMask = withBoostPadActive(this.activeMask, pad.spec.id, true);
           this.applyVisualState(pad);
         }
         continue;
@@ -117,7 +117,7 @@ export class BoostPads {
       if (!collected) continue;
       pad.active = false;
       pad.respawnRemaining = pad.spec.respawn;
-      this.activeMask &= ~(1 << pad.spec.id);
+      this.activeMask = withBoostPadActive(this.activeMask, pad.spec.id, false);
       this.applyVisualState(pad);
     }
   }
@@ -129,9 +129,13 @@ export class BoostPads {
       const large = pad.spec.kind === 'large';
       pad.pickup.rotation.y += dt * (large ? 1.8 : 2.8);
       pad.pickup.rotation.x += dt * (large ? 0.7 : 1.1);
-      const pulse = 1 + Math.sin(this.elapsed * (large ? 3.0 : 4.8) + pad.spec.id) * (large ? 0.08 : 0.12);
+      const wave = Math.sin(this.elapsed * (large ? 3.0 : 4.8) + pad.spec.id);
+      const pulse = 1 + wave * (large ? 0.08 : 0.12);
       pad.pickup.scale.setScalar(pulse);
       pad.ring.rotation.z += dt * (large ? 0.55 : 0.85);
+      // A material-only pulse makes the 34-pad network feel alive without any
+      // extra meshes, lights or draw calls.
+      pad.ring.material.opacity = large ? 0.82 + wave * 0.10 : 0.72 + wave * 0.14;
     }
   }
 

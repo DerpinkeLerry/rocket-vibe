@@ -13,7 +13,7 @@ const (
 
 	entityFloatCount = 13
 	entityCount      = game.MaxPlayers + 1
-	stateHeaderBytes = 17
+	stateHeaderBytes = 23
 	StateBytes       = stateHeaderBytes + entityFloatCount*entityCount*4
 )
 
@@ -50,7 +50,7 @@ func EncodeState(snapshot game.Snapshot) []byte {
 	for index := range snapshot.Boost {
 		buffer[11+index] = snapshot.Boost[index]
 	}
-	binary.LittleEndian.PutUint16(buffer[15:17], snapshot.BoostPadMask)
+	binary.LittleEndian.PutUint64(buffer[15:23], snapshot.BoostPadMask)
 
 	offset := stateHeaderBytes
 	for index := range snapshot.Cars {

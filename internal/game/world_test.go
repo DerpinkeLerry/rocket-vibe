@@ -105,6 +105,12 @@ func TestBoostConsumesFromHundredToZero(t *testing.T) {
 	config := DefaultConfig()
 	world := NewWorld(config)
 	world.SetConnected(0, true)
+	// This test isolates consumption; the 34-pad reference layout now places
+	// rotation pads close enough to kickoff lanes that a moving car can collect
+	// one during the three-second run.
+	for index := range world.BoostPads {
+		world.BoostPads[index].Active = false
+	}
 	if !world.SetInput(0, Input{Sequence: 1, Mask: InputBoost}) {
 		t.Fatal("boost input was not accepted")
 	}
@@ -135,12 +141,12 @@ func TestSmallAndLargeBoostPadsCollectAndRespawn(t *testing.T) {
 	world.SetConnected(0, true)
 	car := &world.Cars[0]
 
-	// Small pad gives +20 and should disappear for four seconds.
+	// Small pad gives +12 and should disappear for four seconds.
 	car.Boost = 50
-	small := &world.BoostPads[4]
+	small := &world.BoostPads[6]
 	car.Position = Vec3{X: small.Position.X, Y: config.Car.HalfExtents.Y, Z: small.Position.Z}
 	world.collectBoostPads()
-	if math.Abs(car.Boost-70) > 1e-9 {
+	if math.Abs(car.Boost-62) > 1e-9 {
 		t.Fatalf("small pad gave wrong boost: %.3f", car.Boost)
 	}
 	if small.Active {
@@ -170,7 +176,7 @@ func TestFullCarDoesNotConsumeBoostPad(t *testing.T) {
 	world := NewWorld(config)
 	world.SetConnected(0, true)
 	car := &world.Cars[0]
-	pad := &world.BoostPads[4]
+	pad := &world.BoostPads[6]
 	car.Boost = config.Car.BoostCapacity
 	car.Position = Vec3{X: pad.Position.X, Y: config.Car.HalfExtents.Y, Z: pad.Position.Z}
 	world.collectBoostPads()
@@ -184,15 +190,50 @@ func TestSnapshotCarriesBoostAndBoostPadMask(t *testing.T) {
 	world.SetConnected(0, true)
 	world.Cars[0].Boost = 37.4
 	world.BoostPads[3].Active = false
+	world.BoostPads[33].Active = false
 	snapshot := world.Snapshot()
 	if snapshot.Boost[0] != 37 {
 		t.Fatalf("snapshot boost is %d, want 37", snapshot.Boost[0])
 	}
-	if snapshot.BoostPadMask&(1<<3) != 0 {
-		t.Fatal("inactive pad was marked active in snapshot")
+	if snapshot.BoostPadMask&(uint64(1)<<3) != 0 {
+		t.Fatal("inactive low pad was marked active in snapshot")
 	}
-	if snapshot.BoostPadMask&(1<<2) == 0 {
-		t.Fatal("active pad missing from snapshot mask")
+	if snapshot.BoostPadMask&(uint64(1)<<33) != 0 {
+		t.Fatal("inactive high pad was marked active in snapshot")
+	}
+	if snapshot.BoostPadMask&(uint64(1)<<32) == 0 {
+		t.Fatal("active pad above bit 31 missing from snapshot mask")
+	}
+}
+
+func TestBoostPadLayoutMatchesSoccarReference(t *testing.T) {
+	world := NewWorld(DefaultConfig())
+	if len(world.BoostPads) != 34 {
+		t.Fatalf("boost pad count is %d, want 34", len(world.BoostPads))
+	}
+	full, small := 0, 0
+	for index := range world.BoostPads {
+		pad := world.BoostPads[index]
+		if pad.Full {
+			full++
+			if pad.Amount != 100 {
+				t.Fatalf("full pad %d gives %.0f, want 100", index, pad.Amount)
+			}
+		} else {
+			small++
+			if pad.Amount != 12 {
+				t.Fatalf("small pad %d gives %.0f, want 12", index, pad.Amount)
+			}
+		}
+	}
+	if full != 6 || small != 28 {
+		t.Fatalf("pad split is %d full / %d small, want 6 / 28", full, small)
+	}
+	if got := world.BoostPads[2].Position; got.X != -49 || got.Z != 0 {
+		t.Fatalf("left midfield full pad is %+v, want x=-49 z=0", got)
+	}
+	if got := world.BoostPads[33].Position; got.X != 24 || got.Z != 68 {
+		t.Fatalf("final small pad is %+v, want x=24 z=68", got)
 	}
 }
 
