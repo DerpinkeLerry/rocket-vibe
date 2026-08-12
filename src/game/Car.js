@@ -123,11 +123,11 @@ export class Car {
     const paint = this.ultraHigh
       ? new THREE.MeshPhysicalMaterial({
           color: this.paintColor,
-          roughness: 0.24,
-          metalness: 0.38,
-          clearcoat: 1.0,
-          clearcoatRoughness: 0.10,
-          envMapIntensity: 1.55
+          roughness: 0.46,
+          metalness: 0.30,
+          clearcoat: 0.34,
+          clearcoatRoughness: 0.42,
+          envMapIntensity: 0.58
         })
       : new THREE.MeshStandardMaterial({
           color: this.paintColor,
@@ -135,21 +135,21 @@ export class Car {
           metalness: 0.34
         });
     const dark = this.ultraHigh
-      ? new THREE.MeshPhysicalMaterial({ color: 0x111a22, roughness: 0.22, metalness: 0.72, clearcoat: 0.55, clearcoatRoughness: 0.16, envMapIntensity: 1.35 })
+      ? new THREE.MeshPhysicalMaterial({ color: 0x111a22, roughness: 0.48, metalness: 0.58, clearcoat: 0.14, clearcoatRoughness: 0.5, envMapIntensity: 0.5 })
       : new THREE.MeshStandardMaterial({ color: 0x111a22, roughness: 0.3, metalness: 0.55 });
     const glass = this.ultraHigh
       ? new THREE.MeshPhysicalMaterial({
           color: 0x17364d,
-          roughness: 0.06,
-          metalness: 0.08,
-          transmission: 0.24,
-          thickness: 0.12,
-          ior: 1.46,
-          clearcoat: 1.0,
-          clearcoatRoughness: 0.05,
+          roughness: 0.26,
+          metalness: 0.02,
+          transmission: 0.08,
+          thickness: 0.10,
+          ior: 1.42,
+          clearcoat: 0.18,
+          clearcoatRoughness: 0.45,
           transparent: true,
-          opacity: 0.82,
-          envMapIntensity: 1.7
+          opacity: 0.86,
+          envMapIntensity: 0.52
         })
       : new THREE.MeshStandardMaterial({
           color: 0x182f43,
@@ -158,7 +158,7 @@ export class Car {
           transparent: true,
           opacity: 0.9
         });
-    const lightMat = new THREE.MeshStandardMaterial({ color: this.ultraHigh ? 0xe8fbff : 0xd7fbff, emissive: this.ultraHigh ? 0x64dcff : 0x5bd5ff, emissiveIntensity: this.ultraHigh ? 5.2 : 3.0, toneMapped: !this.ultraHigh });
+    const lightMat = new THREE.MeshStandardMaterial({ color: this.ultraHigh ? 0xe8fbff : 0xd7fbff, emissive: this.ultraHigh ? 0x64dcff : 0x5bd5ff, emissiveIntensity: this.ultraHigh ? 3.7 : 3.0, toneMapped: !this.ultraHigh });
 
     const lower = new THREE.Mesh(new RoundedBoxGeometry(1.66, 0.62, 2.95, 5, 0.13), paint);
     lower.position.y = 0.02;
@@ -223,7 +223,7 @@ export class Car {
       const tire = new THREE.Mesh(
         new THREE.CylinderGeometry(0.36, 0.36, 0.28, this.ultraHigh ? 28 : 18),
         this.ultraHigh
-          ? new THREE.MeshPhysicalMaterial({ color: 0x050607, roughness: 0.74, metalness: 0.04, clearcoat: 0.18, clearcoatRoughness: 0.4 })
+          ? new THREE.MeshStandardMaterial({ color: 0x050607, roughness: 0.92, metalness: 0.02 })
           : new THREE.MeshStandardMaterial({ color: 0x050607, roughness: 0.86, metalness: 0.06 })
       );
       tire.rotation.z = Math.PI / 2;
@@ -232,13 +232,40 @@ export class Car {
       const rim = new THREE.Mesh(
         new THREE.CylinderGeometry(0.19, 0.19, 0.3, this.ultraHigh ? 20 : 12),
         this.ultraHigh
-          ? new THREE.MeshPhysicalMaterial({ color: 0xd0d9df, roughness: 0.16, metalness: 0.92, clearcoat: 0.34, clearcoatRoughness: 0.12, envMapIntensity: 1.5 })
+          ? new THREE.MeshPhysicalMaterial({ color: 0xaeb9c1, roughness: 0.38, metalness: 0.78, clearcoat: 0.08, clearcoatRoughness: 0.56, envMapIntensity: 0.55 })
           : new THREE.MeshStandardMaterial({ color: 0xb8c5cf, roughness: 0.25, metalness: 0.82 })
       );
       rim.rotation.z = Math.PI / 2;
       pivot.add(rim);
 
+      let rimDetail = null;
+      if (this.ultraHigh) {
+        const discMat = new THREE.MeshStandardMaterial({ color: 0x626b70, roughness: 0.5, metalness: 0.72 });
+        const spokeMat = new THREE.MeshStandardMaterial({ color: 0xc1c8cc, roughness: 0.32, metalness: 0.8 });
+        const caliperMat = new THREE.MeshStandardMaterial({ color: 0x9c3024, roughness: 0.5, metalness: 0.28 });
+        rimDetail = new THREE.Group();
+        pivot.add(rimDetail);
+        const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.145, 0.145, 0.305, 28), discMat);
+        disc.rotation.z = Math.PI / 2;
+        rimDetail.add(disc);
+        const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.052, 0.325, 18), spokeMat);
+        hub.rotation.z = Math.PI / 2;
+        rimDetail.add(hub);
+        const spokeGeo = new THREE.BoxGeometry(0.32, 0.038, 0.045);
+        for (let spoke = 0; spoke < 8; spoke++) {
+          const angle = spoke * Math.PI / 4;
+          const arm = new THREE.Mesh(spokeGeo, spokeMat);
+          arm.position.set(0, Math.cos(angle) * 0.105, Math.sin(angle) * 0.105);
+          arm.rotation.set(angle, 0, Math.PI / 2);
+          rimDetail.add(arm);
+        }
+        const caliper = new THREE.Mesh(new RoundedBoxGeometry(0.09, 0.11, 0.055, 2, 0.018), caliperMat);
+        caliper.position.set(0, 0.12, 0.02);
+        pivot.add(caliper);
+      }
+
       this.wheels.push(tire, rim);
+      if (rimDetail) this.wheels.push(rimDetail);
       if (isFront) this.frontWheelPivots.push(pivot);
     }
 
@@ -249,7 +276,7 @@ export class Car {
       this.group.add(this.boostLight);
     }
 
-    const exhaustMat = new THREE.MeshStandardMaterial({ color: this.ultraHigh ? 0xffb15f : 0xffa34d, emissive: 0xff4c00, emissiveIntensity: this.ultraHigh ? 7.0 : 4.0, toneMapped: !this.ultraHigh });
+    const exhaustMat = new THREE.MeshStandardMaterial({ color: this.ultraHigh ? 0xffb15f : 0xffa34d, emissive: 0xff4c00, emissiveIntensity: this.ultraHigh ? 5.0 : 4.0, toneMapped: !this.ultraHigh });
     this.exhaust = [];
     for (const x of [-0.34, 0.34]) {
       const flame = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.72, 10), exhaustMat);

@@ -119,7 +119,7 @@ Direkt auf dem Startbildschirm kann die Grafikqualitaet gewaehlt werden. Die Aus
 
 - **NORMAL**: bisherige volle Standarddarstellung; auf Smartphone/Tablet automatisch der empfohlene Modus.
 - **ULTRA LOW**: stark reduzierte Renderauflosung und Details fuer schwache PCs/VMs. Weiterhin kompatibel mit `?perf=ultra` bzw. `?perf=ultra-low`.
-- **ULTRA HIGH**: nur auf Desktop-PCs freigeschaltet. Aktiviert bis zu 200 % Render-Skalierung, 4K-PCF-Schatten, Clearcoat-/Transmission-Materialien, PMREM-Reflexionen, dichteres Stadion, mehr Vegetation/Publikum, hochwertigeres Gras, 4x-Multisampling im Post-Processing und dezentes Bloom fuer Boost, Lampen und Tore. Bei zu niedriger Framerate reduziert nur dieser Browser seine Render-Skalierung vorsichtig bis minimal 115 %.
+- **ULTRA HIGH**: nur auf Desktop-PCs freigeschaltet. Startet bei 128 % Render-Skalierung und geht adaptiv bis maximal 150 %. Dazu kommen 4K-PCF-Schatten, bewusst matte/realistischere Materialien, reduzierte Reflexionen, detaillierte Felgen mit Speichen/Bremsscheiben, prozedurales Gras mit Bump-Struktur, dichteres Stadion, mehr Vegetation/Publikum, 4x-Multisampling und sehr dezentes Bloom. Bei Last kann die Render-Skalierung bis 95 % sinken.
 
 Direktlinks fuer Tests:
 

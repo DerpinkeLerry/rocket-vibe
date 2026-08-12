@@ -24,9 +24,9 @@ export class BoostPads {
       : new THREE.MeshStandardMaterial({
           color: large ? 0xff9b35 : 0xffc65b,
           emissive: large ? 0xff5a00 : 0xff9a16,
-          emissiveIntensity: large ? (this.ultraHigh ? 1.25 : 0.8) : (this.ultraHigh ? 0.72 : 0.45),
-          roughness: this.ultraHigh ? 0.30 : 0.48,
-          metalness: this.ultraHigh ? 0.38 : 0.22,
+          emissiveIntensity: large ? (this.ultraHigh ? 0.88 : 0.8) : (this.ultraHigh ? 0.56 : 0.45),
+          roughness: this.ultraHigh ? 0.5 : 0.48,
+          metalness: this.ultraHigh ? 0.24 : 0.22,
           transparent: true,
           opacity: 0.5
         });
@@ -39,7 +39,7 @@ export class BoostPads {
       : new THREE.MeshStandardMaterial({
           color: 0xffd27a,
           emissive: 0xff8a14,
-          emissiveIntensity: large ? (this.ultraHigh ? 5.2 : 3.1) : (this.ultraHigh ? 3.6 : 2.1),
+          emissiveIntensity: large ? (this.ultraHigh ? 3.5 : 3.1) : (this.ultraHigh ? 2.6 : 2.1),
           side: THREE.DoubleSide,
           transparent: true,
           opacity: 0.94,
@@ -58,9 +58,9 @@ export class BoostPads {
       : new THREE.MeshStandardMaterial({
           color: 0xffc15a,
           emissive: 0xff760d,
-          emissiveIntensity: large ? (this.ultraHigh ? 7.0 : 4.5) : (this.ultraHigh ? 4.6 : 3.0),
-          roughness: this.ultraHigh ? 0.12 : 0.2,
-          metalness: this.ultraHigh ? 0.34 : 0.2
+          emissiveIntensity: large ? (this.ultraHigh ? 5.1 : 4.5) : (this.ultraHigh ? 3.6 : 3.0),
+          roughness: this.ultraHigh ? 0.3 : 0.2,
+          metalness: this.ultraHigh ? 0.22 : 0.2
         });
     const pickup = new THREE.Mesh(
       large ? new THREE.IcosahedronGeometry(0.83, 1) : new THREE.OctahedronGeometry(0.34, 0),

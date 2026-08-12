@@ -12,6 +12,7 @@ const RAMP_SEGMENTS = ARENA_TUNING.rampSegments;
 const GOAL_W = ARENA_TUNING.goalWidth;
 const GOAL_H = ARENA_TUNING.goalHeight;
 const GOAL_D = ARENA_TUNING.goalDepth;
+const GOAL_R = ARENA_TUNING.goalRampRadius;
 const CORNER_SEGMENTS = 8;
 
 function roundedRectGeometry(width, length, radius, segments) {
@@ -70,7 +71,7 @@ export class Arena {
     const material = this.lowDetail
       ? new THREE.MeshBasicMaterial({ color: 0x76957c })
       : (this.ultraHigh
-        ? new THREE.MeshPhysicalMaterial({ color: 0x789b80, roughness: 0.96, metalness: 0.0, clearcoat: 0.08, clearcoatRoughness: 0.82 })
+        ? new THREE.MeshStandardMaterial({ color: 0x6f8d75, roughness: 1.0, metalness: 0.0 })
         : new THREE.MeshStandardMaterial({ color: 0x78967f, roughness: 1.0, metalness: 0.0 }));
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(250, 320), material);
     ground.rotation.x = -Math.PI / 2;
@@ -81,44 +82,101 @@ export class Arena {
 
   createUltraTurfTexture() {
     const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 1024;
+    canvas.width = 1024;
+    canvas.height = 2048;
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
-    const stripeHeight = 86;
+    // Layered procedural turf: broad mowing bands + fine blade clusters +
+    // subtle soil/dry-grass variation. This costs nothing after upload and is
+    // much less "flat green" than the normal preset.
+    const stripeHeight = 148;
     for (let y = 0; y < canvas.height; y += stripeHeight) {
-      ctx.fillStyle = Math.floor(y / stripeHeight) % 2 === 0 ? '#2d8b67' : '#267b5d';
+      ctx.fillStyle = Math.floor(y / stripeHeight) % 2 === 0 ? '#27785b' : '#236d54';
       ctx.fillRect(0, y, canvas.width, stripeHeight);
     }
-    for (let i = 0; i < 3400; i++) {
-      const x = (i * 73) % canvas.width;
-      const y = (i * 191) % canvas.height;
-      const alpha = 0.025 + ((i * 17) % 10) * 0.003;
-      ctx.fillStyle = `rgba(225,255,230,${alpha})`;
-      ctx.fillRect(x, y, 1, 2 + (i % 3));
+    let seed = 0x13579bdf;
+    const random = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    for (let i = 0; i < 14500; i++) {
+      const x = random() * canvas.width;
+      const y = random() * canvas.height;
+      const blade = 1 + random() * 3.2;
+      const light = random();
+      ctx.strokeStyle = light > 0.72
+        ? `rgba(166,210,151,${0.07 + random() * 0.09})`
+        : `rgba(12,67,46,${0.055 + random() * 0.085})`;
+      ctx.lineWidth = random() > 0.9 ? 1.4 : 0.8;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + (random() - 0.5) * 1.4, y - blade);
+      ctx.stroke();
+    }
+    for (let i = 0; i < 380; i++) {
+      const x = random() * canvas.width;
+      const y = random() * canvas.height;
+      const r = 2 + random() * 8;
+      ctx.fillStyle = random() > 0.5 ? 'rgba(198,180,116,0.035)' : 'rgba(5,45,33,0.045)';
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
     }
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.wrapS = THREE.RepeatWrapping;
     texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set(2.2, 4.4);
+    texture.repeat.set(2.4, 4.8);
+    texture.anisotropy = Math.min(16, this.maxAnisotropy);
+    return texture;
+  }
+
+  createUltraTurfBumpTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 1024;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.fillStyle = '#707070';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    let seed = 0x2468ace1;
+    const random = () => {
+      seed = (seed * 1103515245 + 12345) >>> 0;
+      return seed / 4294967296;
+    };
+    for (let i = 0; i < 9500; i++) {
+      const shade = Math.floor(74 + random() * 88);
+      ctx.strokeStyle = `rgb(${shade},${shade},${shade})`;
+      ctx.lineWidth = random() > 0.86 ? 1.4 : 0.7;
+      const x = random() * canvas.width;
+      const y = random() * canvas.height;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + (random() - 0.5) * 1.2, y - 1.5 - random() * 3.6);
+      ctx.stroke();
+    }
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(2.4, 4.8);
     texture.anisotropy = Math.min(16, this.maxAnisotropy);
     return texture;
   }
 
   createField() {
     const turfTexture = this.ultraHigh ? this.createUltraTurfTexture() : null;
+    const turfBump = this.ultraHigh ? this.createUltraTurfBumpTexture() : null;
     const turfMat = this.lowDetail
       ? new THREE.MeshBasicMaterial({ color: 0x2b8767 })
       : (this.ultraHigh
-        ? new THREE.MeshPhysicalMaterial({
-            color: 0xffffff,
+        ? new THREE.MeshStandardMaterial({
+            color: 0xf2f7ee,
             map: turfTexture,
-            roughness: 0.88,
-            metalness: 0.0,
-            clearcoat: 0.12,
-            clearcoatRoughness: 0.7
+            bumpMap: turfBump,
+            bumpScale: 0.075,
+            roughness: 0.96,
+            metalness: 0.0
           })
         : new THREE.MeshStandardMaterial({ color: 0x287f63, roughness: 0.9, metalness: 0.0 }));
     const turf = new THREE.Mesh(
@@ -153,17 +211,17 @@ export class Arena {
         })
       : (this.ultraHigh
         ? new THREE.MeshPhysicalMaterial({
-            color: 0xbfefff,
+            color: 0x8fcfe0,
             transparent: true,
-            opacity: 0.22,
-            roughness: 0.06,
-            metalness: 0.02,
-            transmission: 0.18,
-            thickness: 0.18,
-            ior: 1.42,
-            clearcoat: 1.0,
-            clearcoatRoughness: 0.08,
-            envMapIntensity: 1.35,
+            opacity: 0.17,
+            roughness: 0.24,
+            metalness: 0.0,
+            transmission: 0.05,
+            thickness: 0.12,
+            ior: 1.38,
+            clearcoat: 0.18,
+            clearcoatRoughness: 0.48,
+            envMapIntensity: 0.42,
             depthWrite: false,
             side: THREE.DoubleSide
           })
@@ -180,14 +238,14 @@ export class Arena {
       ? new THREE.MeshBasicMaterial({ color: 0x31c9ef })
       : (this.ultraHigh
         ? new THREE.MeshPhysicalMaterial({
-            color: 0xbcefff,
-            emissive: 0x12799b,
-            emissiveIntensity: 1.55,
-            roughness: 0.18,
-            metalness: 0.82,
-            clearcoat: 0.72,
-            clearcoatRoughness: 0.14,
-            envMapIntensity: 1.45
+            color: 0x86c5d5,
+            emissive: 0x0d5d77,
+            emissiveIntensity: 0.95,
+            roughness: 0.42,
+            metalness: 0.58,
+            clearcoat: 0.12,
+            clearcoatRoughness: 0.55,
+            envMapIntensity: 0.48
           })
         : new THREE.MeshStandardMaterial({
             color: 0xa7edff,
@@ -256,6 +314,58 @@ export class Arena {
           nx: Math.cos(theta),
           nz: Math.sin(theta),
           minY: RAMP_R
+        });
+      }
+    }
+    return panels;
+  }
+
+  buildGoalBoundarySegments(sign) {
+    const halfLength = FIELD_L * 0.5;
+    const halfWidth = GOAL_W * 0.5;
+    const straightX = halfWidth - GOAL_R;
+    const straightDepth = GOAL_D - GOAL_R;
+    const signZ = sign >= 0 ? 1 : -1;
+    const panels = [];
+
+    // Open tunnel: two side walls, one rounded back wall, no front wall.
+    for (const signX of [-1, 1]) {
+      panels.push({
+        x: signX * (halfWidth + WALL_T * 0.5),
+        z: signZ * (halfLength + straightDepth * 0.5),
+        length: straightDepth,
+        yaw: signX > 0 ? Math.PI / 2 : -Math.PI / 2,
+        nx: signX,
+        nz: 0
+      });
+    }
+    panels.push({
+      x: 0,
+      z: signZ * (halfLength + GOAL_D + WALL_T * 0.5),
+      length: straightX * 2,
+      yaw: signZ > 0 ? 0 : Math.PI,
+      nx: 0,
+      nz: signZ
+    });
+
+    const cornerSegments = Math.max(6, Math.round(RAMP_SEGMENTS * 0.6));
+    const delta = Math.PI * 0.5 / cornerSegments;
+    const panelRadius = GOAL_R + WALL_T * 0.5;
+    const cornerLength = 2 * panelRadius * Math.sin(delta * 0.5) * 1.04;
+    for (const signX of [-1, 1]) {
+      const centerX = signX * straightX;
+      const centerZ = signZ * (halfLength + straightDepth);
+      for (let index = 0; index < cornerSegments; index++) {
+        const angle = (index + 0.5) * delta;
+        const nx = signX * Math.cos(angle);
+        const nz = signZ * Math.sin(angle);
+        panels.push({
+          x: centerX + nx * panelRadius,
+          z: centerZ + nz * panelRadius,
+          length: cornerLength,
+          yaw: Math.atan2(nx, nz),
+          nx,
+          nz
         });
       }
     }
@@ -350,7 +460,7 @@ export class Arena {
     const material = this.lowDetail
       ? new THREE.MeshBasicMaterial({ color: 0x356b68 })
       : (this.ultraHigh
-        ? new THREE.MeshPhysicalMaterial({ color: 0x397f72, roughness: 0.68, metalness: 0.05, clearcoat: 0.16, clearcoatRoughness: 0.55 })
+        ? new THREE.MeshStandardMaterial({ color: 0x326f63, roughness: 0.88, metalness: 0.02 })
         : new THREE.MeshStandardMaterial({ color: 0x3a706c, roughness: 0.78, metalness: 0.08 }));
     const ramps = new THREE.InstancedMesh(geometry, material, rampPanels.length * RAMP_SEGMENTS);
     const matrix = new THREE.Matrix4();
@@ -437,6 +547,107 @@ export class Arena {
     this.group.add(ramps);
   }
 
+  createRoundedTunnelRampVisual(panels, radius, ceilingY, upper, material) {
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const ramps = new THREE.InstancedMesh(geometry, material, panels.length * RAMP_SEGMENTS);
+    const matrix = new THREE.Matrix4();
+    const basis = new THREE.Matrix4();
+    const quaternion = new THREE.Quaternion();
+    const position = new THREE.Vector3();
+    const scale = new THREE.Vector3();
+    const tangent = new THREE.Vector3();
+    const normal = new THREE.Vector3();
+    const slope = new THREE.Vector3();
+    const delta = Math.PI * 0.5 / RAMP_SEGMENTS;
+    const arcLength = radius * delta * 1.055;
+    let instance = 0;
+
+    for (const panel of panels) {
+      const boundaryX = panel.x - panel.nx * WALL_T * 0.5;
+      const boundaryZ = panel.z - panel.nz * WALL_T * 0.5;
+      tangent.set(panel.nz, 0, -panel.nx).normalize();
+      for (let index = 0; index < RAMP_SEGMENTS; index++) {
+        const angle = (index + 0.5) * delta;
+        const sine = Math.sin(angle);
+        const cosine = Math.cos(angle);
+        if (upper) {
+          normal.set(-panel.nx * cosine, -sine, -panel.nz * cosine).normalize();
+          position.set(
+            boundaryX - panel.nx * (radius - radius * cosine),
+            ceilingY - radius + radius * sine,
+            boundaryZ - panel.nz * (radius - radius * cosine)
+          );
+        } else {
+          normal.set(-panel.nx * sine, cosine, -panel.nz * sine).normalize();
+          position.set(
+            boundaryX - panel.nx * (radius - radius * sine),
+            radius - radius * cosine,
+            boundaryZ - panel.nz * (radius - radius * sine)
+          );
+        }
+        slope.crossVectors(tangent, normal).normalize();
+        basis.makeBasis(tangent, normal, slope);
+        quaternion.setFromRotationMatrix(basis);
+        position.addScaledVector(normal, -0.10);
+        scale.set(panel.length * 1.04, 0.20, arcLength);
+        matrix.compose(position, quaternion, scale);
+        ramps.setMatrixAt(instance++, matrix);
+      }
+    }
+    ramps.instanceMatrix.needsUpdate = true;
+    ramps.renderOrder = 1;
+    this.group.add(ramps);
+    return ramps;
+  }
+
+  createGoalTunnel(sign, wallMaterial, floorMaterial) {
+    const panels = this.buildGoalBoundarySegments(sign);
+    const panelGeometry = new THREE.BoxGeometry(1, 1, 1);
+    const wallHeight = Math.max(0.4, GOAL_H - GOAL_R * 2);
+    const walls = new THREE.InstancedMesh(panelGeometry, wallMaterial, panels.length);
+    const dummy = new THREE.Object3D();
+    for (let index = 0; index < panels.length; index++) {
+      const panel = panels[index];
+      dummy.position.set(panel.x, GOAL_R + wallHeight * 0.5, panel.z);
+      dummy.rotation.set(0, panel.yaw, 0);
+      dummy.scale.set(panel.length * 1.02, wallHeight, WALL_T);
+      dummy.updateMatrix();
+      walls.setMatrixAt(index, dummy.matrix);
+    }
+    walls.instanceMatrix.needsUpdate = true;
+    this.group.add(walls);
+
+    const lowerMaterial = this.lowDetail
+      ? wallMaterial
+      : wallMaterial.clone();
+    const upperMaterial = this.lowDetail
+      ? wallMaterial
+      : wallMaterial.clone();
+    if (!this.lowDetail) {
+      lowerMaterial.opacity = Math.min(0.9, wallMaterial.opacity ?? 1);
+      upperMaterial.opacity = Math.min(0.82, wallMaterial.opacity ?? 1);
+    }
+    this.createRoundedTunnelRampVisual(panels, GOAL_R, GOAL_H, false, lowerMaterial);
+    this.createRoundedTunnelRampVisual(panels, GOAL_R, GOAL_H, true, upperMaterial);
+
+    const halfLength = FIELD_L * 0.5;
+    const signZ = sign >= 0 ? 1 : -1;
+    const goalCenterZ = signZ * (halfLength + GOAL_D * 0.5);
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(GOAL_W, GOAL_D), floorMaterial);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set(0, 0.004, goalCenterZ);
+    this.group.add(floor);
+
+    const roofWidth = Math.max(1, GOAL_W - GOAL_R * 2);
+    const roofDepth = Math.max(1, GOAL_D - GOAL_R);
+    const roofMaterial = wallMaterial.clone();
+    roofMaterial.opacity = this.lowDetail ? 0.72 : 0.52;
+    const roof = new THREE.Mesh(new THREE.PlaneGeometry(roofWidth, roofDepth), roofMaterial);
+    roof.rotation.x = Math.PI / 2;
+    roof.position.set(0, GOAL_H, signZ * (halfLength + roofDepth * 0.5));
+    this.group.add(roof);
+  }
+
   addBoxVisual(x, y, z, w, h, d, material) {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
     mesh.position.set(x, y, z);
@@ -485,12 +696,12 @@ export class Arena {
         ? new THREE.MeshPhysicalMaterial({
             color,
             emissive: color,
-            emissiveIntensity: 2.6,
-            roughness: 0.18,
-            metalness: 0.64,
-            clearcoat: 0.8,
-            clearcoatRoughness: 0.12,
-            envMapIntensity: 1.35
+            emissiveIntensity: 1.65,
+            roughness: 0.42,
+            metalness: 0.48,
+            clearcoat: 0.14,
+            clearcoatRoughness: 0.52,
+            envMapIntensity: 0.5
           })
         : new THREE.MeshStandardMaterial({
             color,
@@ -512,19 +723,16 @@ export class Arena {
       this.group.add(goal);
     }
 
-    const sideT = 0.28;
-    this.addBoxVisual(-GOAL_W / 2, GOAL_H / 2, zCenter, sideT, GOAL_H, GOAL_D, wallMaterial);
-    this.addBoxVisual(GOAL_W / 2, GOAL_H / 2, zCenter, sideT, GOAL_H, GOAL_D, wallMaterial);
-    this.addBoxVisual(0, GOAL_H, zCenter, GOAL_W, sideT, GOAL_D, wallMaterial);
-    this.addBoxVisual(0, GOAL_H / 2, zBack, GOAL_W, GOAL_H, sideT, wallMaterial);
-
     const goalFloorMat = this.lowDetail
       ? new THREE.MeshBasicMaterial({ color: darkColor })
-      : new THREE.MeshStandardMaterial({ color: darkColor, emissive: color, emissiveIntensity: 0.12, roughness: 0.88, metalness: 0 });
-    const goalFloor = new THREE.Mesh(new THREE.PlaneGeometry(GOAL_W, GOAL_D), goalFloorMat);
-    goalFloor.rotation.x = -Math.PI / 2;
-    goalFloor.position.set(0, 0.004, zCenter);
-    this.group.add(goalFloor);
+      : new THREE.MeshStandardMaterial({
+          color: darkColor,
+          emissive: color,
+          emissiveIntensity: this.ultraHigh ? 0.075 : 0.12,
+          roughness: 0.94,
+          metalness: 0
+        });
+    this.createGoalTunnel(sign, wallMaterial, goalFloorMat);
 
     if (!this.lowDetail) {
       const labelCanvas = document.createElement('canvas');
@@ -582,14 +790,41 @@ export class Arena {
     }
 
     for (const sign of [-1, 1]) {
-      const zCenter = sign * (halfLength + GOAL_D * 0.5);
-      const zBack = sign * (halfLength + GOAL_D);
-      const t = 0.2;
-      this.addFixedCollider(-GOAL_W * 0.5, GOAL_H * 0.5, zCenter, t, GOAL_H * 0.5, GOAL_D * 0.5, 0.12, 0);
-      this.addFixedCollider(GOAL_W * 0.5, GOAL_H * 0.5, zCenter, t, GOAL_H * 0.5, GOAL_D * 0.5, 0.12, 0);
-      this.addFixedCollider(0, GOAL_H, zCenter, GOAL_W * 0.5, t, GOAL_D * 0.5, 0.12, 0);
-      this.addFixedCollider(0, GOAL_H * 0.5, zBack, GOAL_W * 0.5, GOAL_H * 0.5, t, 0.12, 0);
+      const panels = this.buildGoalBoundarySegments(sign);
+      const wallHeight = Math.max(0.4, GOAL_H - GOAL_R * 2);
+      for (const panel of panels) {
+        this.addFixedColliderRotated(
+          panel.x,
+          GOAL_R + wallHeight * 0.5,
+          panel.z,
+          panel.length * 0.5 * 1.02,
+          wallHeight * 0.5,
+          WALL_T * 0.5,
+          panel.yaw,
+          0.12,
+          0
+        );
+        this.addRoundedTunnelRampPhysics(panel, GOAL_R, GOAL_H, false, 0.72);
+        this.addRoundedTunnelRampPhysics(panel, GOAL_R, GOAL_H, true, 0.16);
+      }
+
+      const signZ = sign >= 0 ? 1 : -1;
+      const zCenter = signZ * (halfLength + GOAL_D * 0.5);
       this.addFixedCollider(0, -0.2, zCenter, GOAL_W * 0.5, 0.2, GOAL_D * 0.5, 0.72, 0);
+
+      // The flat ceiling is inset from the side/back walls so only the rounded
+      // quarter-pipes own the transition normals near the tunnel perimeter.
+      const roofDepth = GOAL_D - GOAL_R;
+      this.addFixedCollider(
+        0,
+        GOAL_H + 0.2,
+        signZ * (halfLength + roofDepth * 0.5),
+        GOAL_W * 0.5 - GOAL_R,
+        0.2,
+        roofDepth * 0.5,
+        0.12,
+        0
+      );
     }
 
     // The flat roof is inset because the outer band is now a rounded glass
@@ -682,6 +917,55 @@ export class Arena {
     }
   }
 
+  addRoundedTunnelRampPhysics(panel, radius, ceilingY, upper, friction) {
+    const delta = Math.PI * 0.5 / RAMP_SEGMENTS;
+    const arcLength = radius * delta * 1.065;
+    const boundaryX = panel.x - panel.nx * WALL_T * 0.5;
+    const boundaryZ = panel.z - panel.nz * WALL_T * 0.5;
+    const tangent = new THREE.Vector3(panel.nz, 0, -panel.nx).normalize();
+    const normal = new THREE.Vector3();
+    const slope = new THREE.Vector3();
+    const basis = new THREE.Matrix4();
+    const quaternion = new THREE.Quaternion();
+
+    for (let index = 0; index < RAMP_SEGMENTS; index++) {
+      const angle = (index + 0.5) * delta;
+      const sine = Math.sin(angle);
+      const cosine = Math.cos(angle);
+      let position;
+      if (upper) {
+        normal.set(-panel.nx * cosine, -sine, -panel.nz * cosine).normalize();
+        position = new THREE.Vector3(
+          boundaryX - panel.nx * (radius - radius * cosine),
+          ceilingY - radius + radius * sine,
+          boundaryZ - panel.nz * (radius - radius * cosine)
+        );
+      } else {
+        normal.set(-panel.nx * sine, cosine, -panel.nz * sine).normalize();
+        position = new THREE.Vector3(
+          boundaryX - panel.nx * (radius - radius * sine),
+          radius - radius * cosine,
+          boundaryZ - panel.nz * (radius - radius * sine)
+        );
+      }
+      slope.crossVectors(tangent, normal).normalize();
+      basis.makeBasis(tangent, normal, slope);
+      quaternion.setFromRotationMatrix(basis);
+      position.addScaledVector(normal, -0.11);
+      this.addFixedColliderQuaternion(
+        position.x,
+        position.y,
+        position.z,
+        panel.length * 0.5 * 1.04,
+        0.11,
+        arcLength * 0.5,
+        quaternion,
+        friction,
+        0
+      );
+    }
+  }
+
   addFixedCollider(x, y, z, hx, hy, hz, friction, restitution) {
     const R = this.RAPIER;
     const body = this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(x, y, z));
@@ -741,11 +1025,17 @@ export class Arena {
     const dummy = new THREE.Object3D();
     for (const sign of [-1, 1]) {
       for (let tier = 0; tier < 3; tier++) {
-        dummy.position.set(0, 1.75 + tier * 1.65, sign * (FIELD_L * 0.5 + 8.5 + tier * 3.0));
-        dummy.rotation.set(0, 0, 0);
-        dummy.scale.set(FIELD_W + 31 - tier * 2.0, 3.5 + tier * 0.55, 4.2);
-        dummy.updateMatrix();
-        tierMatrices.push(dummy.matrix.clone());
+        const totalWidth = FIELD_W + 31 - tier * 2.0;
+        const goalClearance = GOAL_W + 10 + tier * 1.4;
+        const sectionWidth = Math.max(4, (totalWidth - goalClearance) * 0.5);
+        const centerX = goalClearance * 0.5 + sectionWidth * 0.5;
+        for (const sideX of [-1, 1]) {
+          dummy.position.set(sideX * centerX, 1.75 + tier * 1.65, sign * (FIELD_L * 0.5 + 8.5 + tier * 3.0));
+          dummy.rotation.set(0, 0, 0);
+          dummy.scale.set(sectionWidth, 3.5 + tier * 0.55, 4.2);
+          dummy.updateMatrix();
+          tierMatrices.push(dummy.matrix.clone());
+        }
       }
     }
     for (const sign of [-1, 1]) {
@@ -762,14 +1052,23 @@ export class Arena {
     tiers.instanceMatrix.needsUpdate = true;
     this.group.add(tiers);
 
-    // Dark fascia underneath the first row gives the arena depth without lights.
-    const fascia = new THREE.InstancedMesh(blockGeometry, darkMat, 4);
-    const fasciaData = [
-      [0, 2.5, FIELD_L * 0.5 + 6.1, FIELD_W + 27, 5.0, 1.15],
-      [0, 2.5, -FIELD_L * 0.5 - 6.1, FIELD_W + 27, 5.0, 1.15],
+    // Dark fascia underneath the first row. End fascias are split around the
+    // goal mouth so no stand geometry clips through the playable goal tunnel.
+    const fasciaData = [];
+    const fasciaTotalWidth = FIELD_W + 27;
+    const fasciaGap = GOAL_W + 9;
+    const fasciaSection = (fasciaTotalWidth - fasciaGap) * 0.5;
+    const fasciaCenterX = fasciaGap * 0.5 + fasciaSection * 0.5;
+    for (const signZ of [-1, 1]) {
+      for (const signX of [-1, 1]) {
+        fasciaData.push([signX * fasciaCenterX, 2.5, signZ * (FIELD_L * 0.5 + 6.1), fasciaSection, 5.0, 1.15]);
+      }
+    }
+    fasciaData.push(
       [FIELD_W * 0.5 + 6.1, 2.5, 0, 1.15, 5.0, FIELD_L + 11],
       [-FIELD_W * 0.5 - 6.1, 2.5, 0, 1.15, 5.0, FIELD_L + 11]
-    ];
+    );
+    const fascia = new THREE.InstancedMesh(blockGeometry, darkMat, fasciaData.length);
     fasciaData.forEach(([x, y, z, w, h, d], index) => {
       dummy.position.set(x, y, z);
       dummy.rotation.set(0, 0, 0);
@@ -798,6 +1097,7 @@ export class Arena {
           positions.push([side * (FIELD_W * 0.5 + 7.3 + row * 2.2), 4.1 + row * 1.65, z, Math.PI / 2]);
         }
         for (let x = -FIELD_W * 0.5 + 4; x <= FIELD_W * 0.5 - 4; x += endStep) {
+          if (Math.abs(x) < GOAL_W * 0.5 + 5.0 + row * 0.7) continue;
           positions.push([x, 4.1 + row * 1.65, side * (FIELD_L * 0.5 + 7.3 + row * 2.2), 0]);
         }
       }
@@ -831,6 +1131,7 @@ export class Arena {
     const banners = [];
     const spacing = this.lowDetail ? 22 : 13;
     for (let x = -FIELD_W * 0.5; x <= FIELD_W * 0.5; x += spacing) {
+      if (Math.abs(x) < GOAL_W * 0.5 + 5.5) continue;
       banners.push([x, 7.9, FIELD_L * 0.5 + 5.45, 5.2, 1.0, 0.15, 0]);
       banners.push([x, 7.9, -FIELD_L * 0.5 - 5.45, 5.2, 1.0, 0.15, 0]);
     }
@@ -926,11 +1227,11 @@ export class Arena {
     const box = new THREE.BoxGeometry(1, 1, 1);
     const steel = new THREE.MeshPhysicalMaterial({
       color: 0x354b59,
-      roughness: 0.24,
-      metalness: 0.88,
-      clearcoat: 0.42,
-      clearcoatRoughness: 0.2,
-      envMapIntensity: 1.25
+      roughness: 0.52,
+      metalness: 0.72,
+      clearcoat: 0.08,
+      clearcoatRoughness: 0.65,
+      envMapIntensity: 0.42
     });
     const beamData = [];
     for (const sign of [-1, 1]) {
@@ -952,7 +1253,7 @@ export class Arena {
     const lampMaterial = new THREE.MeshStandardMaterial({
       color: 0xe7f5ff,
       emissive: 0xcfeeff,
-      emissiveIntensity: 5.6,
+      emissiveIntensity: 3.2,
       roughness: 0.18,
       metalness: 0.22,
       toneMapped: false
@@ -978,13 +1279,13 @@ export class Arena {
 
   createLights() {
     const hemi = new THREE.HemisphereLight(
-      this.ultraHigh ? 0xe6f5ff : 0xd6efff,
-      this.ultraHigh ? 0x617355 : 0x5e765c,
-      this.lowDetail ? 1.85 : (this.ultraHigh ? 1.55 : 2.15)
+      this.ultraHigh ? 0xcfe3ea : 0xd6efff,
+      this.ultraHigh ? 0x4f6250 : 0x5e765c,
+      this.lowDetail ? 1.85 : (this.ultraHigh ? 1.20 : 2.15)
     );
     this.scene.add(hemi);
 
-    const sun = new THREE.DirectionalLight(0xfff2d0, this.lowDetail ? 1.65 : (this.ultraHigh ? 3.15 : 2.35));
+    const sun = new THREE.DirectionalLight(0xfff2d0, this.lowDetail ? 1.65 : (this.ultraHigh ? 2.25 : 2.35));
     if (this.ultraHigh) sun.position.set(-42, 76, -36);
     else sun.position.set(-34, 62, -28);
     sun.castShadow = this.ultraHigh;
@@ -1002,13 +1303,13 @@ export class Arena {
     }
     this.scene.add(sun);
 
-    const fill = new THREE.DirectionalLight(0xaedcff, this.lowDetail ? 0.34 : (this.ultraHigh ? 0.42 : 0.52));
+    const fill = new THREE.DirectionalLight(0xaedcff, this.lowDetail ? 0.34 : (this.ultraHigh ? 0.30 : 0.52));
     fill.position.set(32, 24, 38);
     fill.castShadow = false;
     this.scene.add(fill);
 
     if (this.ultraHigh) {
-      const warmRim = new THREE.DirectionalLight(0xffc98e, 0.26);
+      const warmRim = new THREE.DirectionalLight(0xffc98e, 0.12);
       warmRim.position.set(26, 18, -50);
       warmRim.castShadow = false;
       this.scene.add(warmRim);

@@ -17,6 +17,7 @@ type ArenaConfig struct {
 	GoalWidth         float64 `json:"goalWidth"`
 	GoalHeight        float64 `json:"goalHeight"`
 	GoalDepth         float64 `json:"goalDepth"`
+	GoalRampRadius    float64 `json:"goalRampRadius"`
 }
 
 type CarConfig struct {
@@ -93,7 +94,7 @@ func DefaultConfig() Config {
 		Gravity:     20.5,
 		Arena: ArenaConfig{
 			Width: 110, Length: 160, Ceiling: 25, WallHeight: 25, CornerRadius: 16, RampRadius: 7, CeilingRampRadius: 6,
-			GoalWidth: 34, GoalHeight: 12, GoalDepth: 14,
+			GoalWidth: 34, GoalHeight: 12, GoalDepth: 14, GoalRampRadius: 4,
 		},
 		Car: CarConfig{
 			HalfExtents:          Vec3{X: 0.83, Y: 0.45, Z: 1.48},

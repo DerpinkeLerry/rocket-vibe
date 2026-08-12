@@ -133,7 +133,7 @@ function requestPlayerIdentity(root) {
             <label class="graphics-choice graphics-choice--high${selectedGraphics === 'ultra-high' ? ' is-selected' : ''}${ultraHighAvailable ? '' : ' is-disabled'}" data-graphics-choice="ultra-high">
               <input type="radio" name="graphicsMode" value="ultra-high" ${selectedGraphics === 'ultra-high' ? 'checked' : ''} ${ultraHighAvailable ? '' : 'disabled'} />
               <span class="graphics-choice__title">ULTRA HIGH</span>
-              <span class="graphics-choice__desc">${ultraHighAvailable ? 'PC only · Schatten, Reflexionen, Bloom, maximale Details' : 'Nur am PC verfügbar'}</span>
+              <span class="graphics-choice__desc">${ultraHighAvailable ? 'PC only · Schatten, Detailgras, bessere Felgen, dezentes Bloom' : 'Nur am PC verfügbar'}</span>
             </label>
           </div>
         </fieldset>

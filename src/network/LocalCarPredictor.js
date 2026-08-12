@@ -379,6 +379,147 @@ export class LocalCarPredictor {
     return found;
   }
 
+  isInGoalTunnel(extentX, extentY, extentZ) {
+    const arena = ARENA_TUNING;
+    const halfLength = arena.length * 0.5;
+    const depth = Math.abs(this.pos.z) - halfLength;
+    if (depth < -SURFACE_CONTACT_SLOP || depth > arena.goalDepth + extentZ + SURFACE_CONTACT_SLOP) return false;
+    return Math.abs(this.pos.x) <= arena.goalWidth * 0.5 + extentX + SURFACE_CONTACT_SLOP
+      && this.pos.y <= arena.goalHeight + extentY + SURFACE_CONTACT_SLOP;
+  }
+
+  findNearestGoalBoundary() {
+    const arena = ARENA_TUNING;
+    const halfLength = arena.length * 0.5;
+    const depth = Math.abs(this.pos.z) - halfLength;
+    if (depth < -SURFACE_CONTACT_SLOP) return false;
+
+    const halfWidth = arena.goalWidth * 0.5;
+    const radius = Math.max(0.2, Math.min(arena.goalRampRadius, halfWidth - 0.1, arena.goalDepth - 0.1));
+    const straightX = halfWidth - radius;
+    const straightDepth = arena.goalDepth - radius;
+    const absX = Math.abs(this.pos.x);
+    const signZ = Math.sign(this.pos.z || 1);
+
+    if (absX > straightX && depth > straightDepth) {
+      const centerX = Math.sign(this.pos.x || 1) * straightX;
+      const dx = this.pos.x - centerX;
+      const dd = depth - straightDepth;
+      const distance = Math.hypot(dx, dd);
+      if (distance > 0.000001) {
+        this.boundaryDistance = radius - distance;
+        this.boundaryNX = dx / distance;
+        this.boundaryNZ = signZ * dd / distance;
+        return true;
+      }
+    }
+
+    this.boundaryDistance = halfWidth - absX;
+    this.boundaryNX = Math.sign(this.pos.x || 1);
+    this.boundaryNZ = 0;
+    if (depth >= 0) {
+      const backDistance = arena.goalDepth - depth;
+      if (backDistance < this.boundaryDistance) {
+        this.boundaryDistance = backDistance;
+        this.boundaryNX = 0;
+        this.boundaryNZ = signZ;
+      }
+    }
+    return true;
+  }
+
+  resolveGoalTunnelCollision(extentX, extentY, extentZ) {
+    const arena = ARENA_TUNING;
+    if (!this.isInGoalTunnel(extentX, extentY, extentZ)) return;
+    const hasBoundary = this.findNearestGoalBoundary();
+    const radius = arena.goalRampRadius;
+
+    const lowerRampZone = hasBoundary
+      && this.boundaryDistance < radius + SURFACE_CONTACT_SLOP
+      && this.pos.y <= radius + extentY + SURFACE_CONTACT_SLOP;
+    let floorContact = false;
+    if (!lowerRampZone) {
+      floorContact = this.pos.y <= extentY + SURFACE_CONTACT_SLOP;
+      if (this.pos.y < extentY) {
+        this.pos.y = extentY;
+        if (this.vel.y < 0) this.vel.y = 0;
+      }
+    }
+
+    const upperRampZone = hasBoundary
+      && this.boundaryDistance < radius + SURFACE_CONTACT_SLOP
+      && this.pos.y >= arena.goalHeight - radius - extentY - SURFACE_CONTACT_SLOP;
+    let ceilingContact = false;
+    if (!upperRampZone) {
+      const ceilingY = arena.goalHeight - extentY;
+      ceilingContact = this.pos.y >= ceilingY - SURFACE_CONTACT_SLOP;
+      if (this.pos.y > ceilingY) {
+        this.pos.y = ceilingY;
+        if (this.vel.y > 0) this.vel.y = 0;
+      }
+    }
+
+    if (hasBoundary) {
+      const outwardX = this.boundaryNX;
+      const outwardZ = this.boundaryNZ;
+      let roundedResolved = false;
+      const lowerHorizontal = radius - this.boundaryDistance;
+      const lowerVertical = this.pos.y - radius;
+      if (lowerHorizontal >= 0 && lowerVertical <= 0) {
+        const distance = Math.hypot(lowerHorizontal, lowerVertical);
+        if (distance > 0.000001) {
+          const nx = -outwardX * lowerHorizontal / distance;
+          const ny = -lowerVertical / distance;
+          const nz = -outwardZ * lowerHorizontal / distance;
+          const support = this.supportAlong(nx, ny, nz);
+          const maximumDistance = Math.max(0.1, radius - support);
+          const penetration = distance - maximumDistance;
+          if (penetration >= -SURFACE_CONTACT_SLOP) {
+            if (penetration > 0) this.resolveIntoPlayable(nx, ny, nz, penetration);
+            this.markSurfaceContact(nx, ny, nz);
+            roundedResolved = true;
+          }
+        }
+      }
+
+      if (!roundedResolved) {
+        const upperHorizontal = radius - this.boundaryDistance;
+        const upperVertical = this.pos.y - (arena.goalHeight - radius);
+        if (upperHorizontal >= 0 && upperVertical >= 0) {
+          const distance = Math.hypot(upperHorizontal, upperVertical);
+          if (distance > 0.000001) {
+            const nx = -outwardX * upperHorizontal / distance;
+            const ny = -upperVertical / distance;
+            const nz = -outwardZ * upperHorizontal / distance;
+            const support = this.supportAlong(nx, ny, nz);
+            const maximumDistance = Math.max(0.1, radius - support);
+            const penetration = distance - maximumDistance;
+            if (penetration >= -SURFACE_CONTACT_SLOP) {
+              if (penetration > 0) this.resolveIntoPlayable(nx, ny, nz, penetration);
+              this.markSurfaceContact(nx, ny, nz);
+              roundedResolved = true;
+            }
+          }
+        }
+      }
+
+      if (!roundedResolved) {
+        const nx = -outwardX;
+        const nz = -outwardZ;
+        const support = this.supportAlong(nx, 0, nz);
+        const penetration = support - this.boundaryDistance;
+        if (penetration >= -SURFACE_CONTACT_SLOP) {
+          if (penetration > 0) this.resolveIntoPlayable(nx, 0, nz, penetration);
+          this.markSurfaceContact(nx, 0, nz);
+          this.ang.multiplyScalar(0.985);
+        }
+      }
+    }
+
+    if (!this.surfaceContactThisStep && floorContact) this.markSurfaceContact(0, 1, 0);
+    if (!this.surfaceContactThisStep && ceilingContact) this.markSurfaceContact(0, -1, 0);
+  }
+
   markSurfaceContact(nx, ny, nz) {
     if (this.groundLockout > 0) return;
     this.surfaceNormal.set(nx, ny, nz).normalize();
@@ -409,6 +550,7 @@ export class LocalCarPredictor {
     const extentY = this.supportAlong(0, 1, 0);
     const extentX = this.supportAlong(1, 0, 0);
     const extentZ = this.supportAlong(0, 0, 1);
+    const inGoal = this.isInGoalTunnel(extentX, extentY, extentZ);
     const absX = Math.abs(this.pos.x);
     const goalFits = absX + extentX <= arena.goalWidth * 0.5
       && this.pos.y + extentY <= arena.goalHeight;
@@ -418,7 +560,7 @@ export class LocalCarPredictor {
       && this.boundaryDistance < arena.rampRadius + SURFACE_CONTACT_SLOP
       && this.pos.y <= arena.rampRadius + extentY + SURFACE_CONTACT_SLOP;
     let floorContact = false;
-    if (!lowerRampZone) {
+    if (!inGoal && !lowerRampZone) {
       floorContact = this.pos.y <= extentY + SURFACE_CONTACT_SLOP;
       if (this.pos.y < extentY) {
         this.pos.y = extentY;
@@ -430,7 +572,7 @@ export class LocalCarPredictor {
       && this.boundaryDistance < arena.ceilingRampRadius + SURFACE_CONTACT_SLOP
       && this.pos.y >= arena.ceiling - arena.ceilingRampRadius - extentY - SURFACE_CONTACT_SLOP;
     let ceilingContact = false;
-    if (!upperRampZone) {
+    if (!inGoal && !upperRampZone) {
       const ceilingY = arena.ceiling - extentY;
       ceilingContact = this.pos.y >= ceilingY - SURFACE_CONTACT_SLOP;
       if (this.pos.y > ceilingY) {
@@ -497,32 +639,8 @@ export class LocalCarPredictor {
       }
     }
 
-    if (Math.abs(this.pos.z) > halfLength - 0.02) {
-      const goalHalfWidth = arena.goalWidth * 0.5;
-      const goalBack = halfLength + arena.goalDepth;
-      const maximumGoalX = goalHalfWidth - extentX;
-      if (this.pos.x > maximumGoalX) {
-        this.pos.x = maximumGoalX;
-        this.stopOutwardVelocity(1, 0);
-      } else if (this.pos.x < -maximumGoalX) {
-        this.pos.x = -maximumGoalX;
-        this.stopOutwardVelocity(-1, 0);
-      }
-
-      const goalRoof = arena.goalHeight - extentY;
-      if (this.pos.y > goalRoof) {
-        this.pos.y = goalRoof;
-        if (this.vel.y > 0) this.vel.y = 0;
-      }
-
-      const maximumGoalZ = goalBack - extentZ;
-      if (this.pos.z > maximumGoalZ) {
-        this.pos.z = maximumGoalZ;
-        this.stopOutwardVelocity(0, 1);
-      } else if (this.pos.z < -maximumGoalZ) {
-        this.pos.z = -maximumGoalZ;
-        this.stopOutwardVelocity(0, -1);
-      }
+    if (inGoal || Math.abs(this.pos.z) > halfLength - 0.02) {
+      this.resolveGoalTunnelCollision(extentX, extentY, extentZ);
     }
 
     if (!this.surfaceContactThisStep && floorContact) this.markSurfaceContact(0, 1, 0);

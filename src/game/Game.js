@@ -59,9 +59,11 @@ export class Game {
     this.scene = new THREE.Scene();
     // Bright daylight is intentionally cheap: a flat background + light fog do
     // most of the work, while the sky dome below is a single unlit draw call.
-    const daylightSky = 0x9fd3ed;
+    const daylightSky = this.profile.ultraHigh ? 0x78b5d5 : 0x9fd3ed;
     this.scene.background = new THREE.Color(daylightSky);
-    this.scene.fog = this.profile.useFog ? new THREE.Fog(0xb8d7e3, 150, 345) : null;
+    this.scene.fog = this.profile.useFog
+      ? new THREE.Fog(this.profile.ultraHigh ? 0x91b8c4 : 0xb8d7e3, 150, 345)
+      : null;
 
     this.camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, this.profile.ultraLow ? 230 : (this.profile.ultraHigh ? 520 : 390));
     this.camera.position.set(0, 5, 10);
@@ -85,7 +87,7 @@ export class Game {
     this.renderer.sortObjects = !this.profile.ultraLow;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = this.profile.useToneMapping ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
-    this.renderer.toneMappingExposure = this.profile.ultraHigh ? 1.14 : 1.08;
+    this.renderer.toneMappingExposure = this.profile.ultraHigh ? 0.94 : 1.08;
     this.root.appendChild(this.renderer.domElement);
     this.root.classList.toggle('perf-ultra', this.profile.ultraLow);
     this.root.classList.toggle('perf-ultra-low', this.profile.ultraLow);
@@ -259,9 +261,9 @@ export class Game {
     );
     const positions = domeGeometry.getAttribute('position');
     const colors = new Float32Array(positions.count * 3);
-    const horizon = new THREE.Color(this.profile.ultraHigh ? 0xeaf2ed : 0xdce8e3);
-    const midSky = new THREE.Color(this.profile.ultraHigh ? 0x9fd4ef : 0x92cae8);
-    const zenith = new THREE.Color(this.profile.ultraHigh ? 0x55a7df : 0x5eafe0);
+    const horizon = new THREE.Color(this.profile.ultraHigh ? 0xb7cfcb : 0xdce8e3);
+    const midSky = new THREE.Color(this.profile.ultraHigh ? 0x78b7d9 : 0x92cae8);
+    const zenith = new THREE.Color(this.profile.ultraHigh ? 0x3c83ba : 0x5eafe0);
     const color = new THREE.Color();
     for (let index = 0; index < positions.count; index++) {
       const h = THREE.MathUtils.clamp(positions.getY(index) / radius, -1, 1);
@@ -309,7 +311,7 @@ export class Game {
       const halo = new THREE.Sprite(new THREE.SpriteMaterial({
         color: 0xffe4a1,
         transparent: true,
-        opacity: 0.17,
+        opacity: 0.09,
         depthWrite: false,
         depthTest: true,
         fog: false,
@@ -396,7 +398,7 @@ export class Game {
       const room = new RoomEnvironment();
       const environment = pmrem.fromScene(room, 0.035).texture;
       this.scene.environment = environment;
-      if ('environmentIntensity' in this.scene) this.scene.environmentIntensity = 0.78;
+      if ('environmentIntensity' in this.scene) this.scene.environmentIntensity = 0.36;
       room.dispose?.();
       pmrem.dispose();
 
@@ -412,10 +414,10 @@ export class Game {
       composer.setSize(width, height);
       composer.addPass(new RenderPass(this.scene, this.camera));
 
-      const bloom = new UnrealBloomPass(new THREE.Vector2(width, height), 0.34, 0.36, 0.92);
-      bloom.threshold = 0.88;
-      bloom.strength = 0.34;
-      bloom.radius = 0.32;
+      const bloom = new UnrealBloomPass(new THREE.Vector2(width, height), 0.16, 0.28, 1.05);
+      bloom.threshold = 1.05;
+      bloom.strength = 0.16;
+      bloom.radius = 0.24;
       composer.addPass(bloom);
       composer.addPass(new OutputPass());
 

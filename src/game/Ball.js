@@ -106,11 +106,11 @@ export class Ball {
       : (this.ultraHigh
         ? new THREE.MeshPhysicalMaterial({
             color: 0xe8443c,
-            roughness: 0.46,
+            roughness: 0.64,
             metalness: 0.0,
-            clearcoat: 0.58,
-            clearcoatRoughness: 0.24,
-            envMapIntensity: 1.1
+            clearcoat: 0.16,
+            clearcoatRoughness: 0.52,
+            envMapIntensity: 0.42
           })
         : new THREE.MeshStandardMaterial({
             color: 0xe53b35,
