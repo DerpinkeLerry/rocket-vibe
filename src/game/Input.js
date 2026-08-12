@@ -14,6 +14,7 @@ const NETWORK_EDGE_CODES = ['Space', 'KeyR', 'KeyB'];
 export class Input {
   constructor() {
     this.down = new Set();
+    this.virtualDown = new Map();
     this.pressed = new Set();
     this.networkPressed = new Set();
     this.networkChangeHandler = null;
@@ -26,24 +27,27 @@ export class Input {
         event.preventDefault();
       }
 
-      if (!event.repeat) {
+      const wasDown = this.isCodeDown(event.code);
+      this.down.add(event.code);
+      if (!event.repeat && !wasDown) {
         this.pressed.add(event.code);
         this.networkPressed.add(event.code);
       }
-      this.down.add(event.code);
 
       // Multiplayer input should not depend on requestAnimationFrame. Send an
       // update immediately when a key changes so player 2 remains responsive.
-      this.networkChangeHandler?.();
+      if (!wasDown) this.networkChangeHandler?.();
     }, { passive: false });
 
     window.addEventListener('keyup', (event) => {
+      const wasDown = this.isCodeDown(event.code);
       this.down.delete(event.code);
-      this.networkChangeHandler?.();
+      if (wasDown && !this.isCodeDown(event.code)) this.networkChangeHandler?.();
     });
 
     window.addEventListener('blur', () => {
       this.down.clear();
+      this.virtualDown.clear();
       this.pressed.clear();
       this.networkPressed.clear();
       // Explicitly send a zeroed packet so a remote key can never get stuck.
@@ -55,8 +59,43 @@ export class Input {
     this.networkChangeHandler = typeof handler === 'function' ? handler : null;
   }
 
+  isCodeDown(code) {
+    return this.down.has(code) || Boolean(this.virtualDown.get(code)?.size);
+  }
+
+  // Touch/gamepad-like sources reuse the exact same keyboard codes. Multiple
+  // sources may hold one code simultaneously without releasing each other.
+  setVirtualKey(code, active, source = 'virtual') {
+    const wasDown = this.isCodeDown(code);
+    let sources = this.virtualDown.get(code);
+
+    if (active) {
+      if (!sources) {
+        sources = new Set();
+        this.virtualDown.set(code, sources);
+      }
+      sources.add(source);
+    } else if (sources) {
+      sources.delete(source);
+      if (sources.size === 0) this.virtualDown.delete(code);
+    }
+
+    const isDown = this.isCodeDown(code);
+    if (!wasDown && isDown) {
+      this.pressed.add(code);
+      this.networkPressed.add(code);
+    }
+    if (wasDown !== isDown) this.networkChangeHandler?.();
+  }
+
+  clearVirtualKeys() {
+    if (this.virtualDown.size === 0) return;
+    this.virtualDown.clear();
+    this.networkChangeHandler?.();
+  }
+
   isDown(...codes) {
-    return codes.some((code) => this.down.has(code));
+    return codes.some((code) => this.isCodeDown(code));
   }
 
   consumePressed(code) {
@@ -68,13 +107,13 @@ export class Input {
   takeNetworkPacket() {
     let mask = 0;
     for (const [code, bit] of NETWORK_DOWN_BITS) {
-      if (this.down.has(code)) mask |= bit;
+      if (this.isCodeDown(code)) mask |= bit;
     }
-    if (this.down.has('ArrowUp')) mask |= 1 << 0;
-    if (this.down.has('ArrowDown')) mask |= 1 << 1;
-    if (this.down.has('ArrowLeft')) mask |= 1 << 2;
-    if (this.down.has('ArrowRight')) mask |= 1 << 3;
-    if (this.down.has('ShiftRight')) mask |= 1 << 6;
+    if (this.isCodeDown('ArrowUp')) mask |= 1 << 0;
+    if (this.isCodeDown('ArrowDown')) mask |= 1 << 1;
+    if (this.isCodeDown('ArrowLeft')) mask |= 1 << 2;
+    if (this.isCodeDown('ArrowRight')) mask |= 1 << 3;
+    if (this.isCodeDown('ShiftRight')) mask |= 1 << 6;
 
     let edges = 0;
     for (let i = 0; i < NETWORK_EDGE_CODES.length; i++) {

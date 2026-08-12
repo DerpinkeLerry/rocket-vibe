@@ -1,6 +1,7 @@
 import { Game } from './game/Game.js';
 import { LanClient } from './network/LanClient.js';
 import { CAR_STYLES, DEFAULT_CAR_STYLE, normalizeCarStyle } from './shared/car-styles.js';
+import { prefersMobileControls } from './game/MobileControls.js';
 import './style.css';
 
 function rememberedPlayerName() {
@@ -71,9 +72,10 @@ function requestPlayerIdentity(root) {
         <div class="join-card__eyebrow">ROCKET VIBE</div>
         <h1>Fahrer & Auto</h1>
         <p>Wähle deinen Namen und eine Karosserie. Alle vier Autos haben dieselbe Hitbox und dieselben Fahrwerte.</p>
+        ${prefersMobileControls() ? '<div class="join-card__mobile-note">📱 Touch-Steuerung aktiv · Querformat empfohlen</div>' : ''}
         <label for="player-name">Spielername</label>
         <input id="player-name" name="playerName" type="text" minlength="2" maxlength="16"
-          autocomplete="nickname" spellcheck="false" placeholder="z. B. Goofy" required />
+          autocomplete="nickname" enterkeyhint="go" spellcheck="false" placeholder="z. B. Goofy" required />
 
         <fieldset class="car-select">
           <legend>Auto auswählen</legend>
@@ -98,7 +100,7 @@ function requestPlayerIdentity(root) {
     const error = overlay.querySelector('.join-card__error');
     const choices = [...overlay.querySelectorAll('[data-car-choice]')];
     input.value = rememberedPlayerName();
-    requestAnimationFrame(() => input.focus());
+    if (!prefersMobileControls()) requestAnimationFrame(() => input.focus());
 
     form.addEventListener('change', (event) => {
       if (event.target?.name !== 'carStyle') return;

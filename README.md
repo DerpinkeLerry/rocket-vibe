@@ -98,6 +98,20 @@ Ein Deployment beendet laufende Matches beim Containerwechsel. Fuer spaetere Mat
 - F2: Normal / Ultra-VM umschalten und Seite neu laden
 - Kamera: `C` schaltet zwischen Ball Cam und Car Cam; das Auto bleibt in beiden Modi zentriert. Hindernisse zwischen Kamera und Auto werden beim Rendern ausgeblendet, und die Kamera darf hinter/außerhalb der Arena stehen.
 
+### Smartphone / Tablet
+
+Auf Touch-Geraeten wird die Mobile-Steuerung automatisch aktiviert. Fuer die beste Sicht wird Querformat empfohlen, Hochformat bleibt aber spielbar.
+
+- Linker 2D-Stick: hoch/runter = Gas/Bremse bzw. Luft-Pitch, links/rechts = Lenken bzw. Luft-Yaw
+- `JUMP`: Sprung, gehaltene Sprunghoehe, Double-Jump und zusammen mit Stickrichtung Directional Flip/Dodge
+- `BOOST`: Boost halten; funktioniert gleichzeitig mit Stick und Jump
+- `ROLL L / R`: Air Roll links/rechts
+- `BALL / CAR`: Ball Cam und Car Cam wechseln
+- `↻`: eigenes Auto resetten
+- `⛶`: Vollbild, wenn der Browser die Fullscreen-API unterstuetzt; kompatible Android-Browser versuchen dabei Querformat zu sperren
+
+Das HUD beruecksichtigt Notch/Home-Bar per Safe-Area, verhindert Pull-to-Refresh/Browser-Gesten im Match und nutzt auf Mobilgeraeten automatisch adaptive Renderaufloesung. Mit `?mobile=1` kann die Touch-Steuerung zum Testen erzwungen, mit `?mobile=0` deaktiviert werden.
+
 ## Schwache Rechner / VM
 
 ```text

@@ -5,6 +5,7 @@ import { BoostPads } from './BoostPads.js';
 import { Car } from './Car.js';
 import { ChaseCamera } from './ChaseCamera.js';
 import { Input } from './Input.js';
+import { MobileControls } from './MobileControls.js';
 import { Hud } from './Hud.js';
 import { getPerformanceProfile, togglePerformanceProfile } from './PerformanceProfile.js';
 import { VirtualInput } from '../network/VirtualInput.js';
@@ -151,6 +152,8 @@ export class Game {
       playerName: this.playerName,
       team: this.playerTeam
     });
+    this.mobileControls = new MobileControls(this.root, this.input);
+    this.mobileControls.setCameraMode?.(this.chaseCamera.getMode());
 
     if (this.network) {
       this.network.onStatus = (text) => this.hud.setNetworkStatus(text);
@@ -180,7 +183,10 @@ export class Game {
     this.loop = this.loop.bind(this);
     this.onPerfToggle = this.onPerfToggle.bind(this);
     window.addEventListener('resize', this.onResize);
+    window.visualViewport?.addEventListener('resize', this.onResize);
+    window.addEventListener('orientationchange', this.onResize);
     window.addEventListener('keydown', this.onPerfToggle, { passive: false });
+    this.onResize();
   }
 
   onPerfToggle(event) {
@@ -359,6 +365,7 @@ export class Game {
       if (this.input.consumePressed('KeyC')) {
         const cameraMode = this.chaseCamera.toggleMode();
         this.hud.setCameraMode(cameraMode);
+        this.mobileControls.setCameraMode?.(cameraMode);
       }
       this.boostPads.update(renderDt);
       this.chaseCamera.update(renderDt);
@@ -505,8 +512,11 @@ export class Game {
   }
 
   onResize() {
-    this.camera.aspect = window.innerWidth / window.innerHeight;
+    const width = Math.max(1, this.root.clientWidth || window.innerWidth);
+    const height = Math.max(1, this.root.clientHeight || window.innerHeight);
+    this.camera.aspect = width / height;
+    this.camera.fov = this.mobileControls?.enabled && height > width ? 78 : 72;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(window.innerWidth, window.innerHeight, false);
+    this.renderer.setSize(width, height, false);
   }
 }
