@@ -10,6 +10,7 @@ import { getPerformanceProfile, togglePerformanceProfile } from './PerformancePr
 import { VirtualInput } from '../network/VirtualInput.js';
 import { LocalCarPredictor } from '../network/LocalCarPredictor.js';
 import { ARENA_TUNING } from '../shared/arena-tuning.js';
+import { DEFAULT_CAR_STYLE, normalizeCarStyle } from '../shared/car-styles.js';
 
 const CLIENT_INPUT_HEARTBEAT_HZ = 15;
 
@@ -28,6 +29,7 @@ export class Game {
     this.networked = Boolean(network);
     this.playerId = network?.playerId ?? 0;
     this.playerName = network?.playerName || options.playerName || 'Spieler';
+    this.playerCarStyle = normalizeCarStyle(network?.carStyle || options.carStyle || DEFAULT_CAR_STYLE);
     this.playerTeam = network?.team === 'blue' ? 'blue' : 'orange';
     this.profile = getPerformanceProfile(this.networked);
 
@@ -99,6 +101,11 @@ export class Game {
     });
     this.boostPads = new BoostPads(this.scene, { lowDetail: this.profile.lowDetail });
 
+    const initialCarStyles = new Map((network?.players ?? []).map((player) => [
+      Number(player?.playerId),
+      normalizeCarStyle(player?.carStyle)
+    ]));
+
     this.cars = PLAYER_CONFIGS.map((config, index) => new Car(
       this.scene,
       this.world,
@@ -109,6 +116,7 @@ export class Game {
         lowDetail: this.profile.lowDetail,
         clientOnly: this.networked,
         playerName: index === this.playerId ? this.playerName : `Spieler ${index + 1}`,
+        carStyle: index === this.playerId ? this.playerCarStyle : (initialCarStyles.get(index) || DEFAULT_CAR_STYLE),
         localPlayer: index === this.playerId
       }
     ));
@@ -123,6 +131,7 @@ export class Game {
     } else {
       for (let i = 1; i < this.cars.length; i++) this.setCarVisible(i, false);
       this.car0.setPlayerIdentity(this.playerName, 'orange', true);
+      this.car0.setCarStyle(this.playerCarStyle);
     }
 
     this.car = this.cars[this.playerId] ?? this.car0;
@@ -193,18 +202,21 @@ export class Game {
         return {
           playerId: Number(player.playerId),
           name: String(player.name || `Spieler ${Number(player.playerId) + 1}`).slice(0, 16),
-          team: player.team === 'blue' ? 'blue' : 'orange'
+          team: player.team === 'blue' ? 'blue' : 'orange',
+          carStyle: normalizeCarStyle(player.carStyle)
         };
       }
       const playerId = Number(player);
-      return { playerId, name: `Spieler ${playerId + 1}`, team: playerId % 2 === 0 ? 'orange' : 'blue' };
+      return { playerId, name: `Spieler ${playerId + 1}`, team: playerId % 2 === 0 ? 'orange' : 'blue', carStyle: DEFAULT_CAR_STYLE };
     }).filter((player) => Number.isInteger(player.playerId) && player.playerId >= 0 && player.playerId < this.cars.length);
-    const signature = roster.map((player) => `${player.playerId}:${player.name}:${player.team}`).join('|');
+    const signature = roster.map((player) => `${player.playerId}:${player.name}:${player.team}:${player.carStyle}`).join('|');
     if (signature === this.rosterSignature) return;
     this.rosterSignature = signature;
     this.connectedPlayers = new Set(roster.map((player) => player.playerId));
     for (const player of roster) {
-      this.cars[player.playerId]?.setPlayerIdentity(player.name, player.team, player.playerId === this.playerId);
+      const car = this.cars[player.playerId];
+      car?.setPlayerIdentity(player.name, player.team, player.playerId === this.playerId);
+      car?.setCarStyle(player.carStyle);
     }
     if (this.networked) {
       for (let i = 0; i < this.cars.length; i++) this.setCarVisible(i, this.connectedPlayers.has(i));

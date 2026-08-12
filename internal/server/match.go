@@ -38,6 +38,7 @@ type rosterPlayer struct {
 	PlayerID int    `json:"playerId"`
 	Name     string `json:"name"`
 	Team     string `json:"team"`
+	CarStyle string `json:"carStyle"`
 }
 
 type Stats struct {
@@ -177,7 +178,7 @@ func (match *Match) run() {
 			match.playerCount.Store(int32(len(clients)))
 			welcome, _ := json.Marshal(map[string]any{
 				"type": "welcome", "playerId": slot, "maxPlayers": match.config.MaxPlayers,
-				"playerName": request.client.name, "team": request.client.team,
+				"playerName": request.client.name, "team": request.client.team, "carStyle": request.client.carStyle,
 				"connectedPlayers": connectedSlots(clients), "players": rosterPlayers(clients), "protocol": 3,
 				"serverHz": match.config.PhysicsHz, "snapshotHz": match.config.SnapshotHz,
 			})
@@ -271,7 +272,7 @@ func rosterPlayers(clients map[string]*client) []rosterPlayer {
 	for slot := 0; slot < game.MaxPlayers; slot++ {
 		for _, connected := range clients {
 			if connected.slot == slot {
-				players = append(players, rosterPlayer{PlayerID: slot, Name: connected.name, Team: connected.team})
+				players = append(players, rosterPlayer{PlayerID: slot, Name: connected.name, Team: connected.team, CarStyle: connected.carStyle})
 				break
 			}
 		}

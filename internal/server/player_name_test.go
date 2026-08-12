@@ -16,3 +16,19 @@ func TestSanitizePlayerName(t *testing.T) {
 		}
 	}
 }
+
+func TestSanitizeCarStyle(t *testing.T) {
+	checks := map[string]string{
+		"vortex":  "vortex",
+		" TITAN ": "titan",
+		"Apex":    "apex",
+		"razor":   "razor",
+		"octane":  defaultCarStyle,
+		"":        defaultCarStyle,
+	}
+	for input, expected := range checks {
+		if actual := sanitizeCarStyle(input); actual != expected {
+			t.Fatalf("sanitizeCarStyle(%q) = %q, want %q", input, actual, expected)
+		}
+	}
+}

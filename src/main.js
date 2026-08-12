@@ -1,5 +1,6 @@
 import { Game } from './game/Game.js';
 import { LanClient } from './network/LanClient.js';
+import { CAR_STYLES, DEFAULT_CAR_STYLE, normalizeCarStyle } from './shared/car-styles.js';
 import './style.css';
 
 function rememberedPlayerName() {
@@ -10,32 +11,107 @@ function rememberedPlayerName() {
   }
 }
 
-function requestPlayerName(root) {
+function rememberedCarStyle() {
+  try {
+    return normalizeCarStyle(localStorage.getItem('rocket-vibe-car-style') || DEFAULT_CAR_STYLE);
+  } catch {
+    return DEFAULT_CAR_STYLE;
+  }
+}
+
+function carPreviewSvg(styleId) {
+  const shapes = {
+    vortex: {
+      body: 'M27 67 L39 45 L91 37 L132 42 L151 61 L149 79 L31 79 Z',
+      glass: 'M78 42 L94 29 L123 31 L137 45 L113 47 Z',
+      spoiler: 'M126 33 H153 V38 H127 Z'
+    },
+    titan: {
+      body: 'M25 65 L34 43 L68 36 L134 38 L154 56 L153 80 L28 80 Z',
+      glass: 'M70 39 L83 22 L123 22 L140 41 L122 46 L75 46 Z',
+      spoiler: 'M126 27 H154 V34 H128 Z'
+    },
+    apex: {
+      body: 'M23 67 L37 49 L92 41 L143 47 L157 63 L154 78 L25 78 Z',
+      glass: 'M84 43 L101 32 L130 34 L143 48 L116 50 Z',
+      spoiler: 'M127 36 H158 V41 H128 Z'
+    },
+    razor: {
+      body: 'M20 68 L44 51 L112 39 L153 53 L160 67 L155 78 L23 78 Z',
+      glass: 'M101 41 L115 31 L139 38 L149 52 L123 50 Z',
+      spoiler: ''
+    }
+  };
+  const shape = shapes[styleId] || shapes.vortex;
+  return `
+    <svg viewBox="0 0 180 100" role="img" aria-label="Fahrzeugvorschau">
+      <defs>
+        <linearGradient id="paint-${styleId}" x1="0" x2="1">
+          <stop offset="0" stop-color="#2caeff"/>
+          <stop offset="1" stop-color="#ff8a32"/>
+        </linearGradient>
+      </defs>
+      <ellipse cx="90" cy="83" rx="70" ry="7" fill="rgba(0,0,0,.28)"/>
+      <circle cx="50" cy="75" r="15" fill="#071019"/><circle cx="50" cy="75" r="7" fill="#a8c5d9"/>
+      <circle cx="136" cy="75" r="15" fill="#071019"/><circle cx="136" cy="75" r="7" fill="#a8c5d9"/>
+      <path d="${shape.body}" fill="url(#paint-${styleId})" stroke="rgba(255,255,255,.65)" stroke-width="2"/>
+      <path d="${shape.glass}" fill="#14354d" stroke="rgba(173,230,255,.55)" stroke-width="2"/>
+      ${shape.spoiler ? `<path d="${shape.spoiler}" fill="#101820"/>` : ''}
+      <path d="M31 67 H48" stroke="#d9fbff" stroke-width="4" stroke-linecap="round"/>
+    </svg>`;
+}
+
+function requestPlayerIdentity(root) {
   return new Promise((resolve) => {
+    const selectedStyle = rememberedCarStyle();
     const overlay = document.createElement('div');
     overlay.className = 'join-screen';
     overlay.innerHTML = `
-      <form class="join-card">
+      <form class="join-card join-card--wide">
         <div class="join-card__eyebrow">ROCKET VIBE</div>
-        <h1>Wie heißt du?</h1>
-        <p>Dein Name erscheint über deinem Auto.</p>
+        <h1>Fahrer & Auto</h1>
+        <p>Wähle deinen Namen und eine Karosserie. Alle vier Autos haben dieselbe Hitbox und dieselben Fahrwerte.</p>
         <label for="player-name">Spielername</label>
         <input id="player-name" name="playerName" type="text" minlength="2" maxlength="16"
           autocomplete="nickname" spellcheck="false" placeholder="z. B. Goofy" required />
+
+        <fieldset class="car-select">
+          <legend>Auto auswählen</legend>
+          <div class="car-select__grid">
+            ${CAR_STYLES.map((style) => `
+              <label class="car-choice${style.id === selectedStyle ? ' is-selected' : ''}" data-car-choice="${style.id}">
+                <input type="radio" name="carStyle" value="${style.id}" ${style.id === selectedStyle ? 'checked' : ''} />
+                <span class="car-choice__preview">${carPreviewSvg(style.id)}</span>
+                <span class="car-choice__name">${style.name}</span>
+                <span class="car-choice__desc">${style.description}</span>
+              </label>`).join('')}
+          </div>
+        </fieldset>
+
         <div class="join-card__error" aria-live="polite"></div>
         <button type="submit">MATCH BEITRETEN</button>
       </form>`;
     root.appendChild(overlay);
 
     const form = overlay.querySelector('form');
-    const input = overlay.querySelector('input');
+    const input = overlay.querySelector('#player-name');
     const error = overlay.querySelector('.join-card__error');
+    const choices = [...overlay.querySelectorAll('[data-car-choice]')];
     input.value = rememberedPlayerName();
     requestAnimationFrame(() => input.focus());
+
+    form.addEventListener('change', (event) => {
+      if (event.target?.name !== 'carStyle') return;
+      for (const choice of choices) {
+        const radio = choice.querySelector('input[type="radio"]');
+        choice.classList.toggle('is-selected', Boolean(radio?.checked));
+      }
+    });
 
     form.addEventListener('submit', (event) => {
       event.preventDefault();
       const name = input.value.trim().replace(/\s+/g, ' ');
+      const carStyle = normalizeCarStyle(new FormData(form).get('carStyle'));
       if (name.length < 2) {
         error.textContent = 'Bitte mindestens 2 Zeichen eingeben.';
         input.focus();
@@ -43,11 +119,12 @@ function requestPlayerName(root) {
       }
       try {
         localStorage.setItem('rocket-vibe-player-name', name);
+        localStorage.setItem('rocket-vibe-car-style', carStyle);
       } catch {
         // Private browsing may disable storage; the match can still start.
       }
       overlay.remove();
-      resolve(name.slice(0, 16));
+      resolve({ playerName: name.slice(0, 16), carStyle });
     });
   });
 }
@@ -55,13 +132,13 @@ function requestPlayerName(root) {
 async function boot() {
   const app = document.querySelector('#app');
   const multiplayerEnabled = import.meta.env.MODE === 'lan' || import.meta.env.PROD;
-  const playerName = await requestPlayerName(app);
+  const identity = await requestPlayerIdentity(app);
 
   let network = null;
   let RAPIER = null;
 
   if (multiplayerEnabled) {
-    network = new LanClient(playerName);
+    network = new LanClient(identity.playerName, identity.carStyle);
     await network.connect();
     // No Rapier import in the browser for online play. Railway owns physics.
   } else {
@@ -70,7 +147,7 @@ async function boot() {
     await RAPIER.init();
   }
 
-  const game = new Game(app, RAPIER, network, { playerName });
+  const game = new Game(app, RAPIER, network, identity);
   game.start();
 }
 

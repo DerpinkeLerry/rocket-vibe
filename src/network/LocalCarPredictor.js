@@ -211,17 +211,32 @@ export class LocalCarPredictor {
     const speedForward = this.vel.dot(this.forward);
     const speedLateral = this.vel.dot(this.right);
     const tangentSpeed = Math.hypot(speedForward, speedLateral);
-    const maxSpeed = boosting ? CAR_TUNING.maxBoostSpeed : CAR_TUNING.maxGroundSpeed;
-    const targetForward = throttle * (throttle < 0 ? CAR_TUNING.maxGroundSpeed * 0.68 : maxSpeed);
-    let accel = throttle < 0 ? CAR_TUNING.reverseAcceleration : CAR_TUNING.driveAcceleration;
-    if (throttle !== 0 && Math.abs(speedForward) > 0.05 && Math.sign(throttle) !== Math.sign(speedForward)) {
-      accel = CAR_TUNING.brakeAcceleration;
-    }
+    const reverseTarget = -CAR_TUNING.maxGroundSpeed * 0.68;
+    const opposing = throttle !== 0
+      && Math.abs(speedForward) > 0.05
+      && Math.sign(throttle) !== Math.sign(speedForward);
 
     let nextForward = speedForward;
-    if (throttle !== 0) nextForward = moveTowards(speedForward, targetForward, accel * dt);
-    else nextForward = moveTowards(speedForward, 0, CAR_TUNING.coastDeceleration * dt);
-    if (boosting) nextForward = moveTowards(nextForward, CAR_TUNING.maxBoostSpeed, CAR_TUNING.boostAcceleration * dt);
+    if (opposing) {
+      const brakeTarget = throttle < 0 ? reverseTarget : CAR_TUNING.maxGroundSpeed;
+      nextForward = moveTowards(speedForward, brakeTarget, CAR_TUNING.brakeAcceleration * dt);
+    } else if (throttle > 0) {
+      // Normal throttle can accelerate to 70 km/h, but it never drags a
+      // previously boosted car back down from the 70-100 km/h momentum band.
+      if (speedForward < CAR_TUNING.maxGroundSpeed) {
+        nextForward = moveTowards(speedForward, CAR_TUNING.maxGroundSpeed, CAR_TUNING.driveAcceleration * dt);
+      }
+    } else if (throttle < 0) {
+      nextForward = moveTowards(speedForward, reverseTarget, CAR_TUNING.reverseAcceleration * dt);
+    } else if (speedForward <= CAR_TUNING.maxGroundSpeed + 0.01) {
+      // Below normal top speed the familiar coast slowdown remains. Above it,
+      // boosted momentum is retained until braking/collision actually slows us.
+      nextForward = moveTowards(speedForward, 0, CAR_TUNING.coastDeceleration * dt);
+    }
+
+    if (boosting) {
+      nextForward = moveTowards(nextForward, CAR_TUNING.maxBoostSpeed, CAR_TUNING.boostAcceleration * dt);
+    }
 
     const nextLateral = speedLateral * Math.exp(-CAR_TUNING.grip * dt);
     const normalSpeed = Math.min(0, this.vel.dot(this.groundNormal));

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { TransformBody } from '../network/TransformBody.js';
 import { CAR_TUNING } from '../shared/game-tuning.js';
+import { getCarStyle, normalizeCarStyle } from '../shared/car-styles.js';
 
 const VEC3_UP = new THREE.Vector3(0, 1, 0);
 const VEC3_FORWARD = new THREE.Vector3(0, 0, -1);
@@ -30,6 +31,9 @@ export class Car {
     this.playerName = String(options.playerName || 'Spieler').slice(0, 16);
     this.team = options.team === 'blue' ? 'blue' : 'orange';
     this.isLocalPlayer = Boolean(options.localPlayer);
+    this.carStyle = getCarStyle(options.carStyle);
+    this.visualParts = null;
+    this.wheelPivots = [];
     this.maxGroundSpeed = CAR_TUNING.maxGroundSpeed;
     this.maxBoostSpeed = CAR_TUNING.maxBoostSpeed;
     this.boost = CAR_TUNING.boostCapacity;
@@ -158,20 +162,25 @@ export class Car {
     const spoilerBar = new THREE.Mesh(new RoundedBoxGeometry(1.5, 0.11, 0.23, 3, 0.05), dark);
     spoilerBar.position.set(0, 0.62, 1.45);
     this.group.add(spoilerBar);
+    const spoilerStruts = [];
     for (const x of [-0.55, 0.55]) {
       const strut = new THREE.Mesh(new RoundedBoxGeometry(0.09, 0.38, 0.09, 2, 0.03), dark);
       strut.position.set(x, 0.45, 1.39);
       this.group.add(strut);
+      spoilerStruts.push(strut);
     }
 
+    const lamps = [];
     for (const x of [-0.55, 0.55]) {
       const lamp = new THREE.Mesh(new RoundedBoxGeometry(0.32, 0.14, 0.06, 2, 0.03), lightMat);
       lamp.position.set(x, 0.13, -1.505);
       this.group.add(lamp);
+      lamps.push(lamp);
     }
 
     this.wheels = [];
     this.frontWheelPivots = [];
+    this.wheelPivots = [];
     const wheelPositions = [
       [-0.86, -0.2, -0.92, true],
       [0.86, -0.2, -0.92, true],
@@ -183,6 +192,7 @@ export class Car {
       const pivot = new THREE.Group();
       pivot.position.set(x, y, z);
       this.group.add(pivot);
+      this.wheelPivots.push(pivot);
 
       const tire = new THREE.Mesh(
         new THREE.CylinderGeometry(0.36, 0.36, 0.28, 18),
@@ -215,6 +225,12 @@ export class Car {
       this.group.add(flame);
       this.exhaust.push(flame);
     }
+
+    this.visualParts = {
+      lower, hood, cabin, roof, frontBumper, rearBumper, spoilerBar, spoilerStruts, lamps,
+      lowDetail: false
+    };
+    this.applyCarStyleVisual();
 
     const shadowMat = new THREE.MeshBasicMaterial({
       color: 0x000000,
@@ -272,9 +288,12 @@ export class Car {
 
     this.wheels = [];
     this.frontWheelPivots = [];
+    this.wheelPivots = [];
     this.exhaust = [];
     this.boostLight = null;
     this.shadow = null;
+    this.visualParts = { body, cabin, frontBumper: bumper, rearBumper: rear, wheelMesh: wheels, lowDetail: true };
+    this.applyCarStyleVisual();
 
     // Ultra car parts never animate independently. Freeze their local matrices;
     // only the root group moves each render frame.
@@ -283,6 +302,101 @@ export class Car {
       object.updateMatrix();
       object.matrixAutoUpdate = false;
     });
+  }
+
+
+  applyCarStyleVisual() {
+    const style = this.carStyle || getCarStyle();
+    const parts = this.visualParts;
+    if (!parts) return;
+
+    if (parts.lowDetail) {
+      parts.body.scale.set(...style.bodyScale);
+      parts.body.position.y = style.bodyY;
+      parts.cabin.scale.set(...style.cabinScale);
+      parts.cabin.position.set(...style.cabinPosition);
+      parts.frontBumper.scale.set(...style.bumperScale);
+      parts.frontBumper.position.z = -style.bumperZ;
+      parts.rearBumper.scale.set(...style.bumperScale);
+      parts.rearBumper.position.z = style.bumperZ;
+
+      const dummy = new THREE.Object3D();
+      const wheelPositions = [
+        [-style.wheelX, -0.20, style.frontWheelZ],
+        [ style.wheelX, -0.20, style.frontWheelZ],
+        [-style.wheelX, -0.20, style.rearWheelZ],
+        [ style.wheelX, -0.20, style.rearWheelZ]
+      ];
+      for (let index = 0; index < wheelPositions.length; index++) {
+        const [x, y, z] = wheelPositions[index];
+        dummy.position.set(x, y, z);
+        dummy.rotation.set(0, 0, Math.PI / 2);
+        dummy.scale.set(style.wheelRadiusScale, 1, style.wheelRadiusScale);
+        dummy.updateMatrix();
+        parts.wheelMesh.setMatrixAt(index, dummy.matrix);
+      }
+      parts.wheelMesh.instanceMatrix.needsUpdate = true;
+      for (const object of [parts.body, parts.cabin, parts.frontBumper, parts.rearBumper, parts.wheelMesh]) {
+        object.updateMatrix();
+      }
+      return;
+    }
+
+    parts.lower.scale.set(...style.bodyScale);
+    parts.lower.position.y = style.bodyY;
+    parts.hood.scale.set(...style.hoodScale);
+    parts.hood.position.set(...style.hoodPosition);
+    parts.cabin.scale.set(...style.cabinScale);
+    parts.cabin.position.set(...style.cabinPosition);
+    parts.roof.scale.set(...style.roofScale);
+    parts.roof.position.set(...style.roofPosition);
+    parts.frontBumper.scale.set(...style.bumperScale);
+    parts.frontBumper.position.z = -style.bumperZ;
+    parts.rearBumper.scale.set(...style.bumperScale);
+    parts.rearBumper.position.z = style.bumperZ;
+    parts.spoilerBar.scale.set(...style.spoilerScale);
+    parts.spoilerBar.position.set(...style.spoilerPosition);
+    parts.spoilerBar.visible = style.spoilerVisible;
+    for (let index = 0; index < parts.spoilerStruts.length; index++) {
+      const strut = parts.spoilerStruts[index];
+      const side = index === 0 ? -1 : 1;
+      strut.position.set(side * 0.55 * style.spoilerScale[0], style.spoilerPosition[1] - 0.17, style.spoilerPosition[2] - 0.06);
+      strut.scale.set(1, style.spoilerScale[1], style.spoilerScale[2]);
+      strut.visible = style.spoilerVisible;
+    }
+    for (let index = 0; index < parts.lamps.length; index++) {
+      const lamp = parts.lamps[index];
+      const side = index === 0 ? -1 : 1;
+      lamp.position.set(side * 0.55 * style.bodyScale[0], 0.13 * style.bodyScale[1], -style.bumperZ - 0.005);
+    }
+
+    const wheelPositions = [
+      [-style.wheelX, -0.2, style.frontWheelZ],
+      [ style.wheelX, -0.2, style.frontWheelZ],
+      [-style.wheelX, -0.2, style.rearWheelZ],
+      [ style.wheelX, -0.2, style.rearWheelZ]
+    ];
+    for (let index = 0; index < this.wheelPivots.length; index++) {
+      const pivot = this.wheelPivots[index];
+      const [x, y, z] = wheelPositions[index];
+      pivot.position.set(x, y, z);
+      pivot.scale.set(style.wheelRadiusScale, style.wheelRadiusScale, style.wheelRadiusScale);
+    }
+    for (let index = 0; index < this.exhaust.length; index++) {
+      const side = index === 0 ? -1 : 1;
+      this.exhaust[index].position.set(side * style.exhaustX, -0.03, style.exhaustZ);
+    }
+  }
+
+  setCarStyle(value) {
+    const normalized = normalizeCarStyle(value);
+    if (this.carStyle?.id === normalized) return;
+    this.carStyle = getCarStyle(normalized);
+    this.applyCarStyleVisual();
+  }
+
+  getCarStyleId() {
+    return this.carStyle?.id || 'vortex';
   }
 
   createNameTag() {
@@ -511,17 +625,32 @@ export class Car {
     const speedForward = this.velocityVec.dot(this.forward);
     const speedLateral = this.velocityVec.dot(this.right);
     const tangentSpeed = Math.hypot(speedForward, speedLateral);
-    const maxSpeed = boosting ? CAR_TUNING.maxBoostSpeed : CAR_TUNING.maxGroundSpeed;
-    const targetForward = throttle * (throttle < 0 ? CAR_TUNING.maxGroundSpeed * 0.68 : maxSpeed);
-    let acceleration = throttle < 0 ? CAR_TUNING.reverseAcceleration : CAR_TUNING.driveAcceleration;
-    if (throttle !== 0 && Math.abs(speedForward) > 0.05 && Math.sign(throttle) !== Math.sign(speedForward)) {
-      acceleration = CAR_TUNING.brakeAcceleration;
-    }
+    const reverseTarget = -CAR_TUNING.maxGroundSpeed * 0.68;
+    const opposing = throttle !== 0
+      && Math.abs(speedForward) > 0.05
+      && Math.sign(throttle) !== Math.sign(speedForward);
 
     let nextForward = speedForward;
-    if (throttle !== 0) nextForward = moveTowards(speedForward, targetForward, acceleration * dt);
-    else nextForward = moveTowards(speedForward, 0, CAR_TUNING.coastDeceleration * dt);
-    if (boosting) nextForward = moveTowards(nextForward, CAR_TUNING.maxBoostSpeed, CAR_TUNING.boostAcceleration * dt);
+    if (opposing) {
+      const brakeTarget = throttle < 0 ? reverseTarget : CAR_TUNING.maxGroundSpeed;
+      nextForward = moveTowards(speedForward, brakeTarget, CAR_TUNING.brakeAcceleration * dt);
+    } else if (throttle > 0) {
+      // Normal throttle can accelerate to 70 km/h, but it never drags a
+      // previously boosted car back down from the 70-100 km/h momentum band.
+      if (speedForward < CAR_TUNING.maxGroundSpeed) {
+        nextForward = moveTowards(speedForward, CAR_TUNING.maxGroundSpeed, CAR_TUNING.driveAcceleration * dt);
+      }
+    } else if (throttle < 0) {
+      nextForward = moveTowards(speedForward, reverseTarget, CAR_TUNING.reverseAcceleration * dt);
+    } else if (speedForward <= CAR_TUNING.maxGroundSpeed + 0.01) {
+      // Below normal top speed the familiar coast slowdown remains. Above it,
+      // boosted momentum is retained until braking/collision actually slows us.
+      nextForward = moveTowards(speedForward, 0, CAR_TUNING.coastDeceleration * dt);
+    }
+
+    if (boosting) {
+      nextForward = moveTowards(nextForward, CAR_TUNING.maxBoostSpeed, CAR_TUNING.boostAcceleration * dt);
+    }
 
     const nextLateral = speedLateral * Math.exp(-CAR_TUNING.grip * dt);
     const normalSpeed = Math.min(0, this.velocityVec.dot(this.groundNormal));

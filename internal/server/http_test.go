@@ -43,7 +43,7 @@ func TestHTTPAndWebSocketIntegration(t *testing.T) {
 
 	connectionContext, cancelConnection := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancelConnection()
-	connection, _, err := websocket.Dial(connectionContext, "ws"+strings.TrimPrefix(httpServer.URL, "http")+"/lan?name=Test%20Pilot", nil)
+	connection, _, err := websocket.Dial(connectionContext, "ws"+strings.TrimPrefix(httpServer.URL, "http")+"/lan?name=Test%20Pilot&car=titan", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,10 +58,11 @@ func TestHTTPAndWebSocketIntegration(t *testing.T) {
 		PlayerID int    `json:"playerId"`
 		Name     string `json:"playerName"`
 		Team     string `json:"team"`
+		CarStyle string `json:"carStyle"`
 		Protocol int    `json:"protocol"`
 	}
 	if json.Unmarshal(payload, &welcome) != nil || welcome.Type != "welcome" || welcome.PlayerID != 0 ||
-		welcome.Name != "Test Pilot" || welcome.Team != game.TeamOrange || welcome.Protocol != 3 {
+		welcome.Name != "Test Pilot" || welcome.Team != game.TeamOrange || welcome.CarStyle != "titan" || welcome.Protocol != 3 {
 		t.Fatalf("unexpected welcome: %s", payload)
 	}
 

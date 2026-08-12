@@ -52,3 +52,11 @@ test('legacy state packets remain readable during a rolling deploy', () => {
   assert.equal(client.state.boostPadMask, 0xffff);
   assert.equal(client.state.cars[0].p[0], -7.25);
 });
+
+
+test('client remembers the selected cosmetic car style', () => {
+  const selected = new LanClient('Style Pilot', 'apex');
+  assert.equal(selected.carStyle, 'apex');
+  const invalid = new LanClient('Fallback Pilot', 'octane');
+  assert.equal(invalid.carStyle, 'vortex');
+});

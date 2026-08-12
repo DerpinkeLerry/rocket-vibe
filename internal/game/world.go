@@ -365,26 +365,28 @@ func (world *World) applyGroundDrive(car *Car, forward, right Vec3, throttle, st
 	forwardSpeed := car.Velocity.Dot(forward)
 	lateralSpeed := car.Velocity.Dot(right)
 	tangentSpeed := math.Hypot(forwardSpeed, lateralSpeed)
-	maximumSpeed := config.MaxGroundSpeed
-	if boosting {
-		maximumSpeed = config.MaxBoostSpeed
-	}
-	targetForward := throttle * maximumSpeed
-	if throttle < 0 {
-		targetForward = throttle * config.MaxGroundSpeed * 0.68
-	}
-	acceleration := config.DriveAcceleration
-	if throttle < 0 {
-		acceleration = config.ReverseAcceleration
-	}
-	if throttle != 0 && math.Signbit(throttle) != math.Signbit(forwardSpeed) && math.Abs(forwardSpeed) > 0.05 {
-		acceleration = config.BrakeAcceleration
-	}
+	reverseTarget := -config.MaxGroundSpeed * 0.68
+	opposing := throttle != 0 && math.Abs(forwardSpeed) > 0.05 && math.Signbit(throttle) != math.Signbit(forwardSpeed)
 
 	nextForward := forwardSpeed
-	if throttle != 0 {
-		nextForward = moveTowards(forwardSpeed, targetForward, acceleration*dt)
-	} else {
+	if opposing {
+		brakeTarget := config.MaxGroundSpeed
+		if throttle < 0 {
+			brakeTarget = reverseTarget
+		}
+		nextForward = moveTowards(forwardSpeed, brakeTarget, config.BrakeAcceleration*dt)
+	} else if throttle > 0 {
+		// Normal throttle accelerates to 70 km/h but intentionally preserves
+		// any speed already earned with boost up to the 100 km/h hard cap.
+		if forwardSpeed < config.MaxGroundSpeed {
+			nextForward = moveTowards(forwardSpeed, config.MaxGroundSpeed, config.DriveAcceleration*dt)
+		}
+	} else if throttle < 0 {
+		nextForward = moveTowards(forwardSpeed, reverseTarget, config.ReverseAcceleration*dt)
+	} else if forwardSpeed <= config.MaxGroundSpeed+0.01 {
+		// Ordinary coasting still slows the car below cruise speed. Once boost
+		// has pushed it past cruise speed, momentum stays until something else
+		// (braking, collision, turning losses) actually reduces it.
 		nextForward = moveTowards(forwardSpeed, 0, config.CoastDeceleration*dt)
 	}
 	if boosting {

@@ -300,3 +300,132 @@ canvas { display: block; width: 100%; height: 100%; }
   }
   .hud__boost-track { height: 11px; }
 }
+
+/* Driver/car picker ------------------------------------------------------- */
+.join-screen {
+  overflow-y: auto;
+}
+
+.join-card--wide {
+  width: min(760px, 100%);
+  margin: auto;
+}
+
+.car-select {
+  min-width: 0;
+  margin: 18px 0 2px;
+  padding: 0;
+  border: 0;
+}
+
+.car-select legend {
+  margin-bottom: 9px;
+  padding: 0;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.car-select__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.car-choice {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 9px 10px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 13px;
+  background: rgba(255,255,255,0.045);
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+  user-select: none;
+}
+
+.car-choice:hover {
+  border-color: rgba(116, 218, 255, 0.48);
+  background: rgba(72, 190, 255, 0.08);
+  transform: translateY(-1px);
+}
+
+.car-choice.is-selected {
+  border-color: #68dcff;
+  background: linear-gradient(180deg, rgba(61, 190, 255, 0.16), rgba(255, 139, 56, 0.09));
+  box-shadow: inset 0 0 0 1px rgba(104, 220, 255, 0.22);
+}
+
+.car-choice input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.car-choice:has(input:focus-visible) {
+  outline: 3px solid rgba(98, 217, 255, 0.42);
+  outline-offset: 2px;
+}
+
+.car-choice__preview {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1.8 / 1;
+  border-radius: 9px;
+  background:
+    radial-gradient(circle at 50% 78%, rgba(75, 164, 207, 0.22), transparent 45%),
+    linear-gradient(180deg, rgba(132, 207, 239, 0.12), rgba(4, 15, 26, 0.18));
+}
+
+.car-choice__preview svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.car-choice__name {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+}
+
+.car-choice__desc {
+  color: rgba(255,255,255,0.55);
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+@media (max-width: 720px) {
+  .join-screen {
+    place-items: start center;
+    padding: 12px;
+  }
+
+  .join-card--wide {
+    margin: 8px auto 16px;
+    padding: 20px;
+  }
+
+  .join-card h1 {
+    font-size: 28px;
+  }
+
+  .join-card p {
+    margin-bottom: 16px;
+  }
+
+  .car-select__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

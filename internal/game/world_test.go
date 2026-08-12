@@ -26,17 +26,17 @@ func TestConnectedCarDrivesAndRemainsSpeedLimited(t *testing.T) {
 		t.Fatalf("car did not drive forward: z=%f", car.Position.Z)
 	}
 	if speed := car.Velocity.Length(); speed > world.Config.Car.MaxBoostSpeed+1e-6 {
-		t.Fatalf("car exceeded 80 km/h speed cap: %f", speed)
+		t.Fatalf("car exceeded 100 km/h speed cap: %f", speed)
 	}
 }
 
 func TestNormalAndBoostTopSpeedsMatchRequestedKmh(t *testing.T) {
 	config := DefaultConfig()
-	if math.Abs(config.Car.MaxGroundSpeed*3.6-60) > 1e-9 {
-		t.Fatalf("normal top speed is %.3f km/h, want 60", config.Car.MaxGroundSpeed*3.6)
+	if math.Abs(config.Car.MaxGroundSpeed*3.6-70) > 1e-9 {
+		t.Fatalf("normal top speed is %.3f km/h, want 70", config.Car.MaxGroundSpeed*3.6)
 	}
-	if math.Abs(config.Car.MaxBoostSpeed*3.6-80) > 1e-9 {
-		t.Fatalf("boost top speed is %.3f km/h, want 80", config.Car.MaxBoostSpeed*3.6)
+	if math.Abs(config.Car.MaxBoostSpeed*3.6-100) > 1e-9 {
+		t.Fatalf("boost top speed is %.3f km/h, want 100", config.Car.MaxBoostSpeed*3.6)
 	}
 
 	world := NewWorld(config)
@@ -48,8 +48,56 @@ func TestNormalAndBoostTopSpeedsMatchRequestedKmh(t *testing.T) {
 	for range config.PhysicsHz * 5 {
 		world.Step(dt)
 	}
-	if speedKmh := world.Cars[0].Velocity.Length() * 3.6; speedKmh > 60.1 {
-		t.Fatalf("normal driving exceeded 60 km/h: %.3f", speedKmh)
+	if speedKmh := world.Cars[0].Velocity.Length() * 3.6; speedKmh > 70.1 {
+		t.Fatalf("normal driving exceeded 70 km/h: %.3f", speedKmh)
+	}
+}
+
+func TestBoostedGroundSpeedPersistsAfterBoostReleaseUntilBraking(t *testing.T) {
+	config := DefaultConfig()
+	world := NewWorld(config)
+	world.SetConnected(0, true)
+	dt := 1 / float64(config.PhysicsHz)
+
+	sequence := uint32(1)
+	if !world.SetInput(0, Input{Sequence: sequence, Mask: InputW | InputBoost}) {
+		t.Fatal("boost input was not accepted")
+	}
+	for step := 0; step < config.PhysicsHz*2; step++ {
+		if step > 0 && step%30 == 0 {
+			sequence++
+			world.SetInput(0, Input{Sequence: sequence, Mask: InputW | InputBoost})
+		}
+		world.Step(dt)
+	}
+
+	before := world.Cars[0].Velocity.Length() * 3.6
+	if before < 82 {
+		t.Fatalf("car never entered boosted momentum band: %.3f km/h", before)
+	}
+
+	for step := 0; step < config.PhysicsHz; step++ {
+		if step%30 == 0 {
+			sequence++
+			world.SetInput(0, Input{Sequence: sequence, Mask: 0})
+		}
+		world.Step(dt)
+	}
+	afterCoast := world.Cars[0].Velocity.Length() * 3.6
+	if afterCoast < before-1.0 {
+		t.Fatalf("boosted momentum decayed after releasing boost/throttle: before=%.3f after=%.3f", before, afterCoast)
+	}
+
+	for step := 0; step < config.PhysicsHz/2; step++ {
+		if step%30 == 0 {
+			sequence++
+			world.SetInput(0, Input{Sequence: sequence, Mask: InputS})
+		}
+		world.Step(dt)
+	}
+	afterBrake := world.Cars[0].Velocity.Length() * 3.6
+	if afterBrake >= afterCoast-8 {
+		t.Fatalf("braking did not remove boosted momentum: coast=%.3f brake=%.3f", afterCoast, afterBrake)
 	}
 }
 

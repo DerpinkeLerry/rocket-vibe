@@ -21,8 +21,8 @@ export const INPUT_EDGES = Object.freeze({
 export const CAR_TUNING = Object.freeze({
   // Internal physics units are metres/second. These caps correspond to the
   // HUD targets requested for the slower, more readable game pace.
-  maxGroundSpeed: 60 / 3.6,
-  maxBoostSpeed: 80 / 3.6,
+  maxGroundSpeed: 70 / 3.6,
+  maxBoostSpeed: 100 / 3.6,
   driveAcceleration: 14.0,
   reverseAcceleration: 10.0,
   brakeAcceleration: 28.0,
@@ -54,7 +54,7 @@ export const CAR_TUNING = Object.freeze({
   surfaceNormalResponse: 11.0,
   surfaceAlignResponse: 16.0,
   gravity: 20.5,
-  linearDamping: 0.06,
+  linearDamping: 0.0,
   angularDamping: 0.55
 });
 
