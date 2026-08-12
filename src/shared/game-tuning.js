@@ -42,12 +42,16 @@ export const CAR_TUNING = Object.freeze({
   jumpHoldAcceleration: 24.0,
   jumpHoldDuration: 0.18,
   doubleJumpSpeed: 10.0,
-  dodgeImpulse: 13.5,
-  dodgeLift: 2.2,
-  dodgeAngularSpeed: 11.5,
+  // A dodge owns one finite 360-degree rotation.  While it is active normal
+  // air torque is suppressed so holding the dodge direction cannot turn the
+  // flip into an endless corkscrew.
+  dodgeImpulse: 14.0,
+  dodgeLift: 1.8,
+  dodgeAngularSpeed: 11.22,
+  dodgeRotation: Math.PI * 2,
   dodgeWindow: 1.25,
-  dodgeDuration: 0.65,
-  dodgeControlScale: 0.18,
+  dodgeDuration: 0.56,
+  dodgeControlScale: 0.0,
   downAcceleration: 18.0,
   wallGravityCancel: 1.0,
   surfaceNormalBlend: 0.28,

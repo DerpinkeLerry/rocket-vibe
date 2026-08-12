@@ -48,6 +48,7 @@ type CarConfig struct {
 	DodgeImpulse         float64 `json:"dodgeImpulse"`
 	DodgeLift            float64 `json:"dodgeLift"`
 	DodgeAngularSpeed    float64 `json:"dodgeAngularSpeed"`
+	DodgeRotation        float64 `json:"dodgeRotation"`
 	DodgeWindow          float64 `json:"dodgeWindow"`
 	DodgeDuration        float64 `json:"dodgeDuration"`
 	DodgeControlScale    float64 `json:"dodgeControlScale"`
@@ -121,12 +122,13 @@ func DefaultConfig() Config {
 			JumpHoldAcceleration: 24,
 			JumpHoldDuration:     0.18,
 			DoubleJumpSpeed:      10,
-			DodgeImpulse:         13.5,
-			DodgeLift:            2.2,
-			DodgeAngularSpeed:    11.5,
+			DodgeImpulse:         14.0,
+			DodgeLift:            1.8,
+			DodgeAngularSpeed:    11.22,
+			DodgeRotation:        6.283185307179586,
 			DodgeWindow:          1.25,
-			DodgeDuration:        0.65,
-			DodgeControlScale:    0.18,
+			DodgeDuration:        0.56,
+			DodgeControlScale:    0.0,
 			DownAcceleration:     18,
 			WallGravityCancel:    1,
 			SurfaceAlignResponse: 16,

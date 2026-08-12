@@ -39,17 +39,21 @@ type Body struct {
 
 type Car struct {
 	Body
-	Connected     bool    `json:"connected"`
-	Grounded      bool    `json:"grounded"`
-	Slot          int     `json:"slot"`
-	Input         Input   `json:"-"`
-	LastInputTick uint64  `json:"-"`
-	JumpCount     int     `json:"-"`
-	AirTime       float64 `json:"-"`
-	GroundLockout float64 `json:"-"`
-	DodgeTime     float64 `json:"-"`
-	Boost         float64 `json:"boost"`
-	GroundNormal  Vec3    `json:"-"`
+	Connected           bool    `json:"connected"`
+	Grounded            bool    `json:"grounded"`
+	Slot                int     `json:"slot"`
+	Input               Input   `json:"-"`
+	LastInputTick       uint64  `json:"-"`
+	JumpCount           int     `json:"-"`
+	AirTime             float64 `json:"-"`
+	GroundLockout       float64 `json:"-"`
+	DodgeTime           float64 `json:"-"`
+	DodgeAngleRemaining float64 `json:"-"`
+	DodgeAxis           Vec3    `json:"-"`
+	DodgePitchLock      float64 `json:"-"`
+	DodgeYawLock        float64 `json:"-"`
+	Boost               float64 `json:"boost"`
+	GroundNormal        Vec3    `json:"-"`
 }
 
 type BoostPad struct {
@@ -256,7 +260,6 @@ func (world *World) stepCar(car *Car, dt float64) {
 	}
 
 	car.GroundLockout = math.Max(0, car.GroundLockout-dt)
-	car.DodgeTime = math.Max(0, car.DodgeTime-dt)
 	inputMask := car.Input.Mask
 	if world.Tick-car.LastInputTick > uint64(world.Config.PhysicsHz) {
 		inputMask = 0
@@ -285,7 +288,8 @@ func (world *World) stepCar(car *Car, dt float64) {
 		world.applyGroundDrive(car, forward, right, forwardInput, steerInput, boosting, dt)
 		car.AirTime = 0
 	} else {
-		world.applyAirControl(car, forward, right, up, forwardInput, steerInput, rollInput, boosting, dt)
+		airPitch, airYaw := filterPostDodgeAirInput(car, forwardInput, steerInput)
+		world.applyAirControl(car, forward, right, up, airPitch, airYaw, rollInput, boosting, dt)
 		car.AirTime += dt
 	}
 
@@ -326,7 +330,11 @@ func (world *World) stepCar(car *Car, dt float64) {
 	car.AngularVelocity = car.AngularVelocity.Mul(math.Exp(-config.AngularDamping * dt))
 	car.Velocity = clampMagnitude(car.Velocity, config.MaxBoostSpeed)
 	car.Position = car.Position.Add(car.Velocity.Mul(dt))
+	dodgeCompleted := world.driveDodgeRotation(car, dt)
 	car.Rotation = car.Rotation.Integrate(car.AngularVelocity, dt)
+	if dodgeCompleted {
+		world.stopDodgeRotation(car)
+	}
 }
 
 func (world *World) applySecondJumpOrDodge(car *Car, forward, right, up Vec3, forwardInput, steerInput float64) {
@@ -342,18 +350,88 @@ func (world *World) applySecondJumpOrDodge(car *Car, forward, right, up Vec3, fo
 
 	forwardAmount := forwardInput / directionMagnitude
 	sideAmount := steerInput / directionMagnitude
+
+	// The translational dodge impulse is independent from the car's heading:
+	// W/S pushes forward/back, while A/D pushes laterally without yawing the car.
+	// Diagonals blend both axes and normalize so every dodge has the same power.
 	dodgeDirection := forward.Mul(forwardAmount).Add(right.Mul(-sideAmount)).NormalizeOr(forward)
 	car.Velocity = car.Velocity.
 		Add(dodgeDirection.Mul(config.DodgeImpulse)).
 		Add(up.NormalizeOr(Vec3{Y: 1}).Mul(config.DodgeLift))
 
-	// W/S flips around the local right axis; A/D flips around the local forward
-	// axis.  Set the requested component instead of stacking unlimited spin.
-	flipAxis := right.Mul(-forwardAmount).Add(forward.Mul(sideAmount)).NormalizeOr(right)
-	currentFlipSpeed := car.AngularVelocity.Dot(flipAxis)
-	car.AngularVelocity = car.AngularVelocity.Add(flipAxis.Mul(config.DodgeAngularSpeed - currentFlipSpeed))
+	// A dodge is a finite, owned rotation rather than a one-shot angular kick.
+	// Front/back flips rotate around local right. Left/right dodges barrel-roll
+	// around local forward with the sign chosen so A rolls left and D rolls right.
+	car.DodgeAxis = right.Mul(-forwardAmount).Add(forward.Mul(-sideAmount)).NormalizeOr(right)
+	car.DodgeAngleRemaining = config.DodgeRotation
 	car.DodgeTime = config.DodgeDuration
+	car.DodgePitchLock = math.Copysign(1, forwardAmount)
+	if math.Abs(forwardAmount) < 0.25 {
+		car.DodgePitchLock = 0
+	}
+	car.DodgeYawLock = math.Copysign(1, sideAmount)
+	if math.Abs(sideAmount) < 0.25 {
+		car.DodgeYawLock = 0
+	}
+	// Clear pre-existing air spin so the requested dodge starts as one clean
+	// rotation instead of inheriting a corkscrew from air-control input.
+	car.AngularVelocity = Vec3{}
 	car.JumpCount = 2
+}
+
+// driveDodgeRotation owns exactly one configured rotation. It replaces only
+// the angular component along the dodge axis on every physics step, so damping
+// or held controls cannot turn a single dodge into continuous spinning.
+func (world *World) driveDodgeRotation(car *Car, dt float64) bool {
+	config := world.Config.Car
+	if car.DodgeAngleRemaining <= 1e-9 || dt <= 0 || config.DodgeAngularSpeed <= 0 {
+		car.DodgeAngleRemaining = 0
+		car.DodgeTime = 0
+		return false
+	}
+
+	axis := car.DodgeAxis.NormalizeOr(Vec3{})
+	if axis.LengthSquared() < 1e-12 {
+		car.DodgeAngleRemaining = 0
+		car.DodgeTime = 0
+		return false
+	}
+
+	stepAngle := math.Min(car.DodgeAngleRemaining, config.DodgeAngularSpeed*dt)
+	requestedSpeed := stepAngle / dt
+	axisSpeed := car.AngularVelocity.Dot(axis)
+	car.AngularVelocity = car.AngularVelocity.Sub(axis.Mul(axisSpeed)).Add(axis.Mul(requestedSpeed))
+	car.DodgeAngleRemaining = math.Max(0, car.DodgeAngleRemaining-stepAngle)
+	car.DodgeTime = car.DodgeAngleRemaining / config.DodgeAngularSpeed
+	return car.DodgeAngleRemaining <= 1e-9
+}
+
+func (world *World) stopDodgeRotation(car *Car) {
+	axis := car.DodgeAxis.NormalizeOr(Vec3{})
+	if axis.LengthSquared() > 1e-12 {
+		car.AngularVelocity = car.AngularVelocity.Sub(axis.Mul(car.AngularVelocity.Dot(axis)))
+	}
+	car.DodgeAngleRemaining = 0
+	car.DodgeTime = 0
+	car.DodgeAxis = Vec3{}
+}
+
+func filterPostDodgeAirInput(car *Car, pitch, yaw float64) (float64, float64) {
+	if car.DodgePitchLock != 0 {
+		if math.Abs(pitch) < 0.25 || pitch*car.DodgePitchLock <= 0 {
+			car.DodgePitchLock = 0
+		} else {
+			pitch = 0
+		}
+	}
+	if car.DodgeYawLock != 0 {
+		if math.Abs(yaw) < 0.25 || yaw*car.DodgeYawLock <= 0 {
+			car.DodgeYawLock = 0
+		} else {
+			yaw = 0
+		}
+	}
+	return pitch, yaw
 }
 
 func (world *World) applyGroundDrive(car *Car, forward, right Vec3, throttle, steer float64, boosting bool, dt float64) {
@@ -437,7 +515,7 @@ func (world *World) applyAirControl(car *Car, forward, right, up Vec3, pitch, ya
 	config := world.Config.Car
 	controlScale := 1.0
 	maximumAngular := config.MaxAirAngular
-	if car.DodgeTime > 0 {
+	if car.DodgeAngleRemaining > 1e-9 {
 		controlScale = config.DodgeControlScale
 		maximumAngular = math.Max(maximumAngular, config.DodgeAngularSpeed)
 	}
@@ -477,6 +555,10 @@ func (world *World) finishCarStep(car *Car, dt float64) {
 	car.AngularVelocity = perpendicular.Add(groundNormal.Mul(spin))
 	car.JumpCount = 0
 	car.DodgeTime = 0
+	car.DodgeAngleRemaining = 0
+	car.DodgeAxis = Vec3{}
+	car.DodgePitchLock = 0
+	car.DodgeYawLock = 0
 	car.AirTime = 0
 }
 
@@ -555,6 +637,10 @@ func (world *World) resetCar(car *Car) {
 	car.AirTime = 0
 	car.GroundLockout = 0
 	car.DodgeTime = 0
+	car.DodgeAngleRemaining = 0
+	car.DodgeAxis = Vec3{}
+	car.DodgePitchLock = 0
+	car.DodgeYawLock = 0
 	car.Boost = world.Config.Car.BoostCapacity
 	car.GroundNormal = Vec3{Y: 1}
 }

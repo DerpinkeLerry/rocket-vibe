@@ -374,7 +374,8 @@ func TestHoldingJumpAddsExtraLift(t *testing.T) {
 	}
 }
 
-func TestDirectionalSecondJumpCreatesRocketStyleDodge(t *testing.T) {
+func startDirectionalDodge(t *testing.T, mask uint8) (*World, *Car, float64) {
+	t.Helper()
 	config := DefaultConfig()
 	world := NewWorld(config)
 	world.SetConnected(0, true)
@@ -383,31 +384,122 @@ func TestDirectionalSecondJumpCreatesRocketStyleDodge(t *testing.T) {
 	car.Rotation = IdentityQuat()
 	car.Grounded = true
 	car.GroundNormal = Vec3{Y: 1}
+	dt := 1 / float64(config.PhysicsHz)
 
 	if !world.SetInput(0, Input{Sequence: 1, Edges: EdgeJump}) {
 		t.Fatal("first jump input was not accepted")
 	}
-	dt := 1 / float64(config.PhysicsHz)
 	world.Step(dt)
 	if car.JumpCount != 1 || car.Grounded {
 		t.Fatalf("first jump did not detach cleanly: jumpCount=%d grounded=%v", car.JumpCount, car.Grounded)
 	}
 
-	if !world.SetInput(0, Input{Sequence: 2, Mask: InputW, Edges: EdgeJump}) {
+	if !world.SetInput(0, Input{Sequence: 2, Mask: mask, Edges: EdgeJump}) {
 		t.Fatal("dodge input was not accepted")
 	}
 	world.Step(dt)
 	if car.JumpCount != 2 {
 		t.Fatalf("directional second jump did not consume dodge: jumpCount=%d", car.JumpCount)
 	}
-	if car.Velocity.Z > -config.Car.DodgeImpulse*0.75 {
+	return world, car, dt
+}
+
+func TestDodgeTuningIsExactlyOneRevolution(t *testing.T) {
+	config := DefaultConfig().Car
+	if math.Abs(config.DodgeRotation-2*math.Pi) > 1e-12 {
+		t.Fatalf("dodge rotation is %f radians, want 2*pi", config.DodgeRotation)
+	}
+	expectedDuration := config.DodgeRotation / config.DodgeAngularSpeed
+	if math.Abs(config.DodgeDuration-expectedDuration) > 0.002 {
+		t.Fatalf("dodge duration/speed mismatch: duration=%f expected=%f", config.DodgeDuration, expectedDuration)
+	}
+}
+
+func TestDirectionalSecondJumpCreatesRocketStyleDodge(t *testing.T) {
+	world, car, _ := startDirectionalDodge(t, InputW)
+	config := world.Config.Car
+	if car.Velocity.Z > -config.DodgeImpulse*0.75 {
 		t.Fatalf("forward dodge did not add enough forward speed: %+v", car.Velocity)
 	}
-	if car.AngularVelocity.X > -config.Car.DodgeAngularSpeed*0.65 {
-		t.Fatalf("forward dodge did not create a flip rotation: %+v", car.AngularVelocity)
+	if car.AngularVelocity.X > -config.DodgeAngularSpeed*0.65 {
+		t.Fatalf("forward dodge did not create a front-flip rotation: %+v", car.AngularVelocity)
 	}
-	if car.DodgeTime <= 0 {
-		t.Fatal("dodge control window was not activated")
+	if car.DodgeTime <= 0 || car.DodgeAngleRemaining <= 0 {
+		t.Fatal("finite dodge rotation was not activated")
+	}
+}
+
+func TestForwardBackAndDiagonalDodgesPushAlongRequestedVector(t *testing.T) {
+	forwardWorld, forward, _ := startDirectionalDodge(t, InputW)
+	if forward.Velocity.Z > -forwardWorld.Config.Car.DodgeImpulse*0.75 {
+		t.Fatalf("forward dodge did not push forward: %+v", forward.Velocity)
+	}
+
+	backWorld, back, _ := startDirectionalDodge(t, InputS)
+	if back.Velocity.Z < backWorld.Config.Car.DodgeImpulse*0.75 {
+		t.Fatalf("back dodge did not push backward: %+v", back.Velocity)
+	}
+	if back.AngularVelocity.X < backWorld.Config.Car.DodgeAngularSpeed*0.65 {
+		t.Fatalf("back dodge rotated the wrong way: %+v", back.AngularVelocity)
+	}
+
+	diagonalWorld, diagonal, _ := startDirectionalDodge(t, InputW|InputA)
+	minimumComponent := diagonalWorld.Config.Car.DodgeImpulse * 0.45
+	if diagonal.Velocity.X > -minimumComponent || diagonal.Velocity.Z > -minimumComponent {
+		t.Fatalf("forward-left dodge did not push diagonally: %+v", diagonal.Velocity)
+	}
+}
+
+func TestSideDodgesRollAndPushInMatchingDirection(t *testing.T) {
+	leftWorld, left, _ := startDirectionalDodge(t, InputA)
+	if left.Velocity.X > -leftWorld.Config.Car.DodgeImpulse*0.75 {
+		t.Fatalf("left dodge did not push left: %+v", left.Velocity)
+	}
+	if left.AngularVelocity.Z < leftWorld.Config.Car.DodgeAngularSpeed*0.65 {
+		t.Fatalf("left dodge rolled the wrong way: %+v", left.AngularVelocity)
+	}
+
+	rightWorld, right, _ := startDirectionalDodge(t, InputD)
+	if right.Velocity.X < rightWorld.Config.Car.DodgeImpulse*0.75 {
+		t.Fatalf("right dodge did not push right: %+v", right.Velocity)
+	}
+	if right.AngularVelocity.Z > -rightWorld.Config.Car.DodgeAngularSpeed*0.65 {
+		t.Fatalf("right dodge rolled the wrong way: %+v", right.AngularVelocity)
+	}
+}
+
+func TestDodgeStopsAfterExactlyOneRevolutionWithoutCountersteer(t *testing.T) {
+	world, car, dt := startDirectionalDodge(t, InputW)
+	// Keep W held for the entire test. The dodge input latch must prevent that
+	// same key from immediately becoming normal air-pitch after the flip ends.
+	car.Position.Y = 5
+	steps := int(math.Ceil((world.Config.Car.DodgeDuration + 0.28) * float64(world.Config.PhysicsHz)))
+	for range steps {
+		world.Step(dt)
+	}
+
+	if car.DodgeAngleRemaining > 1e-6 || car.DodgeTime > 1e-6 {
+		t.Fatalf("dodge did not finish: time=%f angle=%f", car.DodgeTime, car.DodgeAngleRemaining)
+	}
+	if spin := car.AngularVelocity.Length(); spin > 0.08 {
+		t.Fatalf("car kept spinning after one flip without countersteer: %+v", car.AngularVelocity)
+	}
+	forward := car.Rotation.Rotate(Vec3{Z: -1})
+	up := car.Rotation.Rotate(Vec3{Y: 1})
+	if forward.Dot(Vec3{Z: -1}) < 0.985 || up.Dot(Vec3{Y: 1}) < 0.985 {
+		t.Fatalf("one-flip dodge did not return to the original heading: forward=%+v up=%+v", forward, up)
+	}
+
+	// Releasing the trigger direction clears the latch; pressing it again must
+	// restore ordinary air control rather than permanently disabling pitch.
+	world.SetInput(0, Input{Sequence: 3, Mask: 0})
+	world.Step(dt)
+	world.SetInput(0, Input{Sequence: 4, Mask: InputW})
+	for range 18 {
+		world.Step(dt)
+	}
+	if car.AngularVelocity.X > -0.2 {
+		t.Fatalf("air pitch did not return after releasing the dodge key: %+v", car.AngularVelocity)
 	}
 }
 

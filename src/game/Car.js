@@ -52,6 +52,10 @@ export class Car {
     this.airTime = 0;
     this.groundContactLockout = 0;
     this.dodgeTime = 0;
+    this.dodgeAngleRemaining = 0;
+    this.dodgeStopPending = false;
+    this.dodgePitchLock = 0;
+    this.dodgeYawLock = 0;
     this.wheelSpin = 0;
 
     this.tempQ = new THREE.Quaternion();
@@ -579,7 +583,12 @@ export class Car {
       }
       this.airTime = 0;
       if (this.jumpCount > 0) this.jumpCount = 0;
+      if (this.dodgeAngleRemaining > 1e-6 || this.dodgeStopPending) this.stopDodgeRotation();
       this.dodgeTime = 0;
+      this.dodgeAngleRemaining = 0;
+      this.dodgeStopPending = false;
+      this.dodgePitchLock = 0;
+      this.dodgeYawLock = 0;
     } else {
       this.airTime += dt;
     }
@@ -591,9 +600,9 @@ export class Car {
       return;
     }
 
+    if (this.dodgeStopPending) this.stopDodgeRotation();
     this.getTransformBasis();
     this.groundContactLockout = Math.max(0, this.groundContactLockout - dt);
-    this.dodgeTime = Math.max(0, this.dodgeTime - dt);
     this.sampleGround(dt);
 
     if (this.grounded) {
@@ -623,7 +632,8 @@ export class Car {
       this.applyGroundDrive(dt, forwardInput, sideInput, boosting);
       this.airTime = 0;
     } else {
-      this.applyAirControl(dt, forwardInput, sideInput, rollInput, boosting);
+      const [airForward, airSide] = this.filterPostDodgeAirInput(forwardInput, sideInput);
+      this.applyAirControl(dt, airForward, airSide, rollInput, boosting);
     }
 
     if (this.input.consumePressed('Space')) {
@@ -660,6 +670,9 @@ export class Car {
       this.alignToGround(dt);
     }
 
+    // Rapier integrates after fixedUpdate. Program exactly the next slice of
+    // the dodge now, then clear its angular component on the following frame.
+    this.driveDodgeRotation(dt);
     this.updateVisualAnimation(dt, driveGrounded ? sideInput : 0, speedForward, boosting);
   }
 
@@ -754,7 +767,8 @@ export class Car {
   }
 
   applyAirControl(dt, forwardInput, sideInput, rollInput, boosting) {
-    const controlScale = this.dodgeTime > 0 ? CAR_TUNING.dodgeControlScale : 1;
+    const dodging = this.dodgeAngleRemaining > 1e-6;
+    const controlScale = dodging ? CAR_TUNING.dodgeControlScale : 1;
     const torque = this.workVec.set(0, 0, 0)
       .addScaledVector(this.right, -forwardInput * this.airPitchTorque * controlScale)
       .addScaledVector(this.up, sideInput * this.airYawTorque * controlScale)
@@ -769,7 +783,7 @@ export class Car {
     }
 
     const ang = this.body.angvel();
-    const maxAirAngular = this.dodgeTime > 0
+    const maxAirAngular = dodging
       ? Math.max(CAR_TUNING.maxAirAngular, CAR_TUNING.dodgeAngularSpeed)
       : CAR_TUNING.maxAirAngular;
     const mag = Math.hypot(ang.x, ang.y, ang.z);
@@ -801,6 +815,9 @@ export class Car {
 
     const forwardAmount = forwardInput / directionMagnitude;
     const sideAmount = sideInput / directionMagnitude;
+
+    // Give the car a real dodge impulse in the requested local direction. A/D
+    // is pure lateral movement, so a side flip does not need to yaw the nose.
     this.dodgeDir.copy(this.forward).multiplyScalar(forwardAmount)
       .addScaledVector(this.right, -sideAmount)
       .normalize();
@@ -808,19 +825,67 @@ export class Car {
       .addScaledVector(this.up, CAR_TUNING.dodgeLift);
     this.body.setLinvel({ x: this.velocityVec.x, y: this.velocityVec.y, z: this.velocityVec.z }, true);
 
+    // Own one finite revolution. W = front flip, S = back flip, A = left
+    // barrel roll, D = right barrel roll. The axis remains fixed for the whole
+    // dodge, so held steering cannot turn it into an endless corkscrew.
     this.flipAxis.copy(this.right).multiplyScalar(-forwardAmount)
-      .addScaledVector(this.forward, sideAmount)
+      .addScaledVector(this.forward, -sideAmount)
       .normalize();
-    const ang = this.body.angvel();
-    const currentFlipSpeed = ang.x * this.flipAxis.x + ang.y * this.flipAxis.y + ang.z * this.flipAxis.z;
-    const deltaFlip = CAR_TUNING.dodgeAngularSpeed - currentFlipSpeed;
-    this.body.setAngvel({
-      x: ang.x + this.flipAxis.x * deltaFlip,
-      y: ang.y + this.flipAxis.y * deltaFlip,
-      z: ang.z + this.flipAxis.z * deltaFlip
-    }, true);
+    this.dodgeAngleRemaining = CAR_TUNING.dodgeRotation;
     this.dodgeTime = CAR_TUNING.dodgeDuration;
+    this.dodgeStopPending = false;
+    this.dodgePitchLock = Math.abs(forwardAmount) >= 0.25 ? Math.sign(forwardAmount) : 0;
+    this.dodgeYawLock = Math.abs(sideAmount) >= 0.25 ? Math.sign(sideAmount) : 0;
+    this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     this.jumpCount = 2;
+  }
+
+  filterPostDodgeAirInput(forwardInput, sideInput) {
+    let pitch = forwardInput;
+    let yaw = sideInput;
+    if (this.dodgePitchLock !== 0) {
+      if (Math.abs(pitch) < 0.25 || pitch * this.dodgePitchLock <= 0) this.dodgePitchLock = 0;
+      else pitch = 0;
+    }
+    if (this.dodgeYawLock !== 0) {
+      if (Math.abs(yaw) < 0.25 || yaw * this.dodgeYawLock <= 0) this.dodgeYawLock = 0;
+      else yaw = 0;
+    }
+    return [pitch, yaw];
+  }
+
+  driveDodgeRotation(dt) {
+    if (this.dodgeAngleRemaining <= 1e-6 || dt <= 0 || CAR_TUNING.dodgeAngularSpeed <= 0) return;
+
+    const stepAngle = Math.min(this.dodgeAngleRemaining, CAR_TUNING.dodgeAngularSpeed * dt);
+    const requestedSpeed = stepAngle / dt;
+    const ang = this.body.angvel();
+    const axisSpeed = ang.x * this.flipAxis.x + ang.y * this.flipAxis.y + ang.z * this.flipAxis.z;
+    this.body.setAngvel({
+      x: ang.x + this.flipAxis.x * (requestedSpeed - axisSpeed),
+      y: ang.y + this.flipAxis.y * (requestedSpeed - axisSpeed),
+      z: ang.z + this.flipAxis.z * (requestedSpeed - axisSpeed)
+    }, true);
+
+    this.dodgeAngleRemaining = Math.max(0, this.dodgeAngleRemaining - stepAngle);
+    this.dodgeTime = this.dodgeAngleRemaining / CAR_TUNING.dodgeAngularSpeed;
+    if (this.dodgeAngleRemaining <= 1e-6) this.dodgeStopPending = true;
+  }
+
+  stopDodgeRotation() {
+    const ang = this.body.angvel();
+    if (this.flipAxis.lengthSq() > 1e-8) {
+      const axisSpeed = ang.x * this.flipAxis.x + ang.y * this.flipAxis.y + ang.z * this.flipAxis.z;
+      this.body.setAngvel({
+        x: ang.x - this.flipAxis.x * axisSpeed,
+        y: ang.y - this.flipAxis.y * axisSpeed,
+        z: ang.z - this.flipAxis.z * axisSpeed
+      }, true);
+    }
+    this.dodgeAngleRemaining = 0;
+    this.dodgeTime = 0;
+    this.dodgeStopPending = false;
+    this.flipAxis.set(0, 0, 0);
   }
 
   applySurfaceForces(dt) {
@@ -918,6 +983,11 @@ export class Car {
     this.airTime = 0;
     this.groundContactLockout = 0;
     this.dodgeTime = 0;
+    this.dodgeAngleRemaining = 0;
+    this.dodgeStopPending = false;
+    this.dodgePitchLock = 0;
+    this.dodgeYawLock = 0;
+    this.flipAxis.set(0, 0, 0);
     this.grounded = false;
     this.boost = CAR_TUNING.boostCapacity;
     this.boosting = false;

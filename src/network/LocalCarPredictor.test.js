@@ -86,19 +86,57 @@ test('prediction can continuously drive from floor onto vertical glass', () => {
   assert.equal(reachedVerticalGlass, true);
 });
 
-test('prediction performs a directional second-jump dodge', () => {
-  const { body, predictor } = makePredictor();
-  predictor.syncGrounded(true);
-  predictor.setInput({ mask: 0, edges: INPUT_EDGES.JUMP });
-  predictor.step(1 / 120);
+function startPredictorDodge(mask) {
+  const result = makePredictor();
+  result.predictor.syncGrounded(true);
+  result.predictor.setInput({ mask: 0, edges: INPUT_EDGES.JUMP });
+  result.predictor.step(1 / 120);
+  result.predictor.setInput({ mask, edges: INPUT_EDGES.JUMP });
+  result.predictor.step(1 / 120);
+  return result;
+}
 
-  predictor.setInput({ mask: INPUT_BITS.W, edges: INPUT_EDGES.JUMP });
-  predictor.step(1 / 120);
+test('prediction performs a finite directional second-jump dodge', () => {
+  const { body, predictor } = startPredictorDodge(INPUT_BITS.W);
 
   assert.equal(predictor.jumpCount, 2);
   assert.ok(body.linvel().z < -CAR_HITBOX.z * 6, `forward speed was ${body.linvel().z}`);
   assert.ok(body.angvel().x < -7, `flip angular speed was ${body.angvel().x}`);
   assert.ok(predictor.dodgeTime > 0);
+  assert.ok(predictor.dodgeAngleRemaining > 0);
+});
+
+test('prediction side dodges roll and push in the matching direction', () => {
+  const left = startPredictorDodge(INPUT_BITS.A);
+  assert.ok(left.body.linvel().x < -8, `left dodge x speed was ${left.body.linvel().x}`);
+  assert.ok(left.body.angvel().z > 7, `left roll angular speed was ${left.body.angvel().z}`);
+
+  const right = startPredictorDodge(INPUT_BITS.D);
+  assert.ok(right.body.linvel().x > 8, `right dodge x speed was ${right.body.linvel().x}`);
+  assert.ok(right.body.angvel().z < -7, `right roll angular speed was ${right.body.angvel().z}`);
+});
+
+test('prediction stops a held directional dodge after one revolution', () => {
+  const { body, predictor } = startPredictorDodge(INPUT_BITS.W);
+  body.setTranslation({ x: 0, y: 5, z: body.translation().z });
+
+  // Keep W held: the post-dodge input latch should prevent a second pitch spin.
+  for (let index = 0; index < 120; index++) predictor.step(1 / 120);
+
+  assert.ok(predictor.dodgeAngleRemaining <= 1e-6);
+  assert.ok(predictor.dodgeTime <= 1e-6);
+  assert.ok(Math.hypot(body.angvel().x, body.angvel().y, body.angvel().z) < 0.08,
+    `angular velocity remained ${JSON.stringify(body.angvel())}`);
+
+  const q = body.rotation();
+  assert.ok(Math.abs(q.x) < 0.03 && Math.abs(q.y) < 0.03 && Math.abs(q.z) < 0.03,
+    `orientation did not return after one revolution: ${JSON.stringify(q)}`);
+
+  predictor.setInput({ mask: 0, edges: 0 });
+  predictor.step(1 / 120);
+  predictor.setInput({ mask: INPUT_BITS.W, edges: 0 });
+  for (let index = 0; index < 18; index++) predictor.step(1 / 120);
+  assert.ok(body.angvel().x < -0.2, `air pitch did not recover: ${body.angvel().x}`);
 });
 
 test('prediction keeps a parked car attached to vertical glass until jump', () => {

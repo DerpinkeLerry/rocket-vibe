@@ -1,4 +1,4 @@
-# Rocket Vibe 1.10.0 – Go Multiplayer / Railway
+# Rocket Vibe 1.10.4 – Go Multiplayer / Railway
 
 Browser-Spiel fuer bis zu vier Spieler mit Three.js-Rendering, lokaler Client-Prediction und einem autoritativen Go-Server. Frontend und Server werden auf Railway als **ein Service** betrieben. Dadurch verwendet der Browser dieselbe HTTPS-Domain fuer Seite und WebSocket (`/lan`); eine separate Backend-URL oder CORS-Konfiguration ist nicht erforderlich.
 
@@ -26,7 +26,7 @@ Der Go-Server ist die einzige Online-Autoritaet und verarbeitet:
 - Rocket-League-artige Bodenbeschleunigung, Bremsen, Grip, Lenkung und verbrauchbaren Boost
 - Fahrtempo ca. 70 km/h normal und maximal 100 km/h mit Boost; einmal aufgebaute Boost-Geschwindigkeit oberhalb 70 km/h bleibt ohne automatisches Zurueckbremsen erhalten, bis gebremst oder anderweitig Tempo verloren wird
 - Vier grosse 100-%-Boostpads in den Ecken sowie zwoelf kleine +20-%-Pads mit 10/4 Sekunden Respawn
-- Variabler Sprung durch gehaltenes Space, neutraler Doppelsprung und gerichtete Dodge/Flips
+- Variabler Sprung durch gehaltenes Space, neutraler Doppelsprung und gerichtete Dodge/Flips mit exakt einer kontrollierten 360-Grad-Rotation
 - Pitch/Yaw/Roll in der Luft mit begrenzter, kontrollierbarer Winkelgeschwindigkeit
 - Surface-Adhesion: Rampen und senkrechte Waende halten das Auto bis zum aktiven Absprung
 - Auto gegen Auto
@@ -180,3 +180,13 @@ Die Tests decken Fahrbewegung, 70/100-km/h-Speed-Caps und erhaltenes Boost-Momen
 - In diesem Bereich werden keine vertikalen Stahl-/Gitterstreben mehr erzeugt; horizontale Kaefiglinien bleiben erhalten.
 - Dadurch kann kein dunkler Glasrahmen mehr perspektivisch wie eine Verlaengerung des Torpfostens ueber den oberen Torbogen hinaus wirken.
 - Der abgerundete Torrahmen, Torinnenraum und saemtliche Physics bleiben unveraendert.
+
+
+## Rocket-Style Dodge Rework v1.10.4
+
+- Jeder gerichtete zweite Sprung fuehrt genau **eine** 360-Grad-Dodge-Rotation aus und stoppt danach automatisch; Gegensteuern zum Abfangen ist nicht mehr noetig.
+- `W` = Frontflip, `S` = Backflip, `A` = Barrel-Roll nach links, `D` = Barrel-Roll nach rechts. Diagonale Eingaben kombinieren beide Achsen.
+- Jeder Dodge gibt einen echten Bewegungsimpuls in dieselbe Richtung: links/rechts verschiebt das Auto seitlich, ohne die Fahrzeugnase vorher dorthin zu drehen; vorne/hinten und diagonale Dodges funktionieren entsprechend.
+- Die Richtungstaste, die den Dodge gestartet hat, wird bis zum Loslassen nicht sofort wieder als Air-Control interpretiert. Dadurch entsteht nach dem einen Flip kein ungewolltes Nachdrehen, obwohl die Taste noch gehalten wird. Nach Loslassen/Re-Druecken ist normale Luftkontrolle sofort wieder aktiv.
+- Server, Multiplayer-Client-Prediction und lokaler Rapier-Modus verwenden dieselbe Dodge-Achse, Rotation, Impulsstaerke und Eingabe-Latch-Logik.
+- Neue Regressionstests pruefen Front-/Back-/Side-/Diagonalimpulse, die korrekte Links-/Rechts-Rollrichtung, automatisches Stoppen nach einer Umdrehung und die Rueckkehr der Air-Control nach dem Loslassen.

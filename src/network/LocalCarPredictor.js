@@ -26,6 +26,10 @@ export class LocalCarPredictor {
     this.airTime = 0;
     this.groundLockout = 0;
     this.dodgeTime = 0;
+    this.dodgeAngleRemaining = 0;
+    this.dodgeAxis = new THREE.Vector3();
+    this.dodgePitchLock = 0;
+    this.dodgeYawLock = 0;
     this.boost = Number.isFinite(Number(car.boost)) ? Number(car.boost) : CAR_TUNING.boostCapacity;
     this.car.boost = this.boost;
 
@@ -69,6 +73,10 @@ export class LocalCarPredictor {
     if (serverGrounded && this.groundLockout <= 0) {
       this.jumpCount = 0;
       this.dodgeTime = 0;
+      this.dodgeAngleRemaining = 0;
+      this.dodgeAxis.set(0, 0, 0);
+      this.dodgePitchLock = 0;
+      this.dodgeYawLock = 0;
       this.grounded = true;
       this.airTime = 0;
     } else {
@@ -89,7 +97,6 @@ export class LocalCarPredictor {
 
   stepSubframe(dt) {
     this.groundLockout = Math.max(0, this.groundLockout - dt);
-    this.dodgeTime = Math.max(0, this.dodgeTime - dt);
 
     const pRaw = this.body.translation();
     const rRaw = this.body.rotation();
@@ -123,6 +130,10 @@ export class LocalCarPredictor {
       this.airTime = 0;
       this.groundLockout = 0;
       this.dodgeTime = 0;
+      this.dodgeAngleRemaining = 0;
+      this.dodgeAxis.set(0, 0, 0);
+      this.dodgePitchLock = 0;
+      this.dodgeYawLock = 0;
       this.boost = CAR_TUNING.boostCapacity;
       this.car.boost = this.boost;
       return;
@@ -132,7 +143,8 @@ export class LocalCarPredictor {
       this.applyGroundDrive(dt, forwardInput, sideInput, boosting);
       this.airTime = 0;
     } else {
-      this.applyAirControl(dt, forwardInput, sideInput, rollInput, boosting);
+      const [airForward, airSide] = this.filterPostDodgeAirInput(forwardInput, sideInput);
+      this.applyAirControl(dt, airForward, airSide, rollInput, boosting);
       this.airTime += dt;
     }
 
@@ -165,12 +177,14 @@ export class LocalCarPredictor {
     if (speed > maxSafetySpeed) this.vel.multiplyScalar(maxSafetySpeed / speed);
 
     this.pos.addScaledVector(this.vel, dt);
+    const dodgeCompleted = this.driveDodgeRotation(dt);
     const angularSpeed = this.ang.length();
     if (angularSpeed > 0.00001) {
       this.axis.copy(this.ang).multiplyScalar(1 / angularSpeed);
       this.deltaQ.setFromAxisAngle(this.axis, angularSpeed * dt);
       this.q.premultiply(this.deltaQ).normalize();
     }
+    if (dodgeCompleted) this.stopDodgeRotation();
 
     this.resolveArenaCollision();
     this.alignToSurface(dt);
@@ -256,8 +270,9 @@ export class LocalCarPredictor {
   }
 
   applyAirControl(dt, forwardInput, sideInput, rollInput, boosting) {
-    const controlScale = this.dodgeTime > 0 ? CAR_TUNING.dodgeControlScale : 1;
-    const maxAngular = this.dodgeTime > 0
+    const dodging = this.dodgeAngleRemaining > 1e-6;
+    const controlScale = dodging ? CAR_TUNING.dodgeControlScale : 1;
+    const maxAngular = dodging
       ? Math.max(CAR_TUNING.maxAirAngular, CAR_TUNING.dodgeAngularSpeed)
       : CAR_TUNING.maxAirAngular;
 
@@ -285,19 +300,65 @@ export class LocalCarPredictor {
 
     const forwardAmount = forwardInput / directionMagnitude;
     const sideAmount = sideInput / directionMagnitude;
+
+    // Directional dodge impulse: A/D moves the car sideways without changing
+    // its heading, W/S pushes forward/back, diagonals blend both directions.
     this.surfaceNormal.copy(this.forward).multiplyScalar(forwardAmount)
       .addScaledVector(this.right, -sideAmount)
       .normalize();
     this.vel.addScaledVector(this.surfaceNormal, CAR_TUNING.dodgeImpulse)
       .addScaledVector(this.up, CAR_TUNING.dodgeLift);
 
-    this.surfaceNormal.copy(this.right).multiplyScalar(-forwardAmount)
-      .addScaledVector(this.forward, sideAmount)
+    // Own one finite revolution. A must roll left (around -forward), D right
+    // (around +forward), while W/S use the local right axis for front/back flips.
+    this.dodgeAxis.copy(this.right).multiplyScalar(-forwardAmount)
+      .addScaledVector(this.forward, -sideAmount)
       .normalize();
-    const currentFlipSpeed = this.ang.dot(this.surfaceNormal);
-    this.ang.addScaledVector(this.surfaceNormal, CAR_TUNING.dodgeAngularSpeed - currentFlipSpeed);
+    this.dodgeAngleRemaining = CAR_TUNING.dodgeRotation;
     this.dodgeTime = CAR_TUNING.dodgeDuration;
+    this.dodgePitchLock = Math.abs(forwardAmount) >= 0.25 ? Math.sign(forwardAmount) : 0;
+    this.dodgeYawLock = Math.abs(sideAmount) >= 0.25 ? Math.sign(sideAmount) : 0;
+    this.ang.set(0, 0, 0);
     this.jumpCount = 2;
+  }
+
+  filterPostDodgeAirInput(forwardInput, sideInput) {
+    let pitch = forwardInput;
+    let yaw = sideInput;
+    if (this.dodgePitchLock !== 0) {
+      if (Math.abs(pitch) < 0.25 || pitch * this.dodgePitchLock <= 0) this.dodgePitchLock = 0;
+      else pitch = 0;
+    }
+    if (this.dodgeYawLock !== 0) {
+      if (Math.abs(yaw) < 0.25 || yaw * this.dodgeYawLock <= 0) this.dodgeYawLock = 0;
+      else yaw = 0;
+    }
+    return [pitch, yaw];
+  }
+
+  driveDodgeRotation(dt) {
+    if (this.dodgeAngleRemaining <= 1e-6 || dt <= 0 || CAR_TUNING.dodgeAngularSpeed <= 0) {
+      this.dodgeAngleRemaining = 0;
+      this.dodgeTime = 0;
+      return false;
+    }
+
+    const stepAngle = Math.min(this.dodgeAngleRemaining, CAR_TUNING.dodgeAngularSpeed * dt);
+    const requestedSpeed = stepAngle / dt;
+    const axisSpeed = this.ang.dot(this.dodgeAxis);
+    this.ang.addScaledVector(this.dodgeAxis, requestedSpeed - axisSpeed);
+    this.dodgeAngleRemaining = Math.max(0, this.dodgeAngleRemaining - stepAngle);
+    this.dodgeTime = this.dodgeAngleRemaining / CAR_TUNING.dodgeAngularSpeed;
+    return this.dodgeAngleRemaining <= 1e-6;
+  }
+
+  stopDodgeRotation() {
+    if (this.dodgeAxis.lengthSq() > 1e-8) {
+      this.ang.addScaledVector(this.dodgeAxis, -this.ang.dot(this.dodgeAxis));
+    }
+    this.dodgeAngleRemaining = 0;
+    this.dodgeTime = 0;
+    this.dodgeAxis.set(0, 0, 0);
   }
 
   applySurfaceForces(dt) {
@@ -746,6 +807,10 @@ export class LocalCarPredictor {
     this.q.slerp(this.surfaceQ, 1 - Math.exp(-CAR_TUNING.surfaceAlignResponse * dt));
     this.jumpCount = 0;
     this.dodgeTime = 0;
+    this.dodgeAngleRemaining = 0;
+    this.dodgeAxis.set(0, 0, 0);
+    this.dodgePitchLock = 0;
+    this.dodgeYawLock = 0;
     this.airTime = 0;
   }
 
