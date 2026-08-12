@@ -276,7 +276,7 @@ export class LocalCarPredictor {
       nextForward = moveTowards(speedForward, brakeTarget, CAR_TUNING.brakeAcceleration * dt);
     } else if (throttle > 0) {
       // Normal throttle can accelerate to 70 km/h, but it never drags a
-      // previously boosted car back down from the 70-100 km/h momentum band.
+      // previously boosted car back down from the 70-120 km/h momentum band.
       if (speedForward < CAR_TUNING.maxGroundSpeed) {
         nextForward = moveTowards(speedForward, CAR_TUNING.maxGroundSpeed, CAR_TUNING.driveAcceleration * dt);
       }

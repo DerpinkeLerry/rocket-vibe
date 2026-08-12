@@ -93,6 +93,27 @@ test('kickoff control message carries whether the score must reset', () => {
   assert.deepEqual(client.kickoff, { phase: 'countdown', count: 3, resetScore: true });
 });
 
+test('goal messages carry explosion side, scorer and score metadata', () => {
+  const client = new LanClient('Goal Pilot');
+  let received = null;
+  client.onGoal = (goal) => { received = goal; };
+  client.applyGoalMessage({
+    type: 'goal', goalSign: 1, scoringTeam: 'blue', scorerId: 3, scorerName: 'Shooter',
+    position: [2.5, 4.2, 82.1], durationMs: 1250, orangeScore: 4, blueScore: 5
+  });
+
+  assert.deepEqual(received, {
+    goalSign: 1,
+    scoringTeam: 'blue',
+    scorerId: 3,
+    scorerName: 'Shooter',
+    position: [2.5, 4.2, 82.1],
+    durationMs: 1250,
+    orangeScore: 4,
+    blueScore: 5
+  });
+});
+
 test('replay messages keep scorer metadata and unanimous skip progress', () => {
   const client = new LanClient('Replay Pilot');
   const received = [];

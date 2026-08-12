@@ -26,7 +26,7 @@ func TestConnectedCarDrivesAndRemainsSpeedLimited(t *testing.T) {
 		t.Fatalf("car did not drive forward: z=%f", car.Position.Z)
 	}
 	if speed := car.Velocity.Length(); speed > world.Config.Car.MaxBoostSpeed+1e-6 {
-		t.Fatalf("car exceeded 100 km/h speed cap: %f", speed)
+		t.Fatalf("car exceeded 120 km/h speed cap: %f", speed)
 	}
 }
 
@@ -35,8 +35,8 @@ func TestNormalAndBoostTopSpeedsMatchRequestedKmh(t *testing.T) {
 	if math.Abs(config.Car.MaxGroundSpeed*3.6-70) > 1e-9 {
 		t.Fatalf("normal top speed is %.3f km/h, want 70", config.Car.MaxGroundSpeed*3.6)
 	}
-	if math.Abs(config.Car.MaxBoostSpeed*3.6-100) > 1e-9 {
-		t.Fatalf("boost top speed is %.3f km/h, want 100", config.Car.MaxBoostSpeed*3.6)
+	if math.Abs(config.Car.MaxBoostSpeed*3.6-120) > 1e-9 {
+		t.Fatalf("boost top speed is %.3f km/h, want 120", config.Car.MaxBoostSpeed*3.6)
 	}
 
 	world := NewWorld(config)
@@ -72,7 +72,7 @@ func TestBoostedGroundSpeedPersistsAfterBoostReleaseUntilBraking(t *testing.T) {
 	}
 
 	before := world.Cars[0].Velocity.Length() * 3.6
-	if before < 82 {
+	if before < 105 {
 		t.Fatalf("car never entered boosted momentum band: %.3f km/h", before)
 	}
 
@@ -212,8 +212,11 @@ func TestBallScoresThroughGoalButHitsSolidEndWall(t *testing.T) {
 	if throughGoal.BlueScore != 1 || throughGoal.OrangeScore != 0 {
 		t.Fatalf("positive-Z orange goal did not score for blue: orange=%d blue=%d", throughGoal.OrangeScore, throughGoal.BlueScore)
 	}
-	if throughGoal.Ball.Position != (Vec3{Y: config.Ball.SpawnY}) {
-		t.Fatalf("ball was not reset after goal: %+v", throughGoal.Ball.Position)
+	if !throughGoal.GoalLocked || throughGoal.LastGoalSign != 1 {
+		t.Fatalf("goal celebration did not lock the scored goal: locked=%v sign=%d", throughGoal.GoalLocked, throughGoal.LastGoalSign)
+	}
+	if throughGoal.Ball.Position.Z <= config.Arena.Length*0.5 {
+		t.Fatalf("scoring ball did not remain in the goal for the explosion phase: %+v", throughGoal.Ball.Position)
 	}
 
 	endWall := NewWorld(config)
@@ -968,6 +971,51 @@ func TestGoalReplayTracksLastBallTouchAsScorer(t *testing.T) {
 	}
 	if world.LastGoalTick != 123 || world.GoalSequence != 1 {
 		t.Fatalf("goal replay metadata not recorded: tick=%d sequence=%d", world.LastGoalTick, world.GoalSequence)
+	}
+}
+
+func TestGoalExplosionKnockbackPushesEveryCarAwayAndLocksGoal(t *testing.T) {
+	config := DefaultConfig()
+	world := NewWorld(config)
+	world.SetConnected(0, true)
+	world.SetConnected(1, true)
+	world.Cars[0].Position = Vec3{X: -8, Y: config.Car.HalfExtents.Y, Z: 26}
+	world.Cars[1].Position = Vec3{X: 11, Y: config.Car.HalfExtents.Y, Z: -18}
+	world.Ball.Position = Vec3{X: 1.5, Y: config.Ball.Radius, Z: config.Arena.Length*0.5 + config.Ball.Radius}
+
+	if !world.detectGoal() {
+		t.Fatal("expected a goal")
+	}
+	if !world.GoalLocked || world.LastGoalSign != 1 || world.LastGoalScoringTeam != TeamBlue {
+		t.Fatalf("goal celebration metadata missing: locked=%v sign=%d team=%q", world.GoalLocked, world.LastGoalSign, world.LastGoalScoringTeam)
+	}
+	origin := Vec3{Y: 3.8, Z: config.Arena.Length*0.5 + 1.4}
+	for index := 0; index < 2; index++ {
+		car := world.Cars[index]
+		away := Vec3{X: car.Position.X - origin.X, Z: car.Position.Z - origin.Z}.NormalizeOr(Vec3{Z: -1})
+		horizontalVelocity := Vec3{X: car.Velocity.X, Z: car.Velocity.Z}
+		if horizontalVelocity.Dot(away) < 28 {
+			t.Fatalf("car %d was not blasted away from goal: velocity=%+v away=%+v", index, car.Velocity, away)
+		}
+		if car.Velocity.Y < 12 {
+			t.Fatalf("car %d did not receive enough vertical goal blast: %+v", index, car.Velocity)
+		}
+		if car.AngularVelocity.Length() < 4 {
+			t.Fatalf("car %d did not tumble after goal blast: %+v", index, car.AngularVelocity)
+		}
+	}
+
+	blueBefore := world.BlueScore
+	if world.detectGoal() {
+		t.Fatal("goal lock allowed the same ball to score twice")
+	}
+	if world.BlueScore != blueBefore {
+		t.Fatalf("score changed while goal was locked: before=%d after=%d", blueBefore, world.BlueScore)
+	}
+
+	world.ResetKickoff()
+	if world.GoalLocked {
+		t.Fatal("kickoff reset did not unlock goal detection")
 	}
 }
 

@@ -519,6 +519,9 @@ export class Car {
     context.textBaseline = 'middle';
     context.fillText(this.playerName, 256, 64, 445);
     this.nameTexture.needsUpdate = true;
+    // The local player's own tag is never useful from their chase/replay POV
+    // and can cover the ball or car roof. Keep only remote player tags visible.
+    if (this.nameTag) this.nameTag.visible = !this.isLocalPlayer;
   }
 
   setSpawnRotation() {
@@ -732,7 +735,7 @@ export class Car {
       nextForward = moveTowards(speedForward, brakeTarget, CAR_TUNING.brakeAcceleration * dt);
     } else if (throttle > 0) {
       // Normal throttle can accelerate to 70 km/h, but it never drags a
-      // previously boosted car back down from the 70-100 km/h momentum band.
+      // previously boosted car back down from the 70-120 km/h momentum band.
       if (speedForward < CAR_TUNING.maxGroundSpeed) {
         nextForward = moveTowards(speedForward, CAR_TUNING.maxGroundSpeed, CAR_TUNING.driveAcceleration * dt);
       }

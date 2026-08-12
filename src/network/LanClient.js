@@ -75,6 +75,8 @@ export class LanClient {
     this.kickoff = null;
     this.onReplay = null;
     this.replay = null;
+    this.onGoal = null;
+    this.goal = null;
   }
 
   async connect() {
@@ -145,6 +147,11 @@ export class LanClient {
           return;
         }
 
+        if (message.type === 'goal') {
+          this.applyGoalMessage(message);
+          return;
+        }
+
         if (message.type === 'input-ack') {
           const previousAck = this.lastInputAck;
           this.lastInputAck = Math.max(this.lastInputAck, Number(message.seq) || 0);
@@ -212,6 +219,23 @@ export class LanClient {
       : 0;
     this.kickoff = { phase, count, resetScore: Boolean(message?.resetScore) };
     this.onKickoff?.(this.kickoff);
+  }
+
+  applyGoalMessage(message) {
+    const position = Array.isArray(message?.position)
+      ? [Number(message.position[0]) || 0, Number(message.position[1]) || 0, Number(message.position[2]) || 0]
+      : [0, 0, 0];
+    this.goal = {
+      goalSign: Number(message?.goalSign) >= 0 ? 1 : -1,
+      scoringTeam: message?.scoringTeam === 'orange' ? 'orange' : 'blue',
+      scorerId: Number.isInteger(Number(message?.scorerId)) ? Number(message.scorerId) : -1,
+      scorerName: String(message?.scorerName || 'Unbekannt').slice(0, 16),
+      position,
+      durationMs: Math.max(250, Number(message?.durationMs) || 1250),
+      orangeScore: Math.max(0, Number(message?.orangeScore) || 0),
+      blueScore: Math.max(0, Number(message?.blueScore) || 0)
+    };
+    this.onGoal?.(this.goal);
   }
 
   applyReplayMessage(message) {

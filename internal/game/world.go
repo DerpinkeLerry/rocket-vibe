@@ -106,11 +106,15 @@ type World struct {
 	// Replay/goal attribution stays outside the snapshot protocol. The match
 	// server reads these fields after a scoring tick and tells every client which
 	// car should be used as the replay camera target.
-	LastBallTouchSlot int
-	LastBallTouchTick uint64
-	LastGoalScorer    int
-	LastGoalTick      uint64
-	GoalSequence      uint64
+	LastBallTouchSlot   int
+	LastBallTouchTick   uint64
+	LastGoalScorer      int
+	LastGoalTick        uint64
+	LastGoalSign        int
+	LastGoalScoringTeam string
+	LastGoalPosition    Vec3
+	GoalSequence        uint64
+	GoalLocked          bool
 }
 
 func TeamForSlot(slot int) string {
@@ -184,6 +188,26 @@ func (world *World) ResetKickoff() {
 	}
 	world.resetBoostPads()
 	world.resetBall()
+	world.GoalLocked = false
+	world.LastGoalSign = 0
+	world.LastGoalScoringTeam = ""
+	world.LastGoalPosition = Vec3{}
+}
+
+// ClearInputs keeps input sequence numbers intact while neutralizing controls.
+// The match server uses it during the short goal-explosion celebration so the
+// radial blast, not player steering, owns the cars for that moment.
+func (world *World) ClearInputs() {
+	for index := range world.Cars {
+		car := &world.Cars[index]
+		if !car.Connected {
+			continue
+		}
+		car.Input.Mask = 0
+		car.Input.Edges = 0
+		car.Input.Flags = 0
+		car.LastInputTick = world.Tick
+	}
 }
 
 func (world *World) SetInput(slot int, input Input) bool {
@@ -498,7 +522,7 @@ func (world *World) applyGroundDrive(car *Car, forward, right Vec3, throttle, st
 		nextForward = moveTowards(forwardSpeed, brakeTarget, config.BrakeAcceleration*dt)
 	} else if throttle > 0 {
 		// Normal throttle accelerates to 70 km/h but intentionally preserves
-		// any speed already earned with boost up to the 100 km/h hard cap.
+		// any speed already earned with boost up to the 120 km/h hard cap.
 		if forwardSpeed < config.MaxGroundSpeed {
 			nextForward = moveTowards(forwardSpeed, config.MaxGroundSpeed, config.DriveAcceleration*dt)
 		}
@@ -736,6 +760,9 @@ func (world *World) Snapshot() Snapshot {
 }
 
 func (world *World) detectGoal() bool {
+	if world.GoalLocked {
+		return false
+	}
 	halfLength := world.Config.Arena.Length * 0.5
 	ball := &world.Ball
 	if math.Abs(ball.Position.Z) <= halfLength+world.Config.Ball.Radius*0.35 {
@@ -773,16 +800,58 @@ func (world *World) detectGoal() bool {
 		}
 	}
 	world.LastGoalTick = world.Tick
-	world.GoalSequence++
-
-	for index := range world.Cars {
-		if world.Cars[index].Connected {
-			world.resetCar(&world.Cars[index])
-		}
+	world.LastGoalSign = 1
+	if ball.Position.Z < 0 {
+		world.LastGoalSign = -1
 	}
-	world.resetBoostPads()
-	world.resetBall()
+	world.LastGoalScoringTeam = scoringTeam
+	world.LastGoalPosition = ball.Position
+	world.GoalSequence++
+	world.GoalLocked = true
+	world.applyGoalExplosionKnockback(world.LastGoalSign)
 	return true
+}
+
+// applyGoalExplosionKnockback gives every connected car the same authoritative
+// Rocket-League-style blast away from the scored goal. The direction is radial
+// in the floor plane and receives a strong upward component so even distant
+// cars visibly lift and tumble during the short post-goal celebration.
+func (world *World) applyGoalExplosionKnockback(goalSign int) {
+	if goalSign == 0 {
+		goalSign = 1
+	}
+	origin := Vec3{
+		Y: 3.8,
+		Z: float64(goalSign) * (world.Config.Arena.Length*0.5 + 1.4),
+	}
+	for index := range world.Cars {
+		car := &world.Cars[index]
+		if !car.Connected {
+			continue
+		}
+		away := Vec3{X: car.Position.X - origin.X, Z: car.Position.Z - origin.Z}
+		if away.LengthSquared() < 1e-8 {
+			away = Vec3{Z: -float64(goalSign)}
+		}
+		away = away.NormalizeOr(Vec3{Z: -float64(goalSign)})
+		car.Velocity = away.Mul(29.5).Add(Vec3{Y: 13.0})
+		spinSign := 1.0
+		if index%2 == 1 {
+			spinSign = -1
+		}
+		car.AngularVelocity = Vec3{
+			X: 4.4 + float64(index)*0.35,
+			Y: spinSign * (2.0 + float64(index)*0.18),
+			Z: -spinSign * (4.8 + float64(index)*0.30),
+		}
+		car.Grounded = false
+		car.GroundLockout = math.Max(car.GroundLockout, 0.40)
+		car.JumpHoldActive = false
+		car.DodgeAngleRemaining = 0
+		car.DodgeTime = 0
+	}
+	world.Ball.Velocity = Vec3{}
+	world.Ball.AngularVelocity = Vec3{}
 }
 
 func stateFromBody(body Body) EntityState {

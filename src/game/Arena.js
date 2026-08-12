@@ -1055,13 +1055,10 @@ export class Arena {
     frames.instanceMatrix.needsUpdate = true;
     this.group.add(frames);
 
-    const accentMaterial = new THREE.MeshStandardMaterial({
-      color: 0x37b6e6,
-      emissive: 0x0d5678,
-      emissiveIntensity: this.ultraHigh ? 0.56 : 0.82,
-      roughness: 0.64,
-      metalness: 0.24
-    });
+    // Keep the continuous base rail neutral. Team identity is handled by the
+    // split half-field LED ribbons below; a single long side-wall panel spans
+    // both halves and therefore must not inherit one team's colour.
+    const accentMaterial = new THREE.MeshBasicMaterial({ color: 0x263943, toneMapped: false });
     const accents = new THREE.InstancedMesh(geometry, accentMaterial, panels.length);
     accents.name = 'arena-lower-accent';
     accents.userData.shadowRole = 'arena-frame';
@@ -1070,39 +1067,55 @@ export class Arena {
       const minY = this.panelGlassMinY(panel);
       const surfaceX = panel.x - panel.nx * (WALL_T * 0.5 + 0.014);
       const surfaceZ = panel.z - panel.nz * (WALL_T * 0.5 + 0.014);
-      dummy.position.set(surfaceX, minY + 0.14, surfaceZ);
+      dummy.position.set(surfaceX, minY + 0.13, surfaceZ);
       dummy.rotation.set(0, panel.yaw, 0);
-      dummy.scale.set(panel.length * 1.018, 0.065, 0.18);
+      dummy.scale.set(panel.length * 1.018, 0.085, 0.20);
       dummy.updateMatrix();
       accents.setMatrixAt(panelIndex, dummy.matrix);
     }
     accents.instanceMatrix.needsUpdate = true;
+    accents.renderOrder = 4;
     this.group.add(accents);
   }
 
   createTeamSideRibbons() {
     if (this.lowDetail) return;
     const halfWidth = FIELD_W * 0.5;
-    const straightZ = FIELD_L * 0.5 - CORNER_R;
+    const halfLength = FIELD_L * 0.5;
+    const straightZ = halfLength - CORNER_R;
+    const endStraightX = halfWidth - CORNER_R;
+    const roundedGoalHalf = GOAL_W * 0.5 + GOAL_MOUTH_R;
+    const endSpan = Math.max(1, endStraightX - roundedGoalHalf);
     const geometry = new THREE.BoxGeometry(1, 1, 1);
     const material = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
-    const ribbons = new THREE.InstancedMesh(geometry, material, 8);
+
+    // 12 long side-wall ribbons + 8 end-wall ribbons. All use one instanced
+    // draw call and no real lights, so the stronger team separation is almost
+    // free even on phones.
+    const ribbons = new THREE.InstancedMesh(geometry, material, 20);
     ribbons.name = 'arena-team-side-ribbons';
     ribbons.userData.shadowRole = 'arena-frame';
-    const orange = new THREE.Color(0xff6a00);
+    ribbons.renderOrder = 6;
+    const orange = new THREE.Color(0xff5a08);
     const blue = new THREE.Color(0x087dff);
     const dummy = new THREE.Object3D();
     let index = 0;
-    const ribbonHeights = [GLASS_START_Y + 0.24, WALL_H - CEILING_R - 0.24];
+    const ribbonHeights = [
+      GLASS_START_Y + 0.52,
+      GLASS_START_Y + (WALL_H - CEILING_R - GLASS_START_Y) * 0.50,
+      WALL_H - CEILING_R - 0.46
+    ];
+
     for (const signX of [-1, 1]) {
       for (const signZ of [-1, 1]) {
         for (const ribbonY of ribbonHeights) {
           dummy.position.set(
-            signX * (halfWidth - 0.032),
+            signX * (halfWidth - 0.045),
             ribbonY,
             signZ * straightZ * 0.5
           );
-          dummy.scale.set(0.075, 0.075, straightZ * 0.98);
+          dummy.rotation.set(0, 0, 0);
+          dummy.scale.set(0.15, 0.18, straightZ * 0.985);
           dummy.updateMatrix();
           ribbons.setMatrixAt(index, dummy.matrix);
           ribbons.setColorAt(index, signZ > 0 ? orange : blue);
@@ -1110,6 +1123,28 @@ export class Arena {
         }
       }
     }
+
+    const endCenter = roundedGoalHalf + endSpan * 0.5;
+    const endHeights = [GLASS_START_Y + 0.58, WALL_H - CEILING_R - 0.52];
+    for (const signZ of [-1, 1]) {
+      for (const signX of [-1, 1]) {
+        for (const ribbonY of endHeights) {
+          dummy.position.set(
+            signX * endCenter,
+            ribbonY,
+            signZ * (halfLength - 0.045)
+          );
+          dummy.rotation.set(0, 0, 0);
+          dummy.scale.set(endSpan * 0.98, 0.18, 0.15);
+          dummy.updateMatrix();
+          ribbons.setMatrixAt(index, dummy.matrix);
+          ribbons.setColorAt(index, signZ > 0 ? orange : blue);
+          index += 1;
+        }
+      }
+    }
+
+    ribbons.count = index;
     ribbons.instanceMatrix.needsUpdate = true;
     if (ribbons.instanceColor) ribbons.instanceColor.needsUpdate = true;
     this.group.add(ribbons);

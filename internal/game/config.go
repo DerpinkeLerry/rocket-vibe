@@ -105,7 +105,7 @@ func DefaultConfig() Config {
 			HalfExtents:          Vec3{X: 0.83, Y: 0.45, Z: 1.48},
 			Mass:                 420,
 			MaxGroundSpeed:       70.0 / 3.6,
-			MaxBoostSpeed:        100.0 / 3.6,
+			MaxBoostSpeed:        120.0 / 3.6,
 			BoostCapacity:        100,
 			BoostConsumption:     100.0 / 3.0,
 			DriveAcceleration:    14,

@@ -24,6 +24,7 @@ const (
 	kickoffCountdownDuration = time.Duration(kickoffCountdownSeconds) * time.Second
 	goalReplayLookback       = 5.0
 	goalReplayDuration       = 5500 * time.Millisecond
+	goalCelebrationDuration  = 1250 * time.Millisecond
 )
 
 func shouldStartKickoff(playerCount int) bool {
@@ -180,6 +181,8 @@ func (match *Match) run() {
 	kickoffResetScore := false
 	lastGoalSequence := match.world.GoalSequence
 
+	goalCelebrationActive := false
+	var goalCelebrationEndsAt time.Time
 	replayActive := false
 	var replayEndsAt time.Time
 	replayParticipants := make(map[string]bool)
@@ -233,7 +236,21 @@ func (match *Match) run() {
 		replayResetScoreAfter = false
 	}
 
+	startGoalCelebration := func() {
+		goalCelebrationActive = true
+		goalCelebrationEndsAt = time.Now().Add(goalCelebrationDuration)
+		kickoffEndsAt = time.Time{}
+		kickoffLastAnnounced = 0
+		match.world.ClearInputs()
+		match.broadcastGoal(clients, goalCelebrationDuration)
+		state := match.world.Snapshot()
+		match.latestState.Store(state)
+		match.broadcastSnapshot(clients, state)
+	}
+
 	startReplay := func() {
+		goalCelebrationActive = false
+		goalCelebrationEndsAt = time.Time{}
 		replayActive = true
 		replayEndsAt = time.Now().Add(goalReplayDuration)
 		replayParticipants = make(map[string]bool, len(clients))
@@ -244,7 +261,6 @@ func (match *Match) run() {
 		replayScorerSlot = match.world.LastGoalScorer
 		replayScorerName = playerNameForSlot(clients, replayScorerSlot)
 		replayGoalTick = match.world.LastGoalTick
-		replayResetScoreAfter = false
 		kickoffEndsAt = time.Time{}
 		kickoffLastAnnounced = 0
 		match.broadcastReplayStart(clients, replayScorerSlot, replayScorerName, replayGoalTick, match.world.OrangeScore, match.world.BlueScore, participantCount())
@@ -285,7 +301,14 @@ func (match *Match) run() {
 			// that replay's unanimous-skip vote because they have no pre-goal history.
 			// If their arrival creates a fair 1v1/2v2, perform the usual score-reset
 			// kickoff as soon as the current replay is over.
-			if replayActive {
+			if goalCelebrationActive {
+				if shouldStartKickoff(len(clients)) {
+					replayResetScoreAfter = true
+				}
+				remaining := max(0, time.Until(goalCelebrationEndsAt).Milliseconds())
+				request.client.offerSnapshot(protocol.EncodeState(match.world.Snapshot()))
+				match.sendGoalCelebration(request.client, time.Duration(remaining)*time.Millisecond, playerNameForSlot(clients, match.world.LastGoalScorer))
+			} else if replayActive {
 				if shouldStartKickoff(len(clients)) {
 					replayResetScoreAfter = true
 				}
@@ -347,7 +370,11 @@ func (match *Match) run() {
 			}
 			// Held throttle/steer/boost may be queued during replay/countdown so
 			// players can launch on GO. One-shot actions are never buffered.
-			if replayActive || !kickoffEndsAt.IsZero() {
+			if goalCelebrationActive {
+				event.input.Mask = 0
+				event.input.Edges = 0
+				event.input.Flags = 0
+			} else if replayActive || !kickoffEndsAt.IsZero() {
 				event.input.Edges = 0
 			}
 			if !match.world.SetInput(connected.slot, event.input) {
@@ -377,6 +404,23 @@ func (match *Match) run() {
 				state := match.world.Snapshot()
 				match.latestState.Store(state)
 				match.lastTick.Store(state.Tick)
+				match.lastTickMicros.Store(time.Since(started).Microseconds())
+				continue
+			}
+
+			if goalCelebrationActive {
+				if !time.Now().Before(goalCelebrationEndsAt) {
+					startReplay()
+					match.lastTickMicros.Store(time.Since(started).Microseconds())
+					continue
+				}
+				match.world.Step(dt)
+				state := match.world.Snapshot()
+				match.latestState.Store(state)
+				match.lastTick.Store(state.Tick)
+				if loopTick%snapshotEvery == 0 && len(clients) > 0 {
+					match.broadcastSnapshot(clients, state)
+				}
 				match.lastTickMicros.Store(time.Since(started).Microseconds())
 				continue
 			}
@@ -412,9 +456,10 @@ func (match *Match) run() {
 
 			if match.world.GoalSequence != lastGoalSequence {
 				lastGoalSequence = match.world.GoalSequence
-				// Do not send the post-goal reset snapshot before the replay. Each
-				// client instead replays its authoritative pre-goal ring buffer.
-				startReplay()
+				// Show the actual explosion/knockback live first. The replay still
+				// reads only snapshots up to LastGoalTick, so this celebration never
+				// contaminates the scorer-POV replay window.
+				startGoalCelebration()
 				match.lastTickMicros.Store(time.Since(started).Microseconds())
 				continue
 			}
@@ -465,6 +510,28 @@ func (match *Match) broadcastKickoff(clients map[string]*client, phase string, c
 	for _, connected := range clients {
 		connected.offerJSON(message)
 	}
+}
+
+func (match *Match) broadcastGoal(clients map[string]*client, duration time.Duration) {
+	message, _ := json.Marshal(map[string]any{
+		"type": "goal", "goalSign": match.world.LastGoalSign, "scoringTeam": match.world.LastGoalScoringTeam,
+		"scorerId": match.world.LastGoalScorer, "scorerName": playerNameForSlot(clients, match.world.LastGoalScorer),
+		"position":   []float64{match.world.LastGoalPosition.X, match.world.LastGoalPosition.Y, match.world.LastGoalPosition.Z},
+		"durationMs": duration.Milliseconds(), "orangeScore": match.world.OrangeScore, "blueScore": match.world.BlueScore,
+	})
+	for _, connected := range clients {
+		connected.offerJSON(message)
+	}
+}
+
+func (match *Match) sendGoalCelebration(connected *client, remaining time.Duration, scorerName string) {
+	message, _ := json.Marshal(map[string]any{
+		"type": "goal", "goalSign": match.world.LastGoalSign, "scoringTeam": match.world.LastGoalScoringTeam,
+		"scorerId": match.world.LastGoalScorer, "scorerName": scorerName,
+		"position":   []float64{match.world.LastGoalPosition.X, match.world.LastGoalPosition.Y, match.world.LastGoalPosition.Z},
+		"durationMs": max(int64(1), remaining.Milliseconds()), "orangeScore": match.world.OrangeScore, "blueScore": match.world.BlueScore,
+	})
+	connected.offerJSON(message)
 }
 
 func (match *Match) broadcastReplayStart(clients map[string]*client, scorerSlot int, scorerName string, goalTick uint64, orangeScore, blueScore uint16, required int) {

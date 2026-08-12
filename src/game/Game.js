@@ -11,6 +11,7 @@ import { getPerformanceProfile, togglePerformanceProfile } from './PerformancePr
 import { VirtualInput } from '../network/VirtualInput.js';
 import { LocalCarPredictor } from '../network/LocalCarPredictor.js';
 import { ReplayBuffer, sampleReplayFrames } from './ReplayBuffer.js';
+import { GoalExplosion } from './GoalExplosion.js';
 import { ARENA_TUNING } from '../shared/arena-tuning.js';
 import { DEFAULT_CAR_STYLE, normalizeCarStyle } from '../shared/car-styles.js';
 
@@ -57,6 +58,9 @@ export class Game {
     this.replayPlaybackSeconds = 5;
     this.replayState = null;
     this.replayBuffer = new ReplayBuffer(network?.serverHz ?? 60, 8);
+    this.goalCelebrationActive = false;
+    this.goalCelebrationUntil = 0;
+    this.offlineGoalTimeRemaining = 0;
 
     this.perfElapsed = 0;
     this.perfFrames = 0;
@@ -127,6 +131,11 @@ export class Game {
       createPhysics: !this.networked
     });
     this.boostPads = new BoostPads(this.scene, { lowDetail: this.profile.lowDetail, ultraHigh: this.profile.ultraHigh });
+    this.goalExplosion = new GoalExplosion(this.scene, {
+      lowDetail: this.profile.lowDetail,
+      ultraHigh: this.profile.ultraHigh,
+      mobile: this.profile.mobile
+    });
 
     const initialCarStyles = new Map((network?.players ?? []).map((player) => [
       Number(player?.playerId),
@@ -187,7 +196,9 @@ export class Game {
     if (this.network) {
       this.network.onStatus = (text) => this.hud.setNetworkStatus(text);
       this.network.onState = (state) => {
-        this.replayBuffer.push(state);
+        // Goal-celebration snapshots contain the explosion knockback. Keep them
+        // live for gameplay, but out of the pre-goal replay ring buffer.
+        if (!this.goalCelebrationActive) this.replayBuffer.push(state);
         this.latestNetworkState = state;
         this.latestNetworkStateReceivedAt = performance.now() / 1000;
       };
@@ -195,6 +206,7 @@ export class Game {
       this.network.onLatency = (rttMs) => this.hud.setPing(rttMs);
       this.network.onKickoff = (kickoff) => this.handleKickoff(kickoff);
       this.network.onReplay = (replay) => this.handleReplay(replay);
+      this.network.onGoal = (goal) => this.handleGoal(goal);
       if (this.network.kickoff) this.handleKickoff(this.network.kickoff);
       if (this.network.replay && this.network.replay.phase !== 'end') this.handleReplay(this.network.replay);
 
@@ -489,6 +501,11 @@ export class Game {
     this.perfFrames += 1;
     this.updateAdaptivePerformance();
 
+    if (!this.networked && this.goalCelebrationActive && now >= this.goalCelebrationUntil) {
+      this.goalCelebrationActive = false;
+      this.goalCelebrationUntil = 0;
+    }
+
     if (this.networked) {
       this.inputAccumulator += frameDt;
       if (this.inputAccumulator >= 1 / CLIENT_INPUT_HEARTBEAT_HZ) {
@@ -500,7 +517,7 @@ export class Game {
         this.updateReplay(now);
       } else {
         this.applyNetworkState(frameDt, now);
-        if (!this.kickoffActive) this.localPredictor?.step(frameDt);
+        if (!this.kickoffActive && !this.goalCelebrationActive) this.localPredictor?.step(frameDt);
       }
     } else {
       this.accumulator += frameDt;
@@ -525,6 +542,7 @@ export class Game {
         this.mobileControls.setCameraMode?.(cameraMode);
       }
       this.boostPads.update(renderDt);
+      this.goalExplosion?.update(renderDt);
       this.chaseCamera.update(renderDt);
       this.arena.updateVisuals?.(this.camera);
 
@@ -594,9 +612,26 @@ export class Game {
     // Keep held controls warm during kickoff so W/Boost can launch on LOS, but
     // never buffer a jump/reset edge inside local prediction. The server applies
     // the same rule, so prediction and authority unlock from the same state.
-    const predictorPacket = (this.kickoffActive || this.replayActive) ? { ...packet, edges: 0 } : packet;
+    const predictorPacket = (this.kickoffActive || this.replayActive || this.goalCelebrationActive)
+      ? { ...packet, edges: 0 }
+      : packet;
     this.localPredictor?.setInput(predictorPacket);
     this.network.sendInput(packet);
+  }
+
+  handleGoal(goal) {
+    if (!goal) return;
+    const durationMs = Math.max(250, Number(goal.durationMs) || 1250);
+    this.goalCelebrationActive = true;
+    this.goalCelebrationUntil = performance.now() / 1000 + durationMs / 1000;
+    this.kickoffActive = false;
+    this.hud.setScore(goal.orangeScore, goal.blueScore);
+    this.goalExplosion?.trigger({
+      goalSign: goal.goalSign,
+      scoringTeam: goal.scoringTeam,
+      position: goal.position,
+      durationMs
+    });
   }
 
   handleKickoff(kickoff) {
@@ -604,6 +639,9 @@ export class Game {
     if (kickoff.phase === 'countdown') {
       const count = Math.max(1, Math.min(3, Math.round(Number(kickoff.count) || 1)));
       const startingFreshCountdown = count === 3 || !this.kickoffActive;
+      this.goalCelebrationActive = false;
+      this.goalCelebrationUntil = 0;
+      this.goalExplosion?.stop();
       this.kickoffActive = true;
       if (startingFreshCountdown) this.resetForNetworkKickoff(Boolean(kickoff.resetScore));
       this.hud.setKickoff('countdown', count);
@@ -629,6 +667,9 @@ export class Game {
     }
     if (replay.phase !== 'start' && replay.phase !== 'wait') return;
 
+    this.goalCelebrationActive = false;
+    this.goalCelebrationUntil = 0;
+    this.goalExplosion?.stop();
     this.replayActive = true;
     this.replayWaiting = replay.phase === 'wait';
     this.kickoffActive = false;
@@ -710,6 +751,21 @@ export class Game {
   }
 
   stepOffline(dt) {
+    if (this.offlineGoalTimeRemaining > 0) {
+      this.offlineGoalTimeRemaining = Math.max(0, this.offlineGoalTimeRemaining - dt);
+      this.ball.fixedUpdate(dt);
+      this.world.step();
+      this.car0.enforceSpeedLimit();
+      if (this.offlineGoalTimeRemaining <= 0) {
+        this.car0.reset();
+        this.ball.reset();
+        this.boostPads.resetAll();
+        this.goalCelebrationActive = false;
+        this.goalCelebrationUntil = 0;
+      }
+      return;
+    }
+
     if (this.input.consumePressed('KeyB')) this.ball.reset();
     this.car0.fixedUpdate(dt);
     this.ball.fixedUpdate(dt);
@@ -721,17 +777,49 @@ export class Game {
     this.detectOfflineGoal();
   }
 
+  applyOfflineGoalKnockback(goalSign) {
+    const sign = goalSign >= 0 ? 1 : -1;
+    const position = this.car0.body.translation();
+    const originZ = sign * (ARENA_TUNING.length * 0.5 + 1.4);
+    let x = position.x;
+    let z = position.z - originZ;
+    const length = Math.hypot(x, z) || 1;
+    x /= length;
+    z /= length;
+    if (!Number.isFinite(x) || !Number.isFinite(z)) {
+      x = 0;
+      z = -sign;
+    }
+    this.car0.body.setLinvel({ x: x * 29.5, y: 13.0, z: z * 29.5 }, true);
+    this.car0.body.setAngvel({ x: 4.6, y: sign * 2.1, z: -sign * 5.0 }, true);
+    this.ball.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    this.ball.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+  }
+
   detectOfflineGoal() {
+    if (this.offlineGoalTimeRemaining > 0) return;
     const position = this.ball.body.translation();
     const halfLength = ARENA_TUNING.length * 0.5;
     if (Math.abs(position.z) <= halfLength + this.ball.radius * 0.35) return;
     if (Math.abs(position.x) + this.ball.radius > ARENA_TUNING.goalWidth * 0.5
       || position.y + this.ball.radius > ARENA_TUNING.goalHeight) return;
-    if (position.z > 0) this.blueScore += 1;
+
+    const goalSign = position.z >= 0 ? 1 : -1;
+    const scoringTeam = goalSign > 0 ? 'blue' : 'orange';
+    if (goalSign > 0) this.blueScore += 1;
     else this.orangeScore += 1;
-    this.car0.reset();
-    this.ball.reset();
-    this.boostPads.resetAll();
+
+    const durationMs = 1250;
+    this.offlineGoalTimeRemaining = durationMs / 1000;
+    this.goalCelebrationActive = true;
+    this.goalCelebrationUntil = performance.now() / 1000 + this.offlineGoalTimeRemaining;
+    this.goalExplosion?.trigger({
+      goalSign,
+      scoringTeam,
+      position: [position.x, position.y, position.z],
+      durationMs
+    });
+    this.applyOfflineGoalKnockback(goalSign);
     this.hud.setScore(this.orangeScore, this.blueScore);
   }
 
