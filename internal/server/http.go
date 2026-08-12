@@ -38,6 +38,7 @@ type textInputMessage struct {
 	Input struct {
 		Mask  uint8 `json:"mask"`
 		Edges uint8 `json:"edges"`
+		Flags uint8 `json:"flags"`
 	} `json:"input"`
 }
 
@@ -160,7 +161,7 @@ func (server *HTTPServer) webSocket(writer http.ResponseWriter, request *http.Re
 		case websocket.MessageBinary:
 			packet, ok := protocol.DecodeInput(payload)
 			if ok {
-				server.match.SubmitInput(clientID, game.Input{Sequence: packet.Sequence, Mask: packet.Mask, Edges: packet.Edges})
+				server.match.SubmitInput(clientID, game.Input{Sequence: packet.Sequence, Mask: packet.Mask, Edges: packet.Edges, Flags: packet.Flags})
 			}
 		case websocket.MessageText:
 			server.handleTextMessage(connected, payload)
@@ -193,7 +194,7 @@ func (server *HTTPServer) handleTextMessage(connected *client, payload []byte) {
 		var message textInputMessage
 		if json.Unmarshal(payload, &message) == nil {
 			server.match.SubmitInput(connected.id, game.Input{
-				Sequence: message.Seq, Mask: message.Input.Mask, Edges: message.Input.Edges,
+				Sequence: message.Seq, Mask: message.Input.Mask, Edges: message.Input.Edges, Flags: message.Input.Flags,
 			})
 		}
 	}

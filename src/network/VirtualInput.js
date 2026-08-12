@@ -9,15 +9,20 @@ const CODE_BITS = new Map([
 ]);
 
 const EDGE_CODES = ['Space', 'KeyR', 'KeyB'];
+const FLAG_BITS = new Map([
+  ['ControlLeft', 1 << 0], ['ControlRight', 1 << 0]
+]);
 
 export class VirtualInput {
   constructor() {
     this.mask = 0;
+    this.flags = 0;
     this.pressed = new Set();
   }
 
   applyPacket(packet) {
     this.mask = Number(packet?.mask) || 0;
+    this.flags = Number(packet?.flags) || 0;
     const edges = Number(packet?.edges) || 0;
     for (let i = 0; i < EDGE_CODES.length; i++) {
       if (edges & (1 << i)) this.pressed.add(EDGE_CODES[i]);
@@ -27,7 +32,9 @@ export class VirtualInput {
   isDown(...codes) {
     return codes.some((code) => {
       const bit = CODE_BITS.get(code);
-      return bit ? Boolean(this.mask & bit) : false;
+      if (bit) return Boolean(this.mask & bit);
+      const flag = FLAG_BITS.get(code);
+      return flag ? Boolean(this.flags & flag) : false;
     });
   }
 
@@ -39,6 +46,7 @@ export class VirtualInput {
 
   clear() {
     this.mask = 0;
+    this.flags = 0;
     this.pressed.clear();
   }
 }

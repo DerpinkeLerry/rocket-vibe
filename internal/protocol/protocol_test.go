@@ -39,13 +39,24 @@ func TestStatePacketMatchesBrowserLayout(t *testing.T) {
 }
 
 func TestInputPacketDecodeAndSanitize(t *testing.T) {
-	packet := []byte{MessageInput, 9, 0, 0, 0, 0xff, 0xff}
+	packet := []byte{MessageInput, 9, 0, 0, 0, 0xff, 0xff, 0xff}
 	input, ok := DecodeInput(packet)
 	if !ok {
 		t.Fatal("packet was rejected")
 	}
-	if input.Sequence != 9 || input.Mask != 0xff || input.Edges != 0x07 {
+	if input.Sequence != 9 || input.Mask != 0xff || input.Edges != 0x07 || input.Flags != 0x01 {
 		t.Fatalf("unexpected input: %+v", input)
+	}
+}
+
+func TestLegacySevenByteInputDefaultsFlagsToZero(t *testing.T) {
+	packet := []byte{MessageInput, 4, 0, 0, 0, game.InputW, 0}
+	input, ok := DecodeInput(packet)
+	if !ok {
+		t.Fatal("legacy packet was rejected")
+	}
+	if input.Flags != 0 {
+		t.Fatalf("legacy packet unexpectedly set flags: %+v", input)
 	}
 }
 

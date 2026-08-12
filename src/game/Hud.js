@@ -32,6 +32,7 @@ export class Hud {
         <kbd>A / D</kbd><span>Boden: Lenken · Luft: Yaw</span>
         <kbd>SPACE</kbd><span>Jump / Double Jump</span>
         <kbd>SHIFT</kbd><span>Boost</span>
+        <kbd>STRG</kbd><span>Drift / Handbremse</span>
         <kbd>Q / E</kbd><span>Air Roll</span>
         <kbd>B</kbd><span>Ball Reset</span>
         <kbd>R</kbd><span>Eigenes Auto Reset</span>

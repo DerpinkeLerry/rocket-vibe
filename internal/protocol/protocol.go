@@ -21,17 +21,22 @@ type InputPacket struct {
 	Sequence uint32
 	Mask     uint8
 	Edges    uint8
+	Flags    uint8
 }
 
 func DecodeInput(data []byte) (InputPacket, bool) {
 	if len(data) < 7 || data[0] != MessageInput {
 		return InputPacket{}, false
 	}
-	return InputPacket{
+	packet := InputPacket{
 		Sequence: binary.LittleEndian.Uint32(data[1:5]),
 		Mask:     data[5] & 0xff,
 		Edges:    data[6] & 0x07,
-	}, true
+	}
+	if len(data) >= 8 {
+		packet.Flags = data[7] & 0x01
+	}
+	return packet, true
 }
 
 func EncodeState(snapshot game.Snapshot) []byte {

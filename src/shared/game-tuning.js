@@ -15,6 +15,12 @@ export const INPUT_EDGES = Object.freeze({
   BALL_RESET: 1 << 2
 });
 
+// Held controls that do not fit in the original 8-bit movement mask. Kept in
+// a separate byte so drift can be held independently from air-roll bindings.
+export const INPUT_FLAGS = Object.freeze({
+  DRIFT: 1 << 0
+});
+
 // Arcade handling tuned around Rocket-League-style behaviour.  The server and
 // the local predictor intentionally use the same values so input never changes
 // character when an authoritative snapshot arrives.
@@ -31,16 +37,21 @@ export const CAR_TUNING = Object.freeze({
   boostCapacity: 100,
   boostConsumptionPerSecond: 100 / 3,
   grip: 18.0,
+  driftGrip: 3.0,
   steerRate: 2.75,
+  driftSteerRate: 4.65,
   steerResponse: 14.0,
+  driftSteerResponse: 19.0,
   angularGroundDamping: 11.0,
   airPitchAcceleration: 11.0,
   airYawAcceleration: 8.8,
   airRollAcceleration: 10.5,
   maxAirAngular: 6.6,
-  jumpSpeed: 12.4,
-  jumpHoldAcceleration: 24.0,
-  jumpHoldDuration: 0.18,
+  // First jump is intentionally modest. Holding jump continuously adds lift
+  // for up to 0.20 s, giving a large and controllable tap-to-full height range.
+  jumpSpeed: 10.5,
+  jumpHoldAcceleration: 32.0,
+  jumpHoldDuration: 0.20,
   doubleJumpSpeed: 10.0,
   // A dodge owns one finite 360-degree rotation.  While it is active normal
   // air torque is suppressed so holding the dodge direction cannot turn the

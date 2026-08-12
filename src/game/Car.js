@@ -49,6 +49,8 @@ export class Car {
     this.grounded = false;
     this.groundNormal = new THREE.Vector3(0, 1, 0);
     this.jumpCount = 0;
+    this.jumpHoldTime = 0;
+    this.jumpHoldActive = false;
     this.airTime = 0;
     this.groundContactLockout = 0;
     this.dodgeTime = 0;
@@ -583,6 +585,8 @@ export class Car {
       }
       this.airTime = 0;
       if (this.jumpCount > 0) this.jumpCount = 0;
+      this.jumpHoldTime = 0;
+      this.jumpHoldActive = false;
       if (this.dodgeAngleRemaining > 1e-6 || this.dodgeStopPending) this.stopDodgeRotation();
       this.dodgeTime = 0;
       this.dodgeAngleRemaining = 0;
@@ -617,6 +621,7 @@ export class Car {
     const sideInput = (this.input.isDown('KeyA', 'ArrowLeft') ? 1 : 0) - (this.input.isDown('KeyD', 'ArrowRight') ? 1 : 0);
     const rollInput = (this.input.isDown('KeyQ') ? 1 : 0) - (this.input.isDown('KeyE') ? 1 : 0);
     const wantsBoost = this.input.isDown('ShiftLeft', 'ShiftRight');
+    const drifting = this.input.isDown('ControlLeft', 'ControlRight');
     const boosting = wantsBoost && this.boost > 0.001;
     if (boosting) this.boost = Math.max(0, this.boost - CAR_TUNING.boostConsumptionPerSecond * dt);
     this.boosting = boosting;
@@ -629,7 +634,7 @@ export class Car {
 
     let driveGrounded = this.grounded;
     if (driveGrounded) {
-      this.applyGroundDrive(dt, forwardInput, sideInput, boosting);
+      this.applyGroundDrive(dt, forwardInput, sideInput, boosting, drifting);
       this.airTime = 0;
     } else {
       const [airForward, airSide] = this.filterPostDodgeAirInput(forwardInput, sideInput);
@@ -647,6 +652,8 @@ export class Car {
           z: lin.z + this.groundNormal.z * deltaSpeed
         }, true);
         this.jumpCount = 1;
+        this.jumpHoldTime = 0;
+        this.jumpHoldActive = this.input.isDown('Space');
         this.airTime = 0;
         this.grounded = false;
         this.groundContactLockout = 0.16;
@@ -656,13 +663,23 @@ export class Car {
       }
     }
 
-    if (this.input.isDown('Space') && this.jumpCount === 1 && this.airTime <= CAR_TUNING.jumpHoldDuration) {
-      const lin = this.body.linvel();
-      this.body.setLinvel({
-        x: lin.x + this.up.x * CAR_TUNING.jumpHoldAcceleration * dt,
-        y: lin.y + this.up.y * CAR_TUNING.jumpHoldAcceleration * dt,
-        z: lin.z + this.up.z * CAR_TUNING.jumpHoldAcceleration * dt
-      }, true);
+    // Variable first-jump height: extra lift exists only while the original
+    // press is held continuously. Releasing Space permanently ends hold lift
+    // for this jump, so a later second press is reserved for double-jump/dodge.
+    if (this.jumpCount === 1 && this.jumpHoldActive) {
+      if (!this.input.isDown('Space')) {
+        this.jumpHoldActive = false;
+      } else if (this.jumpHoldTime < CAR_TUNING.jumpHoldDuration) {
+        const holdDt = Math.min(dt, CAR_TUNING.jumpHoldDuration - this.jumpHoldTime);
+        const lin = this.body.linvel();
+        this.body.setLinvel({
+          x: lin.x + this.up.x * CAR_TUNING.jumpHoldAcceleration * holdDt,
+          y: lin.y + this.up.y * CAR_TUNING.jumpHoldAcceleration * holdDt,
+          z: lin.z + this.up.z * CAR_TUNING.jumpHoldAcceleration * holdDt
+        }, true);
+        this.jumpHoldTime += holdDt;
+        if (this.jumpHoldTime >= CAR_TUNING.jumpHoldDuration - 1e-6) this.jumpHoldActive = false;
+      }
     }
 
     if (driveGrounded) {
@@ -698,7 +715,7 @@ export class Car {
     this.forward.normalize();
   }
 
-  applyGroundDrive(dt, throttle, steer, boosting) {
+  applyGroundDrive(dt, throttle, steer, boosting, drifting = false) {
     const lin = this.body.linvel();
     this.velocityVec.set(lin.x, lin.y, lin.z);
     const speedForward = this.velocityVec.dot(this.forward);
@@ -731,7 +748,8 @@ export class Car {
       nextForward = moveTowards(nextForward, CAR_TUNING.maxBoostSpeed, CAR_TUNING.boostAcceleration * dt);
     }
 
-    const nextLateral = speedLateral * Math.exp(-CAR_TUNING.grip * dt);
+    const activeGrip = drifting ? CAR_TUNING.driftGrip : CAR_TUNING.grip;
+    const nextLateral = speedLateral * Math.exp(-activeGrip * dt);
     const normalSpeed = Math.min(0, this.velocityVec.dot(this.groundNormal));
     this.workVec.copy(this.forward).multiplyScalar(nextForward)
       .addScaledVector(this.right, nextLateral)
@@ -741,7 +759,10 @@ export class Car {
     const steerStrength = clamp(Math.max(Math.abs(nextForward), 1.5) / 7, 0.18, 1)
       * clamp(1 - tangentSpeed / 70, 0.48, 1);
     const reverseSign = Math.sign(nextForward || throttle || 1);
-    const targetYaw = steer * CAR_TUNING.steerRate * steerStrength * reverseSign;
+    const steerRate = drifting ? CAR_TUNING.driftSteerRate : CAR_TUNING.steerRate;
+    const steerResponse = drifting ? CAR_TUNING.driftSteerResponse : CAR_TUNING.steerResponse;
+    const driftStrength = drifting ? Math.max(0.72, steerStrength) : steerStrength;
+    const targetYaw = steer * steerRate * driftStrength * reverseSign;
     const ang = this.body.angvel();
     const spin = ang.x * this.groundNormal.x + ang.y * this.groundNormal.y + ang.z * this.groundNormal.z;
     const tangentDamping = Math.exp(-CAR_TUNING.angularGroundDamping * dt);
@@ -810,6 +831,7 @@ export class Car {
       this.velocityVec.addScaledVector(this.up, CAR_TUNING.doubleJumpSpeed);
       this.body.setLinvel({ x: this.velocityVec.x, y: this.velocityVec.y, z: this.velocityVec.z }, true);
       this.jumpCount = 2;
+      this.jumpHoldActive = false;
       return;
     }
 
@@ -838,6 +860,7 @@ export class Car {
     this.dodgeYawLock = Math.abs(sideAmount) >= 0.25 ? Math.sign(sideAmount) : 0;
     this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     this.jumpCount = 2;
+    this.jumpHoldActive = false;
   }
 
   filterPostDodgeAirInput(forwardInput, sideInput) {
@@ -980,6 +1003,8 @@ export class Car {
     this.body.resetForces(true);
     this.body.resetTorques(true);
     this.jumpCount = 0;
+    this.jumpHoldTime = 0;
+    this.jumpHoldActive = false;
     this.airTime = 0;
     this.groundContactLockout = 0;
     this.dodgeTime = 0;

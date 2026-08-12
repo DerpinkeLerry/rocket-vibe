@@ -31,3 +31,16 @@ test('one touch source cannot release a key still held by another source', () =>
   input.setVirtualKey('Space', false, 'jump-b');
   assert.equal(input.isDown('Space'), false);
 });
+
+
+test('drift is serialized as an independent held input flag', () => {
+  const input = new Input();
+  input.setVirtualKey('ControlLeft', true, 'drift');
+  const held = input.takeNetworkPacket();
+  assert.equal(held.flags & 1, 1);
+  assert.equal(held.mask, 0);
+
+  input.setVirtualKey('ControlLeft', false, 'drift');
+  const released = input.takeNetworkPacket();
+  assert.equal(released.flags & 1, 0);
+});

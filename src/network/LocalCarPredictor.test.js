@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LocalCarPredictor } from './LocalCarPredictor.js';
-import { INPUT_BITS, INPUT_EDGES } from '../shared/game-tuning.js';
+import { INPUT_BITS, INPUT_EDGES, INPUT_FLAGS } from '../shared/game-tuning.js';
 import { ARENA_TUNING, CAR_HITBOX } from '../shared/arena-tuning.js';
 
 class MockBody {
@@ -212,4 +212,50 @@ test('prediction preserves boosted momentum after releasing boost until braking'
   for (let index = 0; index < 60; index++) predictor.step(1 / 120);
   const braked = Math.hypot(body.linvel().x, body.linvel().y, body.linvel().z) * 3.6;
   assert.ok(braked < held - 8, `braking failed to reduce ${held}, got ${braked}`);
+});
+
+
+test('prediction scales first-jump height with continuous hold time', () => {
+  function apex(holdSteps) {
+    const { body, predictor } = makePredictor();
+    predictor.syncGrounded(true);
+    predictor.setInput({ mask: holdSteps > 0 ? INPUT_BITS.JUMP : 0, edges: INPUT_EDGES.JUMP, flags: 0 });
+    let maxY = body.translation().y;
+    for (let step = 0; step < 240; step++) {
+      if (holdSteps > 0 && step === holdSteps) predictor.setInput({ mask: 0, edges: 0, flags: 0 });
+      predictor.step(1 / 120);
+      maxY = Math.max(maxY, body.translation().y);
+    }
+    return maxY;
+  }
+
+  const tap = apex(0);
+  const medium = apex(10);
+  const full = apex(28);
+  assert.ok(medium > tap + 0.65, `tap=${tap} medium=${medium}`);
+  assert.ok(full > medium + 0.65, `medium=${medium} full=${full}`);
+});
+
+test('prediction drift turns harder while retaining lateral slip', () => {
+  function run(flags) {
+    const { body, predictor } = makePredictor();
+    body.setLinvel({ x: 0, y: 0, z: -15 });
+    predictor.syncGrounded(true);
+    predictor.setInput({ mask: INPUT_BITS.W | INPUT_BITS.A, edges: 0, flags });
+    for (let index = 0; index < 50; index++) predictor.step(1 / 120);
+    const q = body.rotation();
+    const yawTurn = Math.abs(2 * Math.atan2(q.y, q.w));
+    const v = body.linvel();
+    const speed = Math.hypot(v.x, v.z);
+    const forwardX = -2 * (q.x * q.z + q.w * q.y);
+    const forwardZ = -(1 - 2 * (q.x * q.x + q.y * q.y));
+    const dot = speed > 1e-6 ? (v.x * forwardX + v.z * forwardZ) / speed : 1;
+    const slip = Math.acos(Math.max(-1, Math.min(1, dot)));
+    return { yawTurn, slip };
+  }
+
+  const normal = run(0);
+  const drift = run(INPUT_FLAGS.DRIFT);
+  assert.ok(drift.yawTurn > normal.yawTurn + 0.2, JSON.stringify({ normal, drift }));
+  assert.ok(drift.slip > normal.slip + 0.1, JSON.stringify({ normal, drift }));
 });

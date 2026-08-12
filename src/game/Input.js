@@ -10,6 +10,9 @@ const NETWORK_DOWN_BITS = [
 ];
 
 const NETWORK_EDGE_CODES = ['Space', 'KeyR', 'KeyB'];
+const NETWORK_FLAG_CODES = [
+  [['ControlLeft', 'ControlRight'], 1 << 0]
+];
 
 export class Input {
   constructor() {
@@ -21,7 +24,9 @@ export class Input {
 
     window.addEventListener('keydown', (event) => {
       if ([
-        'Space',
+        'Space', 'ControlLeft', 'ControlRight',
+        'KeyW', 'KeyS', 'KeyA', 'KeyD', 'KeyQ', 'KeyE',
+        'ShiftLeft', 'ShiftRight',
         'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'
       ].includes(event.code)) {
         event.preventDefault();
@@ -121,6 +126,11 @@ export class Input {
     }
     this.networkPressed.clear();
 
-    return { mask, edges };
+    let flags = 0;
+    for (const [codes, bit] of NETWORK_FLAG_CODES) {
+      if (codes.some((code) => this.isCodeDown(code))) flags |= bit;
+    }
+
+    return { mask, edges, flags };
   }
 }

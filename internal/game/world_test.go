@@ -829,3 +829,123 @@ func TestBallFloorRampSeamNeverDropsThroughFloor(t *testing.T) {
 		t.Fatalf("ball dipped through the floor/ramp seam: minY=%.4f radius=%.4f", minimumY, config.Ball.Radius)
 	}
 }
+
+func simulateFirstJumpApex(t *testing.T, holdSeconds float64) float64 {
+	t.Helper()
+	config := DefaultConfig()
+	world := NewWorld(config)
+	world.SetConnected(0, true)
+	car := &world.Cars[0]
+	car.Position = Vec3{Y: config.Car.HalfExtents.Y}
+	car.Rotation = IdentityQuat()
+	car.Grounded = true
+	car.GroundNormal = Vec3{Y: 1}
+
+	mask := uint8(0)
+	if holdSeconds > 0 {
+		mask = InputJump
+	}
+	if !world.SetInput(0, Input{Sequence: 1, Mask: mask, Edges: EdgeJump}) {
+		t.Fatal("initial jump input was not accepted")
+	}
+
+	dt := 1 / float64(config.PhysicsHz)
+	releaseAt := int(math.Round(holdSeconds * float64(config.PhysicsHz)))
+	sequence := uint32(1)
+	maximumY := car.Position.Y
+	for step := 0; step < config.PhysicsHz*2; step++ {
+		if holdSeconds > 0 && step == releaseAt {
+			sequence++
+			if !world.SetInput(0, Input{Sequence: sequence, Mask: 0}) {
+				t.Fatal("jump release input was not accepted")
+			}
+		}
+		world.Step(dt)
+		maximumY = math.Max(maximumY, car.Position.Y)
+	}
+	return maximumY
+}
+
+func TestJumpHeightScalesWithContinuousHoldDuration(t *testing.T) {
+	tap := simulateFirstJumpApex(t, 0)
+	medium := simulateFirstJumpApex(t, 0.085)
+	full := simulateFirstJumpApex(t, DefaultConfig().Car.JumpHoldDuration+0.04)
+
+	if medium <= tap+0.65 {
+		t.Fatalf("medium jump was not meaningfully higher than tap: tap=%f medium=%f", tap, medium)
+	}
+	if full <= medium+0.65 {
+		t.Fatalf("full jump was not meaningfully higher than medium: medium=%f full=%f", medium, full)
+	}
+	if full <= tap+1.7 {
+		t.Fatalf("jump hold range is too small to aim flip height: tap=%f full=%f", tap, full)
+	}
+}
+
+func TestReleasedJumpCannotRearmFirstJumpHold(t *testing.T) {
+	config := DefaultConfig()
+	world := NewWorld(config)
+	world.SetConnected(0, true)
+	car := &world.Cars[0]
+	car.Position = Vec3{Y: config.Car.HalfExtents.Y}
+	car.Rotation = IdentityQuat()
+	car.Grounded = true
+	car.GroundNormal = Vec3{Y: 1}
+	dt := 1 / float64(config.PhysicsHz)
+
+	world.SetInput(0, Input{Sequence: 1, Mask: InputJump, Edges: EdgeJump})
+	for range 5 {
+		world.Step(dt)
+	}
+	world.SetInput(0, Input{Sequence: 2, Mask: 0})
+	world.Step(dt)
+	if car.JumpHoldActive {
+		t.Fatal("releasing jump did not end first-jump hold")
+	}
+
+	// Holding the button again without a new jump edge must not resume the first
+	// jump's lift. The second press is reserved for the eventual dodge edge.
+	before := car.JumpHoldTime
+	world.SetInput(0, Input{Sequence: 3, Mask: InputJump})
+	for range 8 {
+		world.Step(dt)
+	}
+	if car.JumpHoldTime != before {
+		t.Fatalf("first-jump hold rearmed after release: before=%f after=%f", before, car.JumpHoldTime)
+	}
+}
+
+func TestDriftTurnsFasterAndPreservesLateralSlip(t *testing.T) {
+	run := func(flags uint8) (turnAngle, slipAngle float64) {
+		config := DefaultConfig()
+		world := NewWorld(config)
+		world.SetConnected(0, true)
+		car := &world.Cars[0]
+		car.Position = Vec3{Y: config.Car.HalfExtents.Y}
+		car.Rotation = IdentityQuat()
+		car.Velocity = Vec3{Z: -15}
+		car.Grounded = true
+		car.GroundNormal = Vec3{Y: 1}
+		world.SetInput(0, Input{Sequence: 1, Mask: InputW | InputA, Flags: flags})
+
+		dt := 1 / float64(config.PhysicsHz)
+		for range int(0.42 * float64(config.PhysicsHz)) {
+			world.Step(dt)
+		}
+
+		forward := car.Rotation.Rotate(Vec3{Z: -1}).NormalizeOr(Vec3{Z: -1})
+		turnAngle = math.Acos(clamp(forward.Dot(Vec3{Z: -1}), -1, 1))
+		velocity := Vec3{X: car.Velocity.X, Z: car.Velocity.Z}.NormalizeOr(forward)
+		slipAngle = math.Acos(clamp(velocity.Dot(forward), -1, 1))
+		return turnAngle, slipAngle
+	}
+
+	normalTurn, normalSlip := run(0)
+	driftTurn, driftSlip := run(InputFlagDrift)
+	if driftTurn <= normalTurn+0.20 {
+		t.Fatalf("drift did not tighten steering enough: normal=%f drift=%f", normalTurn, driftTurn)
+	}
+	if driftSlip <= normalSlip+0.12 {
+		t.Fatalf("drift did not preserve enough lateral slide: normal=%f drift=%f", normalSlip, driftSlip)
+	}
+}

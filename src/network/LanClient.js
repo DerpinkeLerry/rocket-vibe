@@ -244,12 +244,13 @@ export class LanClient {
   sendInput(input) {
     if (!this.connected || this.socket?.readyState !== WebSocket.OPEN) return false;
     const seq = ++this.inputSeq;
-    const buffer = new ArrayBuffer(7);
+    const buffer = new ArrayBuffer(8);
     const view = new DataView(buffer);
     view.setUint8(0, MSG_INPUT);
     view.setUint32(1, seq, true);
     view.setUint8(5, (Number(input?.mask) || 0) & 0xff);
     view.setUint8(6, (Number(input?.edges) || 0) & 0x07);
+    view.setUint8(7, (Number(input?.flags) || 0) & 0x01);
     this.socket.send(buffer);
     return true;
   }

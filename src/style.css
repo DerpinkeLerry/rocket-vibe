@@ -665,7 +665,7 @@ html, body, #app {
 }
 
 .mobile-controls__actions { bottom: 0; }
-.mobile-controls__roll { right: 7px; bottom: 96px; gap: 8px; }
+.mobile-controls__roll { right: 7px; bottom: 96px; gap: 7px; }
 .mobile-controls__utility { right: 4px; bottom: 139px; gap: 7px; }
 
 .mobile-btn {
@@ -715,13 +715,18 @@ html, body, #app {
 }
 
 .mobile-btn--small {
-  min-width: 67px;
+  min-width: 61px;
   height: 34px;
   padding: 0 10px;
   border-radius: 17px;
   font-size: 9px;
   color: rgba(255,255,255,0.78);
   background: rgba(9, 22, 41, 0.68);
+}
+
+.mobile-btn--drift {
+  border-color: rgba(255, 225, 130, 0.42);
+  background: rgba(80, 58, 18, 0.70);
 }
 
 .mobile-btn--utility {
@@ -887,7 +892,12 @@ html, body, #app {
   .mobile-controls__roll { bottom: 75px; gap: 5px; }
   .mobile-controls__utility { bottom: 113px; gap: 5px; }
   .mobile-btn--small { min-width: 55px; height: 29px; padding: 0 7px; font-size: 8px; }
-  .mobile-btn--utility { min-width: 40px; height: 28px; padding: 0 7px; }
+  .mobile-btn--drift {
+  border-color: rgba(255, 225, 130, 0.42);
+  background: rgba(80, 58, 18, 0.70);
+}
+
+.mobile-btn--utility { min-width: 40px; height: 28px; padding: 0 7px; }
 
   .mobile-active .hud__boost {
     width: min(220px, 52vw);

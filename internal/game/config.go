@@ -34,8 +34,11 @@ type CarConfig struct {
 	CoastDeceleration    float64 `json:"coastDeceleration"`
 	BoostAcceleration    float64 `json:"boostAcceleration"`
 	Grip                 float64 `json:"grip"`
+	DriftGrip            float64 `json:"driftGrip"`
 	SteerRate            float64 `json:"steerRate"`
+	DriftSteerRate       float64 `json:"driftSteerRate"`
 	SteerResponse        float64 `json:"steerResponse"`
+	DriftSteerResponse   float64 `json:"driftSteerResponse"`
 	GroundAngularDamping float64 `json:"groundAngularDamping"`
 	AirPitchAcceleration float64 `json:"airPitchAcceleration"`
 	AirYawAcceleration   float64 `json:"airYawAcceleration"`
@@ -111,16 +114,19 @@ func DefaultConfig() Config {
 			CoastDeceleration:    3.5,
 			BoostAcceleration:    16,
 			Grip:                 18,
+			DriftGrip:            3.0,
 			SteerRate:            2.75,
+			DriftSteerRate:       4.65,
 			SteerResponse:        14,
+			DriftSteerResponse:   19,
 			GroundAngularDamping: 11,
 			AirPitchAcceleration: 11,
 			AirYawAcceleration:   8.8,
 			AirRollAcceleration:  10.5,
 			MaxAirAngular:        6.6,
-			JumpSpeed:            12.4,
-			JumpHoldAcceleration: 24,
-			JumpHoldDuration:     0.18,
+			JumpSpeed:            10.5,
+			JumpHoldAcceleration: 32,
+			JumpHoldDuration:     0.20,
 			DoubleJumpSpeed:      10,
 			DodgeImpulse:         14.0,
 			DodgeLift:            1.8,

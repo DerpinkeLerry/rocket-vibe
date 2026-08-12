@@ -66,6 +66,7 @@ export class MobileControls {
           <button class="mobile-btn mobile-btn--utility mobile-btn--fullscreen" type="button" data-fullscreen aria-label="Vollbild">⛶</button>
         </div>
         <div class="mobile-controls__roll">
+          <button class="mobile-btn mobile-btn--small mobile-btn--drift" type="button" data-key="ControlLeft" aria-label="Drift / Handbremse">DRIFT</button>
           <button class="mobile-btn mobile-btn--small" type="button" data-key="KeyQ" aria-label="Air Roll links">ROLL L</button>
           <button class="mobile-btn mobile-btn--small" type="button" data-key="KeyE" aria-label="Air Roll rechts">ROLL R</button>
         </div>
@@ -181,6 +182,7 @@ export class MobileControls {
         }
         if (code === 'Space') vibrate(10);
         else if (code === 'ShiftLeft') vibrate(5);
+        else if (code === 'ControlLeft') vibrate(6);
       };
 
       const onUp = (event) => {

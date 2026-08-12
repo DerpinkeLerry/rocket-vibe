@@ -205,7 +205,7 @@ func (match *Match) run() {
 			if !exists || !match.world.SetInput(connected.slot, event.input) {
 				continue
 			}
-			active := event.input.Mask != 0 || event.input.Edges != 0
+			active := event.input.Mask != 0 || event.input.Edges != 0 || event.input.Flags != 0
 			if !connected.ackedAny || (active && !connected.ackedActive) {
 				connected.ackedAny = true
 				if active {

@@ -1,4 +1,4 @@
-# Rocket Vibe 1.10.4 – Go Multiplayer / Railway
+# Rocket Vibe 1.10.5 – Go Multiplayer / Railway
 
 Browser-Spiel fuer bis zu vier Spieler mit Three.js-Rendering, lokaler Client-Prediction und einem autoritativen Go-Server. Frontend und Server werden auf Railway als **ein Service** betrieben. Dadurch verwendet der Browser dieselbe HTTPS-Domain fuer Seite und WebSocket (`/lan`); eine separate Backend-URL oder CORS-Konfiguration ist nicht erforderlich.
 
@@ -91,6 +91,7 @@ Ein Deployment beendet laufende Matches beim Containerwechsel. Fuer spaetere Mat
 - W / S: Boden Gas/Rueckwaerts, Luft Pitch
 - A / D: Boden Lenken, Luft Yaw
 - Q / E: Air Roll
+- STRG / CTRL: Drift / Handbremse fuer engere Kurven und kontrollierten Seitenschlupf
 - Shift: Boost (verbraucht die 0–100-Leiste unten mittig)
 - Space: Sprung (halten = mehr Lift) / Doppelsprung; mit W/A/S/D beim zweiten Sprung = Flip/Dodge
 - R: eigenes Auto resetten
@@ -105,6 +106,7 @@ Auf Touch-Geraeten wird die Mobile-Steuerung automatisch aktiviert. Fuer die bes
 - Linker 2D-Stick: hoch/runter = Gas/Bremse bzw. Luft-Pitch, links/rechts = Lenken bzw. Luft-Yaw
 - `JUMP`: Sprung, gehaltene Sprunghoehe, Double-Jump und zusammen mit Stickrichtung Directional Flip/Dodge
 - `BOOST`: Boost halten; funktioniert gleichzeitig mit Stick und Jump
+- `DRIFT`: Handbremse/Powerslide fuer engere Kurven; kann gleichzeitig mit Stick und Gas verwendet werden
 - `ROLL L / R`: Air Roll links/rechts
 - `BALL / CAR`: Ball Cam und Car Cam wechseln
 - `↻`: eigenes Auto resetten
@@ -190,3 +192,14 @@ Die Tests decken Fahrbewegung, 70/100-km/h-Speed-Caps und erhaltenes Boost-Momen
 - Die Richtungstaste, die den Dodge gestartet hat, wird bis zum Loslassen nicht sofort wieder als Air-Control interpretiert. Dadurch entsteht nach dem einen Flip kein ungewolltes Nachdrehen, obwohl die Taste noch gehalten wird. Nach Loslassen/Re-Druecken ist normale Luftkontrolle sofort wieder aktiv.
 - Server, Multiplayer-Client-Prediction und lokaler Rapier-Modus verwenden dieselbe Dodge-Achse, Rotation, Impulsstaerke und Eingabe-Latch-Logik.
 - Neue Regressionstests pruefen Front-/Back-/Side-/Diagonalimpulse, die korrekte Links-/Rechts-Rollrichtung, automatisches Stoppen nach einer Umdrehung und die Rueckkehr der Air-Control nach dem Loslassen.
+
+
+## Variable Jump + Powerslide v1.10.5
+
+- Die erste Sprunghoehe skaliert jetzt direkt mit der **durchgehenden Haltezeit von Space/JUMP**: kurzer Tap = niedriger Sprung, mittleres Halten = mittlere Hoehe, bis 0,20 s halten = maximaler First-Jump-Lift.
+- Der zusaetzliche Jump-Lift kann nach dem Loslassen nicht innerhalb desselben Sprungs erneut aktiviert werden. Dadurch bleibt der zweite Tastendruck sauber fuer Double-Jump bzw. Directional Dodge reserviert.
+- Der Grundimpuls des ersten Sprungs wurde reduziert und die Hold-Kraft verstaerkt, damit die Hoehenunterschiede beim Timing deutlich spürbar sind und Flips gezielt auf unterschiedlichen Hoehen gestartet werden koennen.
+- `STRG` / `CTRL` aktiviert am Boden Drift/Handbremse: weniger Seitenhaftung plus hoehere Lenkrate und schnellere Lenkreaktion erzeugen einen kontrollierten Powerslide statt eines einfachen Steering-Buffs.
+- Der Drift ist ein eigener gehaltener Multiplayer-Input und wird zwischen Browser, Prediction und Go-Server synchronisiert. Das neue 8-Byte-Inputpaket bleibt serverseitig kompatibel zu alten 7-Byte-Paketen.
+- Auf Smartphone/Tablet gibt es einen eigenen `DRIFT`-Button neben den Air-Roll-Tasten.
+- Neue Regressionstests pruefen drei klar getrennte First-Jump-Hoehen, das irreversible Ende des Hold-Lifts nach dem Loslassen sowie engere Drift-Kurven mit erhoehtem Seitenschlupf.
