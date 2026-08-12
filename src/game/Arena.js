@@ -1159,12 +1159,16 @@ export class Arena {
     const straightZ = FIELD_L * 0.5 - CORNER_R;
     const halfWidth = FIELD_W * 0.5;
     const halfLength = FIELD_L * 0.5;
-    const goalHalf = GOAL_W * 0.5 + GOAL_MOUTH_R;
     const supportPositions = [
       [-halfWidth, -straightZ], [-halfWidth, straightZ], [halfWidth, -straightZ], [halfWidth, straightZ],
-      [-straightX, -halfLength], [straightX, -halfLength], [-straightX, halfLength], [straightX, halfLength],
-      [-goalHalf, -halfLength], [goalHalf, -halfLength], [-goalHalf, halfLength], [goalHalf, halfLength]
+      [-straightX, -halfLength], [straightX, -halfLength], [-straightX, halfLength], [straightX, halfLength]
     ];
+
+    // Do not place full-height arena supports on the two goal-mouth edges.
+    // The rounded goal rim already defines those edges; a normal wall support
+    // there would continue far above GOAL_H and read as a goal post sticking
+    // through the roof. Leaving the mouth free lets the coloured rounded rim
+    // terminate cleanly at the upper goal curve.
     const supports = new THREE.InstancedMesh(panelGeometry, frameMaterial, supportPositions.length);
     for (let index = 0; index < supportPositions.length; index++) {
       const [x, z] = supportPositions[index];

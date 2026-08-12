@@ -164,3 +164,11 @@ Die Tests decken Fahrbewegung, 70/100-km/h-Speed-Caps und erhaltenes Boost-Momen
 - Dunklere Graphit-Waende, neutraleres Glas und kraeftigere Team-Akzente fuer einen lebendigeren Arena-Look.
 - AgX-Tonemapping und neu abgestimmtes Tageslicht fuer mehr Farbtiefe ohne zusaetzliche Post-Processing-Kosten.
 - Ultra-High-3D-Gras nutzt dunklere, sattere Halme und bleibt weiterhin instanziert/culling-optimiert.
+
+
+## Goal Mouth Frame Fix v1.10.2
+
+- Die vier full-height Arena-Stuetzen direkt an den Toroeffnungen wurden entfernt.
+- Dadurch ragen keine dunklen Pfosten mehr ueber die obere Tor-Rundung hinaus.
+- Der farbige, abgerundete Torrahmen definiert die Toroeffnung jetzt allein und endet sauber an der oberen Kurve.
+- Tor-Physics, fahrbare Innenrundungen und Glasflaechen bleiben unveraendert.
