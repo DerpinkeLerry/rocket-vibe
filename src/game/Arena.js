@@ -692,7 +692,12 @@ export class Arena {
           yaw: 0,
           nx: 0,
           nz: signZ,
-          ramp: false
+          ramp: false,
+          // This is the glass band directly above the goal opening.  It may
+          // have horizontal cage rails, but never vertical uprights: a vertical
+          // grid member here lines up in perspective with the rounded goal rim
+          // and looks like the goal post continues above the arch.
+          goalHeader: true
         }
       );
     }
@@ -1003,7 +1008,7 @@ export class Arena {
       const maxY = panel.upperRamp === false ? WALL_H : WALL_H - CEILING_R;
       const height = panel.height ?? Math.max(0.2, maxY - minY);
       if (height < 0.8) continue;
-      frameCount += Math.max(0, Math.floor(panel.length / 7.0));
+      if (!panel.goalHeader) frameCount += Math.max(0, Math.floor(panel.length / 7.0));
       frameCount += Math.max(0, Math.floor(height / 4.25));
     }
 
@@ -1025,7 +1030,10 @@ export class Arena {
       const tz = -Math.sin(panel.yaw);
       const surfaceX = panel.x - panel.nx * (WALL_T * 0.5 + 0.012);
       const surfaceZ = panel.z - panel.nz * (WALL_T * 0.5 + 0.012);
-      const verticalCount = Math.max(0, Math.floor(panel.length / 7.0));
+      // Do not place vertical cage members in the glass header above a goal.
+      // The coloured goal rim already supplies the visual side termination and
+      // must be allowed to end at its upper curve without a dark mast behind it.
+      const verticalCount = panel.goalHeader ? 0 : Math.max(0, Math.floor(panel.length / 7.0));
       for (let column = 1; column <= verticalCount; column++) {
         const offset = -panel.length * 0.5 + panel.length * column / (verticalCount + 1);
         dummy.position.set(surfaceX + tx * offset, minY + height * 0.5, surfaceZ + tz * offset);

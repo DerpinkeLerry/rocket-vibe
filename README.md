@@ -172,3 +172,11 @@ Die Tests decken Fahrbewegung, 70/100-km/h-Speed-Caps und erhaltenes Boost-Momen
 - Dadurch ragen keine dunklen Pfosten mehr ueber die obere Tor-Rundung hinaus.
 - Der farbige, abgerundete Torrahmen definiert die Toroeffnung jetzt allein und endet sauber an der oberen Kurve.
 - Tor-Physics, fahrbare Innenrundungen und Glasflaechen bleiben unveraendert.
+
+
+## Goal Header Grid Fix v1.10.3
+
+- Der Glasbereich direkt oberhalb jeder Toroeffnung ist jetzt explizit als Goal-Header markiert.
+- In diesem Bereich werden keine vertikalen Stahl-/Gitterstreben mehr erzeugt; horizontale Kaefiglinien bleiben erhalten.
+- Dadurch kann kein dunkler Glasrahmen mehr perspektivisch wie eine Verlaengerung des Torpfostens ueber den oberen Torbogen hinaus wirken.
+- Der abgerundete Torrahmen, Torinnenraum und saemtliche Physics bleiben unveraendert.
