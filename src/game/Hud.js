@@ -27,7 +27,7 @@ export class Hud {
       </div>
       <div class="hud__controls">
         <kbd>F2</kbd><span>Normal / Ultra-VM umschalten</span>
-        <kbd>CAM</kbd><span>Permanent Ball Cam</span>
+        <kbd>C</kbd><span data-camera-mode>Ball Cam / Car Cam · aktuell: BALL CAM</span>
         <kbd>W / S</kbd><span>Boden: Gas · Luft: Pitch</span>
         <kbd>A / D</kbd><span>Boden: Lenken · Luft: Yaw</span>
         <kbd>SPACE</kbd><span>Jump / Double Jump</span>
@@ -51,6 +51,7 @@ export class Hud {
     this.fps = this.el.querySelector('[data-fps]');
     this.perf = this.el.querySelector('[data-perf]');
     this.identity = this.el.querySelector('[data-identity]');
+    this.cameraMode = this.el.querySelector('[data-camera-mode]');
     this.identity.textContent = playerName;
     this.orangeScore = this.el.querySelector('[data-orange-score]');
     this.blueScore = this.el.querySelector('[data-blue-score]');
@@ -72,6 +73,12 @@ export class Hud {
   setPerformance(profile, fps, pixelRatio) {
     if (this.perf) this.perf.textContent = profile;
     if (this.fps) this.fps.textContent = `FPS ${Math.round(fps)} · Render ${Math.round(pixelRatio * 100)}%`;
+  }
+
+  setCameraMode(mode) {
+    if (!this.cameraMode) return;
+    const label = mode === 'CAR' ? 'CAR CAM' : 'BALL CAM';
+    this.cameraMode.textContent = `Ball Cam / Car Cam · aktuell: ${label}`;
   }
 
   setScore(orange, blue) {

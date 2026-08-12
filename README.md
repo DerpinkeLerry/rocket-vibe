@@ -94,7 +94,7 @@ Ein Deployment beendet laufende Matches beim Containerwechsel. Fuer spaetere Mat
 - R: eigenes Auto resetten
 - B: Ball resetten (Entwicklungsfunktion)
 - F2: Normal / Ultra-VM umschalten und Seite neu laden
-- Kamera: permanente Ball Cam
+- Kamera: `C` schaltet zwischen Ball Cam und Car Cam; das Auto bleibt in beiden Modi zentriert. Hindernisse zwischen Kamera und Auto werden beim Rendern ausgeblendet, und die Kamera darf hinter/außerhalb der Arena stehen.
 
 ## Schwache Rechner / VM
 

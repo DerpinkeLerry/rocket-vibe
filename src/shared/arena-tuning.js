@@ -18,9 +18,9 @@ export const CAR_HITBOX = Object.freeze({
   z: 1.48
 });
 
-// Keeps a point inside the convex, rounded main arena. It is used for the
-// chase camera, which must never cross the transparent enclosure even when
-// its target car is directly beside a wall.
+// Utility for systems that need a point constrained to the rounded arena.
+// The chase camera deliberately no longer uses this: it may travel outside
+// walls and relies on render-time occlusion hiding instead.
 export function clampPointToRoundedArena(point, margin = 0) {
   const arena = ARENA_TUNING;
   const safeMargin = Math.max(0, Math.min(Number(margin) || 0, arena.cornerRadius - 0.1));

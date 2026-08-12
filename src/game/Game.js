@@ -127,7 +127,7 @@ export class Game {
           lowLatency: this.profile.ultra
         })
       : null;
-    this.chaseCamera = new ChaseCamera(this.camera, this.car, this.ball);
+    this.chaseCamera = new ChaseCamera(this.camera, this.car, this.ball, this.scene);
     this.hud = new Hud(this.root, {
       lan: this.networked,
       playerId: this.playerId,
@@ -266,6 +266,10 @@ export class Game {
 
       for (const car of this.cars) if (car.group.visible) car.syncVisual();
       this.ball.syncVisual();
+      if (this.input.consumePressed('KeyC')) {
+        const cameraMode = this.chaseCamera.toggleMode();
+        this.hud.setCameraMode(cameraMode);
+      }
       this.chaseCamera.update(renderDt);
 
       this.hudAccumulator += renderDt;
@@ -274,7 +278,12 @@ export class Game {
         this.hud.update(this.car);
       }
 
-      this.renderer.render(this.scene, this.camera);
+      this.chaseCamera.prepareRender();
+      try {
+        this.renderer.render(this.scene, this.camera);
+      } finally {
+        this.chaseCamera.restoreOccluders();
+      }
     }
 
     requestAnimationFrame(this.loop);
