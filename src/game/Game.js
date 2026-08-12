@@ -65,7 +65,7 @@ export class Game {
     this.camera.position.set(0, 5, 10);
 
     this.renderer = new THREE.WebGLRenderer({
-      antialias: false,
+      antialias: this.profile.mobile && !this.profile.ultra,
       alpha: false,
       powerPreference: 'high-performance',
       precision: this.profile.ultra ? 'mediump' : 'highp',
@@ -397,8 +397,8 @@ export class Game {
 
     if (this.profile.adaptiveResolution) {
       let next = this.renderPixelRatio;
-      if (this.measuredFps < 52) next -= 0.06;
-      else if (this.measuredFps > 59) next += 0.02;
+      if (this.measuredFps < (this.profile.mobile ? 46 : 52)) next -= this.profile.mobile ? 0.05 : 0.06;
+      else if (this.measuredFps > (this.profile.mobile ? 57 : 59)) next += this.profile.mobile ? 0.03 : 0.02;
 
       const dpr = window.devicePixelRatio || 1;
       next = THREE.MathUtils.clamp(next, this.profile.minPixelRatio, Math.min(this.profile.maxPixelRatio, dpr));

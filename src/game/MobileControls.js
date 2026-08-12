@@ -1,3 +1,5 @@
+import { canRequestFullscreen, isFullscreenActive, toggleGameFullscreen } from './Fullscreen.js';
+
 const STICK_CODES = ['KeyW', 'KeyS', 'KeyA', 'KeyD'];
 
 export function resolveStickCodes(x, y, deadZone = 0.24) {
@@ -202,21 +204,7 @@ export class MobileControls {
     const onFullscreen = async (event) => {
       event.preventDefault();
       vibrate(8);
-      try {
-        if (document.fullscreenElement) {
-          await document.exitFullscreen?.();
-          screen.orientation?.unlock?.();
-        } else {
-          await this.root.requestFullscreen?.();
-          try {
-            await screen.orientation?.lock?.('landscape');
-          } catch {
-            // Orientation locking is optional and not implemented by iOS Safari.
-          }
-        }
-      } catch {
-        // Fullscreen is optional; Safari/iOS may reject it for normal elements.
-      }
+      await toggleGameFullscreen(document.documentElement);
       this.updateFullscreenAvailability();
     };
     this.fullscreenButton?.addEventListener('click', onFullscreen);
@@ -234,11 +222,13 @@ export class MobileControls {
     window.addEventListener('blur', releaseAll);
     document.addEventListener('visibilitychange', onVisibility);
     document.addEventListener('fullscreenchange', onFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', onFullscreenChange);
     this.el.addEventListener('contextmenu', onContextMenu);
     this.destroyers.push(() => {
       window.removeEventListener('blur', releaseAll);
       document.removeEventListener('visibilitychange', onVisibility);
       document.removeEventListener('fullscreenchange', onFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
       this.el.removeEventListener('contextmenu', onContextMenu);
     });
   }
@@ -252,10 +242,17 @@ export class MobileControls {
 
   updateFullscreenAvailability() {
     if (!this.fullscreenButton) return;
-    const supported = Boolean(document.fullscreenEnabled && this.root.requestFullscreen);
-    this.fullscreenButton.hidden = !supported;
-    this.fullscreenButton.textContent = document.fullscreenElement ? '×' : '⛶';
-    this.fullscreenButton.setAttribute('aria-label', document.fullscreenElement ? 'Vollbild verlassen' : 'Vollbild');
+    const active = isFullscreenActive();
+    const supported = canRequestFullscreen(document.documentElement);
+    // Keep the control available on mobile Safari as well. If the browser does
+    // not expose the Fullscreen API, the helper still performs its best-effort
+    // visual-viewport fallback instead of making the button mysteriously vanish.
+    this.fullscreenButton.hidden = false;
+    this.fullscreenButton.textContent = active ? '×' : '⛶';
+    this.fullscreenButton.setAttribute(
+      'aria-label',
+      active ? 'Vollbild verlassen' : (supported ? 'Vollbild' : 'Browser-Vollbild versuchen')
+    );
   }
 
   releaseAll() {

@@ -5,7 +5,7 @@ export const ARENA_TUNING = Object.freeze({
   wallHeight: 25,
   cornerRadius: 16,
   rampRadius: 7,
-  rampSegments: 10,
+  rampSegments: 16,
   ceilingRampRadius: 6,
   wallThickness: 0.8,
   goalWidth: 34,

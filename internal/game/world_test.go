@@ -698,3 +698,42 @@ func TestWallClimbSurfaceNormalChangesContinuously(t *testing.T) {
 		t.Fatalf("surface normal snapped too sharply during wall climb: min dot=%.5f", minimumDot)
 	}
 }
+
+func TestBallFloorRampSeamNeverDropsThroughFloor(t *testing.T) {
+	config := DefaultConfig()
+	world := NewWorld(config)
+
+	// Reproduce the old invisible gap directly: this position is still on the
+	// flat-floor side of the geometric ramp seam, but it used to be classified
+	// as "ramp zone" because the test incorrectly added the whole ball radius.
+	gapDistance := config.Arena.RampRadius + config.Ball.Radius*0.5
+	world.Ball.Position = Vec3{
+		X: config.Arena.Width*0.5 - gapDistance,
+		Y: config.Ball.Radius - 0.35,
+		Z: 9,
+	}
+	world.Ball.Velocity = Vec3{X: 12, Y: -2, Z: 4}
+	resolveBallArena(&world.Ball, config)
+	if world.Ball.Position.Y < config.Ball.Radius-1e-7 {
+		t.Fatalf("flat floor left a gap before the wall ramp: p=%+v", world.Ball.Position)
+	}
+
+	// Then cross the seam at speed. The center must never appear below the
+	// floor before the analytic quarter-pipe starts lifting it.
+	seamX := config.Arena.Width*0.5 - config.Arena.RampRadius
+	world = NewWorld(config)
+	world.Ball.Position = Vec3{X: seamX - 1.4, Y: config.Ball.Radius, Z: 9}
+	world.Ball.Velocity = Vec3{X: 28, Z: 8}
+	dt := 1 / float64(config.PhysicsHz)
+	minimumY := world.Ball.Position.Y
+	for step := 0; step < 40; step++ {
+		world.Step(dt)
+		minimumY = math.Min(minimumY, world.Ball.Position.Y)
+		if !world.Ball.Position.IsFinite() || !world.Ball.Velocity.IsFinite() {
+			t.Fatalf("ball became non-finite at floor/ramp seam: p=%+v v=%+v", world.Ball.Position, world.Ball.Velocity)
+		}
+	}
+	if minimumY < config.Ball.Radius-0.015 {
+		t.Fatalf("ball dipped through the floor/ramp seam: minY=%.4f radius=%.4f", minimumY, config.Ball.Radius)
+	}
+}

@@ -2,6 +2,7 @@ import { Game } from './game/Game.js';
 import { LanClient } from './network/LanClient.js';
 import { CAR_STYLES, DEFAULT_CAR_STYLE, normalizeCarStyle } from './shared/car-styles.js';
 import { prefersMobileControls } from './game/MobileControls.js';
+import { canRequestFullscreen, isFullscreenActive, requestGameFullscreen } from './game/Fullscreen.js';
 import './style.css';
 
 function rememberedPlayerName() {
@@ -73,6 +74,10 @@ function requestPlayerIdentity(root) {
         <h1>Fahrer & Auto</h1>
         <p>Wähle deinen Namen und eine Karosserie. Alle vier Autos haben dieselbe Hitbox und dieselben Fahrwerte.</p>
         ${prefersMobileControls() ? '<div class="join-card__mobile-note">📱 Touch-Steuerung aktiv · Querformat empfohlen</div>' : ''}
+        <div class="join-card__fullscreen-row">
+          <button class="join-card__fullscreen" type="button" data-start-fullscreen>⛶ VOLLBILD STARTEN</button>
+          <span class="join-card__fullscreen-status" data-fullscreen-status aria-live="polite"></span>
+        </div>
         <label for="player-name">Spielername</label>
         <input id="player-name" name="playerName" type="text" minlength="2" maxlength="16"
           autocomplete="nickname" enterkeyhint="go" spellcheck="false" placeholder="z. B. Goofy" required />
@@ -99,6 +104,32 @@ function requestPlayerIdentity(root) {
     const input = overlay.querySelector('#player-name');
     const error = overlay.querySelector('.join-card__error');
     const choices = [...overlay.querySelectorAll('[data-car-choice]')];
+    const fullscreenButton = overlay.querySelector('[data-start-fullscreen]');
+    const fullscreenStatus = overlay.querySelector('[data-fullscreen-status]');
+    const mobile = prefersMobileControls();
+
+    const updateFullscreenUi = () => {
+      const active = isFullscreenActive();
+      const supported = canRequestFullscreen(document.documentElement);
+      fullscreenButton.textContent = active ? '✓ VOLLBILD AKTIV' : '⛶ VOLLBILD STARTEN';
+      fullscreenButton.classList.toggle('is-active', active);
+      if (active) fullscreenStatus.textContent = 'Browser-Leisten ausgeblendet · Querformat wird bevorzugt';
+      else if (!supported && mobile) fullscreenStatus.textContent = 'Falls dein Browser echtes Vollbild blockiert: Spiel zum Home-Bildschirm hinzufügen.';
+      else fullscreenStatus.textContent = mobile ? 'Einmal tippen für die größte Spielfläche.' : '';
+    };
+
+    fullscreenButton.addEventListener('click', async () => {
+      fullscreenStatus.textContent = 'Vollbild wird aktiviert …';
+      const active = await requestGameFullscreen(document.documentElement);
+      updateFullscreenUi();
+      if (!active && mobile && !canRequestFullscreen(document.documentElement)) {
+        fullscreenStatus.textContent = 'Dieser Browser erlaubt hier kein echtes Vollbild. Im Home-Bildschirm-Modus läuft das Spiel ohne Browserleisten.';
+      }
+    });
+    document.addEventListener('fullscreenchange', updateFullscreenUi);
+    document.addEventListener('webkitfullscreenchange', updateFullscreenUi);
+    updateFullscreenUi();
+
     input.value = rememberedPlayerName();
     if (!prefersMobileControls()) requestAnimationFrame(() => input.focus());
 
@@ -125,6 +156,8 @@ function requestPlayerIdentity(root) {
       } catch {
         // Private browsing may disable storage; the match can still start.
       }
+      document.removeEventListener('fullscreenchange', updateFullscreenUi);
+      document.removeEventListener('webkitfullscreenchange', updateFullscreenUi);
       overlay.remove();
       resolve({ playerName: name.slice(0, 16), carStyle });
     });

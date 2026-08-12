@@ -13,14 +13,14 @@ export function getPerformanceProfile(networked) {
   const mobile = isMobileDevice();
 
   return {
-    name: ultra ? 'ULTRA / VM' : (mobile ? 'MOBILE' : 'NORMAL'),
+    name: ultra ? 'ULTRA / VM' : (mobile ? 'MOBILE HQ' : 'NORMAL'),
     ultra,
     mobile,
     lowDetail: ultra,
     createClientPhysics: !networked,
-    initialPixelRatio: ultra ? 0.48 : (mobile ? 0.68 : (networked ? 0.75 : 0.9)),
-    minPixelRatio: ultra ? 0.30 : (mobile ? 0.48 : (networked ? 0.58 : 0.72)),
-    maxPixelRatio: ultra ? 0.56 : (mobile ? 0.82 : (networked ? 0.82 : 1.0)),
+    initialPixelRatio: ultra ? 0.48 : (mobile ? 1.25 : (networked ? 0.75 : 0.9)),
+    minPixelRatio: ultra ? 0.30 : (mobile ? 0.90 : (networked ? 0.58 : 0.72)),
+    maxPixelRatio: ultra ? 0.56 : (mobile ? 1.60 : (networked ? 0.82 : 1.0)),
     adaptiveResolution: ultra || mobile,
     predictionHz: ultra ? 60 : (mobile ? 90 : 120),
     hudHz: ultra ? 6 : (mobile ? 12 : 15),

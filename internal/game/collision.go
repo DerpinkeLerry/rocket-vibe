@@ -2,7 +2,10 @@ package game
 
 import "math"
 
-const surfaceContactSlop = 0.075
+const (
+	surfaceContactSlop = 0.075
+	ballRampSeamSlop   = 0.035
+)
 
 func resolveCarArena(car *Car, config Config) {
 	half := config.Car.HalfExtents
@@ -225,7 +228,12 @@ func resolveBallArena(ball *Ball, config Config) {
 		ball.Position.Y+radius <= config.Arena.GoalHeight
 	boundary, hasBoundary := nearestArenaBoundary(ball.Position, config.Arena, goalFits)
 
-	lowerRampZone := hasBoundary && boundary.Distance < config.Arena.RampRadius+radius &&
+	// The flat floor remains authoritative right up to the geometric start of
+	// the quarter-pipe. The previous `RampRadius + ballRadius` condition disabled
+	// the floor more than two metres too early, leaving an invisible annular gap
+	// where the ball could dip below y=radius and then get catapulted upward by
+	// the ramp solver on the next tick.
+	lowerRampZone := hasBoundary && boundary.Distance <= config.Arena.RampRadius+ballRampSeamSlop &&
 		ball.Position.Y <= config.Arena.RampRadius+radius
 	if floorExistsAt(ball.Position, config.Arena) && !lowerRampZone {
 		penetration := radius - ball.Position.Y
@@ -250,7 +258,7 @@ func resolveBallArena(ball *Ball, config Config) {
 		}
 	}
 
-	upperRampZone := hasBoundary && boundary.Distance < config.Arena.CeilingRampRadius+radius &&
+	upperRampZone := hasBoundary && boundary.Distance <= config.Arena.CeilingRampRadius+ballRampSeamSlop &&
 		ball.Position.Y >= config.Arena.Ceiling-config.Arena.CeilingRampRadius-radius
 	if !upperRampZone {
 		resolveBodyMaximum(&ball.Body, 1, config.Arena.Ceiling, radius, config.Ball.Restitution)
@@ -280,7 +288,11 @@ func resolveBallBoundary(ball *Ball, config Config, boundary arenaBoundary) {
 	lowerRadius := config.Arena.RampRadius
 	lowerHorizontal := lowerRadius - boundary.Distance
 	lowerVertical := ball.Position.Y - lowerRadius
-	if lowerHorizontal >= 0 && lowerVertical <= 0 {
+	if lowerHorizontal >= -ballRampSeamSlop && lowerVertical <= 0 {
+		// Clamp the tiny handoff slop to the exact seam. This makes the curved
+		// solver behave like the flat floor for those last few centimetres instead
+		// of creating another micro-gap between the two contact models.
+		lowerHorizontal = math.Max(0, lowerHorizontal)
 		radial := outward.Mul(lowerHorizontal).Add(Vec3{Y: lowerVertical})
 		distance := radial.Length()
 		maximumDistance := math.Max(0.1, lowerRadius-config.Ball.Radius)
@@ -295,7 +307,8 @@ func resolveBallBoundary(ball *Ball, config Config, boundary arenaBoundary) {
 	upperRadius := config.Arena.CeilingRampRadius
 	upperHorizontal := upperRadius - boundary.Distance
 	upperVertical := ball.Position.Y - (config.Arena.Ceiling - upperRadius)
-	if upperHorizontal >= 0 && upperVertical >= 0 {
+	if upperHorizontal >= -ballRampSeamSlop && upperVertical >= 0 {
+		upperHorizontal = math.Max(0, upperHorizontal)
 		radial := outward.Mul(upperHorizontal).Add(Vec3{Y: upperVertical})
 		distance := radial.Length()
 		maximumDistance := math.Max(0.1, upperRadius-config.Ball.Radius)

@@ -92,7 +92,9 @@ export class Ball {
       .setContactSkin(0.01);
 
     this.collider = this.world.createCollider(colliderDesc, this.body);
-    this.body.setAdditionalSolverIterations(4);
+    // Extra local solver work is cheap for a single ball and helps the sphere
+    // stay stable where the flat floor meets the segmented wall ramp.
+    this.body.setAdditionalSolverIterations(8);
   }
 
   createVisual() {

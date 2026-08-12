@@ -840,3 +840,78 @@ html, body, #app {
     animation: mobile-orientation-hint-out 5.5s ease 0.7s forwards;
   }
 }
+
+/* Start-screen fullscreen: visible before the game boots so mobile players can
+   enter immersive mode from a real user gesture. */
+.join-card__fullscreen-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.62fr) 1fr;
+  align-items: center;
+  gap: 10px 14px;
+  margin: 4px 0 18px;
+}
+
+.join-card .join-card__fullscreen {
+  width: 100%;
+  margin: 0;
+  padding: 12px 14px;
+  color: #eafdff;
+  border: 1px solid rgba(111, 225, 255, 0.42);
+  background: rgba(40, 162, 215, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.035);
+}
+
+.join-card .join-card__fullscreen.is-active {
+  color: #effff5;
+  border-color: rgba(118, 255, 168, 0.52);
+  background: rgba(47, 184, 99, 0.18);
+}
+
+.join-card__fullscreen-status {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  color: rgba(220, 241, 255, 0.68);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+:fullscreen {
+  width: 100%;
+  height: 100%;
+  background: #07111f;
+}
+
+:-webkit-full-screen {
+  width: 100%;
+  height: 100%;
+  background: #07111f;
+}
+
+@media (max-width: 720px) {
+  .join-screen {
+    min-height: 100dvh;
+    padding-top: max(10px, env(safe-area-inset-top));
+    padding-right: max(10px, env(safe-area-inset-right));
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    padding-left: max(10px, env(safe-area-inset-left));
+  }
+
+  .join-card__fullscreen-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+
+  .join-card .join-card__fullscreen {
+    min-height: 48px;
+    font-size: 12px;
+  }
+
+  .join-card__fullscreen-status {
+    min-height: 18px;
+    text-align: center;
+    justify-content: center;
+    font-size: 10px;
+  }
+}

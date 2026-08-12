@@ -1,4 +1,4 @@
-# Rocket Vibe 1.8 – Go Multiplayer / Railway
+# Rocket Vibe 1.9.1 – Go Multiplayer / Railway
 
 Browser-Spiel fuer bis zu vier Spieler mit Three.js-Rendering, lokaler Client-Prediction und einem autoritativen Go-Server. Frontend und Server werden auf Railway als **ein Service** betrieben. Dadurch verwendet der Browser dieselbe HTTPS-Domain fuer Seite und WebSocket (`/lan`); eine separate Backend-URL oder CORS-Konfiguration ist nicht erforderlich.
 
@@ -108,9 +108,10 @@ Auf Touch-Geraeten wird die Mobile-Steuerung automatisch aktiviert. Fuer die bes
 - `ROLL L / R`: Air Roll links/rechts
 - `BALL / CAR`: Ball Cam und Car Cam wechseln
 - `↻`: eigenes Auto resetten
-- `⛶`: Vollbild, wenn der Browser die Fullscreen-API unterstuetzt; kompatible Android-Browser versuchen dabei Querformat zu sperren
+- `⛶`: Vollbild im Match; kompatible Browser versuchen dabei Querformat zu sperren
+- Bereits auf dem Start-/Namensbildschirm gibt es `VOLLBILD STARTEN`, damit das Spiel vor dem Match per echtem User-Tap in den Browser-Fullscreen wechseln kann
 
-Das HUD beruecksichtigt Notch/Home-Bar per Safe-Area, verhindert Pull-to-Refresh/Browser-Gesten im Match und nutzt auf Mobilgeraeten automatisch adaptive Renderaufloesung. Mit `?mobile=1` kann die Touch-Steuerung zum Testen erzwungen, mit `?mobile=0` deaktiviert werden.
+Das HUD beruecksichtigt Notch/Home-Bar per Safe-Area und verhindert Pull-to-Refresh/Browser-Gesten im Match. Mobilgeraete verwenden standardmaessig das Profil **MOBILE HQ** mit Antialiasing, voller Arena-/Umgebungsqualitaet und 125–160 % Render-Skalierung; nur bei deutlich zu niedriger Framerate reduziert die adaptive Aufloesung bis minimal 90 %. Browser ohne normale Fullscreen-API erhalten einen Hinweis auf den bereits vorbereiteten Home-Screen/Standalone-Modus. Mit `?mobile=1` kann die Touch-Steuerung zum Testen erzwungen, mit `?mobile=0` deaktiviert werden.
 
 ## Schwache Rechner / VM
 
@@ -129,4 +130,4 @@ go test ./...
 go test -race ./...
 ```
 
-Die Tests decken Fahrbewegung, 70/100-km/h-Speed-Caps und erhaltenes Boost-Momentum, Boostverbrauch, Boost-Pickups/Respawn, Sprung-Lockout, Boden-Tunneling, die Fahrt vom Boden auf senkrechtes Glas, beide farbigen Tore, Spielstand, Namen, Auto-Ball-Impuls, Input-Reihenfolge, das exakte Binaerprotokoll und einen echten HTTP/WebSocket-Verbindungsaufbau ab.
+Die Tests decken Fahrbewegung, 70/100-km/h-Speed-Caps und erhaltenes Boost-Momentum, Boostverbrauch, Boost-Pickups/Respawn, Sprung-Lockout, Boden-Tunneling, die Fahrt vom Boden auf senkrechtes Glas, den Ball-Uebergang an der Boden/Wand-Naht ohne Tunneling, beide farbigen Tore, Spielstand, Namen, Auto-Ball-Impuls, Input-Reihenfolge, das exakte Binaerprotokoll und einen echten HTTP/WebSocket-Verbindungsaufbau ab.
