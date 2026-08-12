@@ -6,13 +6,20 @@ export class Hud {
     const maxPlayers = options.maxPlayers ?? 4;
     const role = multiplayer ? `SPIELER ${playerId + 1}` : 'OFFLINE';
     const profile = options.performanceProfile ?? 'NORMAL';
+    const playerName = options.playerName || role;
+    const team = options.team === 'blue' ? 'blue' : 'orange';
 
     this.el = document.createElement('div');
     this.el.className = 'hud';
     this.el.innerHTML = `
-      <div class="hud__title">ROCKET VIBE // ONLINE 1.2 <span class="hud__perf" data-perf>${profile}</span></div>
+      <div class="hud__title">ROCKET VIBE // ONLINE 1.6 <span class="hud__perf" data-perf>${profile}</span></div>
+      <div class="hud__scoreboard" aria-label="Spielstand Orange gegen Blau">
+        <div class="hud__score-team hud__score-team--orange"><span>ORANGE</span><strong data-orange-score>0</strong></div>
+        <div class="hud__score-separator">:</div>
+        <div class="hud__score-team hud__score-team--blue"><strong data-blue-score>0</strong><span>BLAU</span></div>
+      </div>
       <div class="hud__network">
-        <strong>${role}</strong>
+        <strong class="hud__identity hud__identity--${team}" data-identity></strong>
         <span data-network>${multiplayer ? 'Spielserver verbunden' : 'Lokaler Modus'}</span>
         <span data-player-count>${playerCount}/${maxPlayers} Spieler</span>
         <span data-ping>Ping -- ms</span>
@@ -43,6 +50,10 @@ export class Hud {
     this.ping = this.el.querySelector('[data-ping]');
     this.fps = this.el.querySelector('[data-fps]');
     this.perf = this.el.querySelector('[data-perf]');
+    this.identity = this.el.querySelector('[data-identity]');
+    this.identity.textContent = playerName;
+    this.orangeScore = this.el.querySelector('[data-orange-score]');
+    this.blueScore = this.el.querySelector('[data-blue-score]');
   }
 
   setNetworkStatus(text) {
@@ -61,6 +72,11 @@ export class Hud {
   setPerformance(profile, fps, pixelRatio) {
     if (this.perf) this.perf.textContent = profile;
     if (this.fps) this.fps.textContent = `FPS ${Math.round(fps)} · Render ${Math.round(pixelRatio * 100)}%`;
+  }
+
+  setScore(orange, blue) {
+    this.orangeScore.textContent = String(Math.max(0, Number(orange) || 0));
+    this.blueScore.textContent = String(Math.max(0, Number(blue) || 0));
   }
 
   update(car) {

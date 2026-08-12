@@ -31,6 +31,12 @@ export class LocalCarPredictor {
     this.forward = new THREE.Vector3();
     this.right = new THREE.Vector3();
     this.up = new THREE.Vector3();
+    this.groundNormal = new THREE.Vector3(0, 1, 0);
+    this.surfaceRight = new THREE.Vector3();
+    this.surfaceBack = new THREE.Vector3();
+    this.surfaceNormal = new THREE.Vector3();
+    this.surfaceMatrix = new THREE.Matrix4();
+    this.surfaceQ = new THREE.Quaternion();
     this.pos = new THREE.Vector3();
     this.vel = new THREE.Vector3();
     this.ang = new THREE.Vector3();
@@ -98,6 +104,7 @@ export class LocalCarPredictor {
     const boosting = this.isDown(INPUT_BITS.BOOST);
 
     const nearFloor = this.pos.y < 1.55 && this.up.y > 0.35 && Math.abs(this.vel.y) < 6.5;
+    if (nearFloor && !this.grounded) this.groundNormal.set(0, 1, 0);
     let driveGrounded = this.groundLockout <= 0 && (this.grounded || nearFloor);
 
     if (this.consumeEdge(INPUT_EDGES.RESET)) {
@@ -111,7 +118,8 @@ export class LocalCarPredictor {
 
     if (this.consumeEdge(INPUT_EDGES.JUMP)) {
       if (driveGrounded && this.jumpCount === 0) {
-        this.vel.y = Math.max(this.vel.y, CAR_TUNING.jumpSpeed);
+        const normalSpeed = this.vel.dot(this.groundNormal);
+        this.vel.addScaledVector(this.groundNormal, Math.max(0, CAR_TUNING.jumpSpeed - normalSpeed));
         this.jumpCount = 1;
         this.grounded = false;
         this.groundLockout = 0.22;
@@ -123,6 +131,13 @@ export class LocalCarPredictor {
     }
 
     if (driveGrounded) {
+      this.forward.addScaledVector(this.groundNormal, -this.forward.dot(this.groundNormal));
+      if (this.forward.lengthSq() < 0.000001) {
+        if (Math.abs(this.groundNormal.y) < 0.9) this.forward.set(0, -1, 0);
+        else this.forward.set(0, 0, -1);
+      }
+      this.forward.normalize();
+      this.right.crossVectors(this.forward, this.groundNormal).normalize();
       const speedForward = this.vel.dot(this.forward);
       const speedLateral = this.vel.dot(this.right);
       const flatSpeed = Math.hypot(this.vel.x, this.vel.z);
@@ -139,22 +154,18 @@ export class LocalCarPredictor {
       if (boosting) nextForward = moveTowards(nextForward, CAR_TUNING.maxBoostSpeed, CAR_TUNING.boostAcceleration * dt);
 
       const nextLateral = speedLateral * Math.exp(-CAR_TUNING.grip * dt);
-      const fx = this.forward.x;
-      const fz = this.forward.z;
-      const fl = Math.hypot(fx, fz) || 1;
-      const rx = this.right.x;
-      const rz = this.right.z;
-      const rl = Math.hypot(rx, rz) || 1;
-      this.vel.x = (fx / fl) * nextForward + (rx / rl) * nextLateral;
-      this.vel.z = (fz / fl) * nextForward + (rz / rl) * nextLateral;
-      this.vel.y = 0;
+      const normalSpeed = Math.min(0, this.vel.dot(this.groundNormal));
+      this.vel.copy(this.forward).multiplyScalar(nextForward)
+        .addScaledVector(this.right, nextLateral)
+        .addScaledVector(this.groundNormal, normalSpeed);
 
       const steerStrength = clamp(Math.max(Math.abs(nextForward), 1.5) / 7, 0.18, 1) * clamp(1 - flatSpeed / 62, 0.38, 1);
       const reverseSign = Math.sign(nextForward || forwardInput || 1);
       const targetYaw = sideInput * CAR_TUNING.steerRate * steerStrength * reverseSign;
-      this.ang.x = damp(this.ang.x, 0, CAR_TUNING.angularGroundDamping, dt);
-      this.ang.y = damp(this.ang.y, targetYaw, CAR_TUNING.steerResponse, dt);
-      this.ang.z = damp(this.ang.z, 0, CAR_TUNING.angularGroundDamping, dt);
+      let spin = this.ang.dot(this.groundNormal);
+      this.ang.addScaledVector(this.groundNormal, -spin).multiplyScalar(Math.exp(-CAR_TUNING.angularGroundDamping * dt));
+      spin = damp(spin, targetYaw, CAR_TUNING.steerResponse, dt);
+      this.ang.addScaledVector(this.groundNormal, spin);
       this.airTime = 0;
       this.grounded = true;
     } else {
@@ -173,10 +184,12 @@ export class LocalCarPredictor {
         if (speed > CAR_TUNING.maxBoostSpeed) this.vel.multiplyScalar(CAR_TUNING.maxBoostSpeed / speed);
       }
 
-      this.vel.y -= CAR_TUNING.gravity * dt;
-      this.vel.multiplyScalar(Math.exp(-CAR_TUNING.linearDamping * dt));
-      this.ang.multiplyScalar(Math.exp(-CAR_TUNING.angularDamping * dt));
     }
+
+    if (driveGrounded) this.vel.addScaledVector(this.groundNormal, -CAR_TUNING.downAcceleration * dt);
+    this.vel.y -= CAR_TUNING.gravity * dt;
+    this.vel.multiplyScalar(Math.exp(-CAR_TUNING.linearDamping * dt));
+    this.ang.multiplyScalar(Math.exp(-CAR_TUNING.angularDamping * dt));
 
     this.pos.addScaledVector(this.vel, dt);
     const angularSpeed = this.ang.length();
@@ -187,6 +200,7 @@ export class LocalCarPredictor {
     }
 
     this.resolveArenaCollision();
+    this.alignToSurface(dt);
 
     this.body.setTranslation({ x: this.pos.x, y: this.pos.y, z: this.pos.z }, false);
     this.body.setRotation({ x: this.q.x, y: this.q.y, z: this.q.z, w: this.q.w }, false);
@@ -210,12 +224,74 @@ export class LocalCarPredictor {
     this.ang.multiplyScalar(0.985);
   }
 
-  resolveArenaCollision() {
+  resolveIntoPlayable(nx, ny, nz, penetration) {
+    this.pos.x += nx * penetration;
+    this.pos.y += ny * penetration;
+    this.pos.z += nz * penetration;
+    const intoSurfaceSpeed = this.vel.x * nx + this.vel.y * ny + this.vel.z * nz;
+    if (intoSurfaceSpeed < 0) {
+      this.vel.x -= nx * intoSurfaceSpeed;
+      this.vel.y -= ny * intoSurfaceSpeed;
+      this.vel.z -= nz * intoSurfaceSpeed;
+    }
+  }
+
+  findNearestBoundary(goalOpening) {
     const arena = ARENA_TUNING;
     const halfWidth = arena.width * 0.5;
     const halfLength = arena.length * 0.5;
     const straightX = halfWidth - arena.cornerRadius;
     const straightZ = halfLength - arena.cornerRadius;
+    const absX = Math.abs(this.pos.x);
+    const absZ = Math.abs(this.pos.z);
+
+    if (absX > straightX && absZ > straightZ) {
+      const centerX = Math.sign(this.pos.x || 1) * straightX;
+      const centerZ = Math.sign(this.pos.z || 1) * straightZ;
+      const dx = this.pos.x - centerX;
+      const dz = this.pos.z - centerZ;
+      const distance = Math.hypot(dx, dz);
+      if (distance < 0.000001) return false;
+      this.boundaryDistance = arena.cornerRadius - distance;
+      this.boundaryNX = dx / distance;
+      this.boundaryNZ = dz / distance;
+      return true;
+    }
+
+    let found = false;
+    let distance = Number.POSITIVE_INFINITY;
+    if (absZ <= straightZ) {
+      found = true;
+      distance = halfWidth - absX;
+      this.boundaryNX = Math.sign(this.pos.x || 1);
+      this.boundaryNZ = 0;
+    }
+    if (absX <= straightX && !goalOpening) {
+      const endDistance = halfLength - absZ;
+      if (!found || endDistance < distance) {
+        distance = endDistance;
+        this.boundaryNX = 0;
+        this.boundaryNZ = Math.sign(this.pos.z || 1);
+      }
+      found = true;
+    }
+    this.boundaryDistance = distance;
+    return found;
+  }
+
+  markSurfaceContact(nx, ny, nz) {
+    if (this.groundLockout > 0 || this.up.x * nx + this.up.y * ny + this.up.z * nz <= 0.1) return;
+    this.grounded = true;
+    this.surfaceContactThisStep = true;
+    this.airTime = 0;
+    this.groundNormal.set(nx, ny, nz).normalize();
+  }
+
+  resolveArenaCollision() {
+    const arena = ARENA_TUNING;
+    const halfWidth = arena.width * 0.5;
+    const halfLength = arena.length * 0.5;
+    this.surfaceContactThisStep = false;
 
     // Refresh the basis after integrating rotation so the oriented hitbox and
     // the server use the same support extents for this exact predicted pose.
@@ -242,46 +318,39 @@ export class LocalCarPredictor {
     const goalFits = absX + extentX <= arena.goalWidth * 0.5
       && this.pos.y + extentY <= arena.goalHeight;
 
-    if (absX > straightX && absZ > straightZ) {
-      const signX = Math.sign(this.pos.x || 1);
-      const signZ = Math.sign(this.pos.z || 1);
-      const centerX = signX * straightX;
-      const centerZ = signZ * straightZ;
-      const dx = this.pos.x - centerX;
-      const dz = this.pos.z - centerZ;
-      const distance = Math.hypot(dx, dz);
-      if (distance > 0.000001) {
-        const nx = dx / distance;
-        const nz = dz / distance;
-        const support = this.supportAlong(nx, 0, nz);
-        const maximumDistance = Math.max(0.1, arena.cornerRadius - support);
-        if (distance > maximumDistance) {
+    if (this.findNearestBoundary(goalFits)) {
+      const outwardX = this.boundaryNX;
+      const outwardZ = this.boundaryNZ;
+      const horizontal = arena.rampRadius - this.boundaryDistance;
+      const vertical = this.pos.y - arena.rampRadius;
+      let rampResolved = false;
+
+      if (horizontal >= 0 && vertical <= 0) {
+        const distance = Math.hypot(horizontal, vertical);
+        if (distance > 0.000001) {
+          const nx = -outwardX * horizontal / distance;
+          const ny = -vertical / distance;
+          const nz = -outwardZ * horizontal / distance;
+          const support = this.supportAlong(nx, ny, nz);
+          const maximumDistance = Math.max(0.1, arena.rampRadius - support);
           const penetration = distance - maximumDistance;
-          this.pos.x -= nx * penetration;
-          this.pos.z -= nz * penetration;
-          this.stopOutwardVelocity(nx, nz);
-        }
-      }
-    } else {
-      if (absZ <= straightZ) {
-        const maximumX = halfWidth - extentX;
-        if (this.pos.x > maximumX) {
-          this.pos.x = maximumX;
-          this.stopOutwardVelocity(1, 0);
-        } else if (this.pos.x < -maximumX) {
-          this.pos.x = -maximumX;
-          this.stopOutwardVelocity(-1, 0);
+          if (penetration > 0) {
+            this.resolveIntoPlayable(nx, ny, nz, penetration);
+            this.markSurfaceContact(nx, ny, nz);
+            rampResolved = true;
+          }
         }
       }
 
-      if (absX <= straightX && !goalFits) {
-        const maximumZ = halfLength - extentZ;
-        if (this.pos.z > maximumZ) {
-          this.pos.z = maximumZ;
-          this.stopOutwardVelocity(0, 1);
-        } else if (this.pos.z < -maximumZ) {
-          this.pos.z = -maximumZ;
-          this.stopOutwardVelocity(0, -1);
+      if (!rampResolved) {
+        const nx = -outwardX;
+        const nz = -outwardZ;
+        const support = this.supportAlong(nx, 0, nz);
+        const penetration = support - this.boundaryDistance;
+        if (penetration > 0) {
+          this.resolveIntoPlayable(nx, 0, nz, penetration);
+          this.markSurfaceContact(nx, 0, nz);
+          this.ang.multiplyScalar(0.985);
         }
       }
     }
@@ -314,10 +383,27 @@ export class LocalCarPredictor {
       }
     }
 
-    if (floorContact && this.up.y > 0.3 && this.groundLockout <= 0) {
+    if (!this.surfaceContactThisStep && floorContact && this.up.y > 0.3 && this.groundLockout <= 0) {
       this.grounded = true;
       this.airTime = 0;
+      this.groundNormal.set(0, 1, 0);
     }
+  }
+
+  alignToSurface(dt) {
+    if (!this.grounded || this.groundLockout > 0) return;
+    this.forward.copy(VEC_FORWARD).applyQuaternion(this.q);
+    this.forward.addScaledVector(this.groundNormal, -this.forward.dot(this.groundNormal));
+    if (this.forward.lengthSq() < 0.000001) {
+      if (Math.abs(this.groundNormal.y) < 0.9) this.forward.set(0, -1, 0);
+      else this.forward.set(0, 0, -1);
+    }
+    this.forward.normalize();
+    this.surfaceRight.crossVectors(this.forward, this.groundNormal).normalize();
+    this.surfaceBack.copy(this.forward).multiplyScalar(-1);
+    this.surfaceMatrix.makeBasis(this.surfaceRight, this.groundNormal, this.surfaceBack);
+    this.surfaceQ.setFromRotationMatrix(this.surfaceMatrix).normalize();
+    this.q.slerp(this.surfaceQ, 1 - Math.exp(-12 * dt));
   }
 
   reconcile(target, dt, ageSec, rttMs) {

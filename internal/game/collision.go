@@ -7,26 +7,13 @@ func resolveCarArena(car *Car, config Config) {
 	extentX, extentY, extentZ := projectedExtents(car.Rotation, half)
 	resolveCarFloorAndCeiling(car, config, extentY)
 
-	halfWidth := config.Arena.Width * 0.5
 	halfLength := config.Arena.Length * 0.5
-	straightX := halfWidth - config.Arena.CornerRadius
-	straightZ := halfLength - config.Arena.CornerRadius
 	absX := math.Abs(car.Position.X)
-	absZ := math.Abs(car.Position.Z)
-
 	goalHalfWidth := config.Arena.GoalWidth * 0.5
 	goalFits := absX+extentX <= goalHalfWidth &&
 		car.Position.Y+extentY <= config.Arena.GoalHeight
-
-	switch {
-	case absX > straightX && absZ > straightZ:
-		resolveCarRoundedCorner(car, config, straightX, straightZ)
-	case absZ <= straightZ:
-		resolveBodyMinimum(&car.Body, 0, -halfWidth, extentX, config.Car.Restitution)
-		resolveBodyMaximum(&car.Body, 0, halfWidth, extentX, config.Car.Restitution)
-	case absX <= straightX && !goalFits:
-		resolveBodyMinimum(&car.Body, 2, -halfLength, extentZ, config.Car.Restitution)
-		resolveBodyMaximum(&car.Body, 2, halfLength, extentZ, config.Car.Restitution)
+	if boundary, ok := nearestArenaBoundary(car.Position, config.Arena, goalFits); ok {
+		resolveCarBoundary(car, config, boundary)
 	}
 
 	if math.Abs(car.Position.Z) > halfLength-0.02 {
@@ -48,32 +35,107 @@ func resolveCarFloorAndCeiling(car *Car, config Config, extentY float64) {
 		up := car.Rotation.Rotate(Vec3{Y: 1})
 		if penetration >= -0.04 && up.Y > 0.3 && car.GroundLockout <= 0 {
 			car.Grounded = true
+			car.GroundNormal = Vec3{Y: 1}
 		}
 	}
 
 	resolveBodyMaximum(&car.Body, 1, config.Arena.Ceiling, extentY, config.Car.Restitution)
 }
 
-func resolveCarRoundedCorner(car *Car, config Config, straightX, straightZ float64) {
-	center := Vec3{
-		X: nonZeroSign(car.Position.X) * straightX,
-		Z: nonZeroSign(car.Position.Z) * straightZ,
+type arenaBoundary struct {
+	Distance float64
+	Outward  Vec3
+}
+
+func nearestArenaBoundary(position Vec3, arena ArenaConfig, goalOpening bool) (arenaBoundary, bool) {
+	halfWidth := arena.Width * 0.5
+	halfLength := arena.Length * 0.5
+	straightX := halfWidth - arena.CornerRadius
+	straightZ := halfLength - arena.CornerRadius
+	absX := math.Abs(position.X)
+	absZ := math.Abs(position.Z)
+
+	if absX > straightX && absZ > straightZ {
+		center := Vec3{X: nonZeroSign(position.X) * straightX, Z: nonZeroSign(position.Z) * straightZ}
+		delta := position.Sub(center)
+		delta.Y = 0
+		distance := delta.Length()
+		if distance < 1e-9 {
+			return arenaBoundary{}, false
+		}
+		return arenaBoundary{
+			Distance: arena.CornerRadius - distance,
+			Outward:  delta.Mul(1 / distance),
+		}, true
 	}
-	delta := car.Position.Sub(center)
-	delta.Y = 0
-	distance := delta.Length()
-	if distance < 1e-9 {
+
+	best := arenaBoundary{Distance: math.MaxFloat64}
+	found := false
+	if absZ <= straightZ {
+		best = arenaBoundary{
+			Distance: halfWidth - absX,
+			Outward:  Vec3{X: nonZeroSign(position.X)},
+		}
+		found = true
+	}
+	if absX <= straightX && !goalOpening {
+		end := arenaBoundary{
+			Distance: halfLength - absZ,
+			Outward:  Vec3{Z: nonZeroSign(position.Z)},
+		}
+		if !found || end.Distance < best.Distance {
+			best = end
+		}
+		found = true
+	}
+	return best, found
+}
+
+func resolveCarBoundary(car *Car, config Config, boundary arenaBoundary) {
+	rampRadius := config.Arena.RampRadius
+	outward := boundary.Outward
+	inward := outward.Mul(-1)
+	up := Vec3{Y: 1}
+	horizontal := rampRadius - boundary.Distance
+	vertical := car.Position.Y - rampRadius
+
+	// The lower wall is a quarter circle. Its contact normal continuously turns
+	// from world-up into the inward wall normal, so cars can drive onto glass.
+	if horizontal >= 0 && vertical <= 0 {
+		radial := outward.Mul(horizontal).Add(up.Mul(vertical))
+		distance := radial.Length()
+		if distance > 1e-9 {
+			normal := radial.Mul(-1 / distance)
+			support := orientedBoxSupport(car.Rotation, config.Car.HalfExtents, normal)
+			maximumDistance := math.Max(0.1, rampRadius-support)
+			penetration := distance - maximumDistance
+			if penetration > 0 {
+				resolveBodyIntoPlayable(&car.Body, normal, penetration, config.Car.Restitution)
+				markCarSurfaceContact(car, normal)
+				return
+			}
+		}
+	}
+
+	support := orientedBoxSupport(car.Rotation, config.Car.HalfExtents, inward)
+	penetration := support - boundary.Distance
+	if penetration > 0 {
+		resolveBodyIntoPlayable(&car.Body, inward, penetration, config.Car.Restitution)
+		markCarSurfaceContact(car, inward)
+		car.AngularVelocity = car.AngularVelocity.Mul(0.985)
+	}
+}
+
+func markCarSurfaceContact(car *Car, normal Vec3) {
+	if car.GroundLockout > 0 {
 		return
 	}
-	normal := delta.Mul(1 / distance)
-	support := orientedBoxSupport(car.Rotation, config.Car.HalfExtents, normal)
-	maximumDistance := math.Max(0.1, config.Arena.CornerRadius-support)
-	penetration := distance - maximumDistance
-	if penetration <= 0 {
+	up := car.Rotation.Rotate(Vec3{Y: 1})
+	if up.Dot(normal) <= 0.1 {
 		return
 	}
-	resolveBodyAgainstNormal(&car.Body, normal, penetration, config.Car.Restitution)
-	car.AngularVelocity = car.AngularVelocity.Mul(0.985)
+	car.Grounded = true
+	car.GroundNormal = normal.NormalizeOr(Vec3{Y: 1})
 }
 
 func resolveGoalCar(car *Car, config Config, extentX, extentY, extentZ float64) {
@@ -97,10 +159,7 @@ func resolveGoalCar(car *Car, config Config, extentX, extentY, extentZ float64) 
 
 func resolveBallArena(ball *Ball, config Config) {
 	radius := config.Ball.Radius
-	halfWidth := config.Arena.Width * 0.5
 	halfLength := config.Arena.Length * 0.5
-	straightX := halfWidth - config.Arena.CornerRadius
-	straightZ := halfLength - config.Arena.CornerRadius
 
 	if floorExistsAt(ball.Position, config.Arena) {
 		penetration := radius - ball.Position.Y
@@ -122,20 +181,11 @@ func resolveBallArena(ball *Ball, config Config) {
 	resolveBodyMaximum(&ball.Body, 1, config.Arena.Ceiling, radius, config.Ball.Restitution)
 
 	absX := math.Abs(ball.Position.X)
-	absZ := math.Abs(ball.Position.Z)
 	goalHalfWidth := config.Arena.GoalWidth * 0.5
 	goalFits := absX+radius <= goalHalfWidth &&
 		ball.Position.Y+radius <= config.Arena.GoalHeight
-
-	switch {
-	case absX > straightX && absZ > straightZ:
-		resolveBallRoundedCorner(ball, config, straightX, straightZ)
-	case absZ <= straightZ:
-		resolveBodyMinimum(&ball.Body, 0, -halfWidth, radius, config.Ball.Restitution)
-		resolveBodyMaximum(&ball.Body, 0, halfWidth, radius, config.Ball.Restitution)
-	case absX <= straightX && !goalFits:
-		resolveBodyMinimum(&ball.Body, 2, -halfLength, radius, config.Ball.Restitution)
-		resolveBodyMaximum(&ball.Body, 2, halfLength, radius, config.Ball.Restitution)
+	if boundary, ok := nearestArenaBoundary(ball.Position, config.Arena, goalFits); ok {
+		resolveBallBoundary(ball, config, boundary)
 	}
 
 	if math.Abs(ball.Position.Z) > halfLength-0.02 {
@@ -151,22 +201,28 @@ func resolveBallArena(ball *Ball, config Config) {
 	}
 }
 
-func resolveBallRoundedCorner(ball *Ball, config Config, straightX, straightZ float64) {
-	center := Vec3{
-		X: nonZeroSign(ball.Position.X) * straightX,
-		Z: nonZeroSign(ball.Position.Z) * straightZ,
+func resolveBallBoundary(ball *Ball, config Config, boundary arenaBoundary) {
+	rampRadius := config.Arena.RampRadius
+	outward := boundary.Outward
+	inward := outward.Mul(-1)
+	horizontal := rampRadius - boundary.Distance
+	vertical := ball.Position.Y - rampRadius
+
+	if horizontal >= 0 && vertical <= 0 {
+		radial := outward.Mul(horizontal).Add(Vec3{Y: vertical})
+		distance := radial.Length()
+		maximumDistance := math.Max(0.1, rampRadius-config.Ball.Radius)
+		penetration := distance - maximumDistance
+		if penetration > 0 && distance > 1e-9 {
+			normal := radial.Mul(-1 / distance)
+			resolveBodyIntoPlayable(&ball.Body, normal, penetration, config.Ball.Restitution)
+			return
+		}
 	}
-	delta := ball.Position.Sub(center)
-	delta.Y = 0
-	distance := delta.Length()
-	if distance < 1e-9 {
-		return
-	}
-	normal := delta.Mul(1 / distance)
-	maximumDistance := math.Max(0.1, config.Arena.CornerRadius-config.Ball.Radius)
-	penetration := distance - maximumDistance
+
+	penetration := config.Ball.Radius - boundary.Distance
 	if penetration > 0 {
-		resolveBodyAgainstNormal(&ball.Body, normal, penetration, config.Ball.Restitution)
+		resolveBodyIntoPlayable(&ball.Body, inward, penetration, config.Ball.Restitution)
 	}
 }
 
@@ -188,14 +244,12 @@ func orientedBoxSupport(rotation Quat, half Vec3, normal Vec3) float64 {
 		math.Abs(forward.Dot(normal))*half.Z
 }
 
-// The normal points out of the playable area. Position correction moves the
-// body inward; only the outward velocity component is removed/reflected so a
-// wall impact naturally becomes a slide instead of a full reverse impulse.
-func resolveBodyAgainstNormal(body *Body, normal Vec3, penetration, restitution float64) {
-	body.Position = body.Position.Sub(normal.Mul(penetration))
-	outwardSpeed := body.Velocity.Dot(normal)
-	if outwardSpeed > 0 {
-		body.Velocity = body.Velocity.Sub(normal.Mul((1 + restitution) * outwardSpeed))
+// normal points from the solid surface into the playable volume.
+func resolveBodyIntoPlayable(body *Body, normal Vec3, penetration, restitution float64) {
+	body.Position = body.Position.Add(normal.Mul(penetration))
+	intoSurfaceSpeed := body.Velocity.Dot(normal)
+	if intoSurfaceSpeed < 0 {
+		body.Velocity = body.Velocity.Sub(normal.Mul((1 + restitution) * intoSurfaceSpeed))
 	}
 }
 

@@ -1,4 +1,4 @@
-ROCKET VIBE 1.5 - GO + RAILWAY
+ROCKET VIBE 1.6 - GO + RAILWAY
 
 1. Projekt in ein GitHub-Repository pushen.
 2. Railway: New Project -> Deploy from GitHub repo.

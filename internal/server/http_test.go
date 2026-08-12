@@ -43,7 +43,7 @@ func TestHTTPAndWebSocketIntegration(t *testing.T) {
 
 	connectionContext, cancelConnection := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancelConnection()
-	connection, _, err := websocket.Dial(connectionContext, "ws"+strings.TrimPrefix(httpServer.URL, "http")+"/lan", nil)
+	connection, _, err := websocket.Dial(connectionContext, "ws"+strings.TrimPrefix(httpServer.URL, "http")+"/lan?name=Test%20Pilot", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,8 +56,12 @@ func TestHTTPAndWebSocketIntegration(t *testing.T) {
 	var welcome struct {
 		Type     string `json:"type"`
 		PlayerID int    `json:"playerId"`
+		Name     string `json:"playerName"`
+		Team     string `json:"team"`
+		Protocol int    `json:"protocol"`
 	}
-	if json.Unmarshal(payload, &welcome) != nil || welcome.Type != "welcome" || welcome.PlayerID != 0 {
+	if json.Unmarshal(payload, &welcome) != nil || welcome.Type != "welcome" || welcome.PlayerID != 0 ||
+		welcome.Name != "Test Pilot" || welcome.Team != game.TeamOrange || welcome.Protocol != 3 {
 		t.Fatalf("unexpected welcome: %s", payload)
 	}
 
@@ -66,7 +70,8 @@ func TestHTTPAndWebSocketIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	foundState := false
-	for !foundState {
+	foundRoster := false
+	for !foundState || !foundRoster {
 		messageType, payload, err = connection.Read(connectionContext)
 		if err != nil {
 			t.Fatal(err)
@@ -76,6 +81,17 @@ func TestHTTPAndWebSocketIntegration(t *testing.T) {
 				t.Fatalf("invalid state packet: %d bytes", len(payload))
 			}
 			foundState = true
+		} else if messageType == websocket.MessageText {
+			var roster struct {
+				Type    string         `json:"type"`
+				Players []rosterPlayer `json:"players"`
+			}
+			if json.Unmarshal(payload, &roster) == nil && roster.Type == "roster" {
+				if len(roster.Players) != 1 || roster.Players[0].Name != "Test Pilot" || roster.Players[0].Team != game.TeamOrange {
+					t.Fatalf("unexpected roster: %s", payload)
+				}
+				foundRoster = true
+			}
 		}
 	}
 }

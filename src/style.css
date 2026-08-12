@@ -11,6 +11,65 @@ html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 body { user-select: none; }
 canvas { display: block; width: 100%; height: 100%; }
 
+.join-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background:
+    radial-gradient(circle at 22% 20%, rgba(35, 140, 255, 0.22), transparent 34%),
+    radial-gradient(circle at 78% 80%, rgba(255, 122, 24, 0.22), transparent 34%),
+    rgba(3, 9, 18, 0.96);
+  pointer-events: auto;
+  user-select: text;
+}
+
+.join-card {
+  width: min(430px, 100%);
+  padding: 30px;
+  border: 1px solid rgba(143, 226, 255, 0.24);
+  border-radius: 22px;
+  background: rgba(8, 20, 35, 0.94);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.48);
+}
+
+.join-card__eyebrow {
+  color: #83e6ff;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+}
+
+.join-card h1 { margin: 8px 0 4px; font-size: 34px; }
+.join-card p { margin: 0 0 24px; color: rgba(255,255,255,0.62); }
+.join-card label { display: block; margin-bottom: 7px; font-size: 12px; font-weight: 800; }
+.join-card input {
+  width: 100%;
+  padding: 13px 14px;
+  color: #fff;
+  font: 700 17px/1.2 inherit;
+  outline: none;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 11px;
+  background: rgba(255,255,255,0.07);
+}
+.join-card input:focus { border-color: #62d9ff; box-shadow: 0 0 0 3px rgba(57,195,255,0.13); }
+.join-card__error { min-height: 20px; padding-top: 6px; color: #ff9c82; font-size: 12px; }
+.join-card button {
+  width: 100%;
+  margin-top: 8px;
+  padding: 13px 16px;
+  color: #04111c;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  border: 0;
+  border-radius: 11px;
+  background: linear-gradient(90deg, #49cfff, #ff9a3c);
+}
+
 .hud {
   position: fixed;
   inset: 0;
@@ -28,6 +87,33 @@ canvas { display: block; width: 100%; height: 100%; }
   font-size: 13px;
   opacity: 0.86;
 }
+
+.hud__scoreboard {
+  position: absolute;
+  left: 50%;
+  top: 18px;
+  display: flex;
+  align-items: stretch;
+  transform: translateX(-50%);
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 14px;
+  background: rgba(4, 11, 22, 0.88);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.24);
+}
+.hud__score-team {
+  min-width: 112px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 13px;
+}
+.hud__score-team span { font-size: 10px; font-weight: 950; letter-spacing: 0.12em; }
+.hud__score-team strong { font: 950 28px/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.hud__score-team--orange { color: #ffd0aa; background: linear-gradient(90deg, rgba(255,122,24,0.3), rgba(255,122,24,0.08)); }
+.hud__score-team--blue { color: #b7d9ff; background: linear-gradient(90deg, rgba(35,140,255,0.08), rgba(35,140,255,0.3)); }
+.hud__score-separator { align-self: center; padding: 0 2px; font: 900 21px/1 ui-monospace, monospace; }
 
 .hud__perf {
   margin-left: 8px;
@@ -98,7 +184,7 @@ canvas { display: block; width: 100%; height: 100%; }
 
 @media (max-width: 700px) {
   .hud__controls { display: none; }
-  .hud__title { left: 14px; top: 14px; }
+  .hud__title { display: none; }
   .hud__speed { right: 14px; bottom: 14px; }
 }
 
@@ -116,6 +202,8 @@ canvas { display: block; width: 100%; height: 100%; }
   letter-spacing: 0.08em;
 }
 .hud__network strong { display: block; color: #8be6ff; margin-bottom: 3px; }
+.hud__network .hud__identity--orange { color: #ffad68; }
+.hud__network .hud__identity--blue { color: #77b7ff; }
 .hud__network span { display: block; color: rgba(255,255,255,0.68); }
 .hud__network [data-player-count] { margin-top: 3px; color: rgba(139,230,255,0.72); }
 
@@ -124,9 +212,18 @@ canvas { display: block; width: 100%; height: 100%; }
   display: none;
 }
 .perf-ultra .hud__network,
-.perf-ultra .hud__speed {
+.perf-ultra .hud__speed,
+.perf-ultra .hud__scoreboard {
   background: rgba(5, 12, 24, 0.90);
   border-color: rgba(255, 255, 255, 0.06);
+}
+
+@media (max-width: 700px) {
+  .hud__scoreboard { top: 10px; }
+  .hud__score-team { min-width: 76px; gap: 6px; padding: 8px; }
+  .hud__score-team span { font-size: 8px; }
+  .hud__score-team strong { font-size: 22px; }
+  .hud__network { top: 62px; right: 10px; min-width: 184px; }
 }
 .perf-ultra canvas {
   image-rendering: auto;

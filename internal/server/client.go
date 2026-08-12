@@ -22,6 +22,8 @@ type client struct {
 	id   string
 	conn *websocket.Conn
 	slot int
+	name string
+	team string
 
 	ctx      context.Context
 	cancel   context.CancelFunc
@@ -34,12 +36,13 @@ type client struct {
 	motionAcked bool
 }
 
-func newClient(id string, connection *websocket.Conn) *client {
+func newClient(id string, connection *websocket.Conn, name string) *client {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &client{
 		id:       id,
 		conn:     connection,
 		slot:     -1,
+		name:     name,
 		ctx:      ctx,
 		cancel:   cancel,
 		control:  make(chan outboundMessage, 32),

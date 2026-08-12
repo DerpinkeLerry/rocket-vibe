@@ -9,7 +9,7 @@ import (
 )
 
 func TestStatePacketMatchesBrowserLayout(t *testing.T) {
-	snapshot := game.Snapshot{Tick: 0x11223344, ConnectedMask: 0x05, GroundMask: 0x01}
+	snapshot := game.Snapshot{Tick: 0x11223344, ConnectedMask: 0x05, GroundMask: 0x01, OrangeScore: 7, BlueScore: 9}
 	snapshot.Cars[0] = game.EntityState{
 		Position: game.Vec3{X: 1.25, Y: -2.5, Z: 3.75},
 		Rotation: game.IdentityQuat(),
@@ -24,7 +24,10 @@ func TestStatePacketMatchesBrowserLayout(t *testing.T) {
 	if packet[5] != 0x05 || packet[6] != 0x01 {
 		t.Fatalf("invalid masks: %08b %08b", packet[5], packet[6])
 	}
-	if value := math.Float32frombits(binary.LittleEndian.Uint32(packet[7:11])); value != 1.25 {
+	if binary.LittleEndian.Uint16(packet[7:9]) != 7 || binary.LittleEndian.Uint16(packet[9:11]) != 9 {
+		t.Fatalf("invalid score: %v", packet[7:11])
+	}
+	if value := math.Float32frombits(binary.LittleEndian.Uint32(packet[11:15])); value != 1.25 {
 		t.Fatalf("first float is %f", value)
 	}
 }

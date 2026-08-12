@@ -8,23 +8,26 @@ import { Hud } from './Hud.js';
 import { getPerformanceProfile, togglePerformanceProfile } from './PerformanceProfile.js';
 import { VirtualInput } from '../network/VirtualInput.js';
 import { LocalCarPredictor } from '../network/LocalCarPredictor.js';
+import { ARENA_TUNING } from '../shared/arena-tuning.js';
 
 const CLIENT_INPUT_HEARTBEAT_HZ = 15;
 
 const PLAYER_CONFIGS = [
-  { spawn: { x: -13, y: 1.25, z: 44 }, spawnYaw: 0, color: 0xf46b20 },
-  { spawn: { x: -13, y: 1.25, z: -44 }, spawnYaw: Math.PI, color: 0x238cff },
-  { spawn: { x: 13, y: 1.25, z: 44 }, spawnYaw: 0, color: 0xffa51f },
-  { spawn: { x: 13, y: 1.25, z: -44 }, spawnYaw: Math.PI, color: 0x35d7ff }
+  { spawn: { x: -13, y: 1.25, z: 44 }, spawnYaw: 0, color: 0xf46b20, team: 'orange' },
+  { spawn: { x: -13, y: 1.25, z: -44 }, spawnYaw: Math.PI, color: 0x238cff, team: 'blue' },
+  { spawn: { x: 13, y: 1.25, z: 44 }, spawnYaw: 0, color: 0xffa51f, team: 'orange' },
+  { spawn: { x: 13, y: 1.25, z: -44 }, spawnYaw: Math.PI, color: 0x35d7ff, team: 'blue' }
 ];
 
 export class Game {
-  constructor(root, RAPIER, network = null) {
+  constructor(root, RAPIER, network = null, options = {}) {
     this.root = root;
     this.RAPIER = RAPIER;
     this.network = network;
     this.networked = Boolean(network);
     this.playerId = network?.playerId ?? 0;
+    this.playerName = network?.playerName || options.playerName || 'Spieler';
+    this.playerTeam = network?.team === 'blue' ? 'blue' : 'orange';
     this.profile = getPerformanceProfile(this.networked);
 
     this.fixedDt = 1 / 60;
@@ -37,7 +40,10 @@ export class Game {
     this.latestNetworkState = null;
     this.latestNetworkStateReceivedAt = 0;
     this.lastReconciledTick = -1;
+    this.rosterSignature = '';
     this.connectedPlayers = new Set(network?.connectedPlayers ?? (this.networked ? [this.playerId] : [0]));
+    this.orangeScore = 0;
+    this.blueScore = 0;
 
     this.perfElapsed = 0;
     this.perfFrames = 0;
@@ -96,7 +102,9 @@ export class Game {
       {
         ...config,
         lowDetail: this.profile.lowDetail,
-        clientOnly: this.networked
+        clientOnly: this.networked,
+        playerName: index === this.playerId ? this.playerName : `Spieler ${index + 1}`,
+        localPlayer: index === this.playerId
       }
     ));
     [this.car0, this.car1, this.car2, this.car3] = this.cars;
@@ -106,9 +114,10 @@ export class Game {
     });
 
     if (this.networked) {
-      this.setRoster([...this.connectedPlayers], network?.maxPlayers ?? 4);
+      this.setRoster(network?.players ?? [...this.connectedPlayers], network?.maxPlayers ?? 4);
     } else {
       for (let i = 1; i < this.cars.length; i++) this.setCarVisible(i, false);
+      this.car0.setPlayerIdentity(this.playerName, 'orange', true);
     }
 
     this.car = this.cars[this.playerId] ?? this.car0;
@@ -124,7 +133,9 @@ export class Game {
       playerId: this.playerId,
       playerCount: this.connectedPlayers.size,
       maxPlayers: network?.maxPlayers ?? 4,
-      performanceProfile: this.profile.name
+      performanceProfile: this.profile.name,
+      playerName: this.playerName,
+      team: this.playerTeam
     });
 
     if (this.network) {
@@ -172,7 +183,24 @@ export class Game {
   }
 
   setRoster(players, maxPlayers = 4) {
-    this.connectedPlayers = new Set((players ?? []).map(Number));
+    const roster = (players ?? []).map((player) => {
+      if (typeof player === 'object' && player !== null) {
+        return {
+          playerId: Number(player.playerId),
+          name: String(player.name || `Spieler ${Number(player.playerId) + 1}`).slice(0, 16),
+          team: player.team === 'blue' ? 'blue' : 'orange'
+        };
+      }
+      const playerId = Number(player);
+      return { playerId, name: `Spieler ${playerId + 1}`, team: playerId % 2 === 0 ? 'orange' : 'blue' };
+    }).filter((player) => Number.isInteger(player.playerId) && player.playerId >= 0 && player.playerId < this.cars.length);
+    const signature = roster.map((player) => `${player.playerId}:${player.name}:${player.team}`).join('|');
+    if (signature === this.rosterSignature) return;
+    this.rosterSignature = signature;
+    this.connectedPlayers = new Set(roster.map((player) => player.playerId));
+    for (const player of roster) {
+      this.cars[player.playerId]?.setPlayerIdentity(player.name, player.team, player.playerId === this.playerId);
+    }
     if (this.networked) {
       for (let i = 0; i < this.cars.length; i++) this.setCarVisible(i, this.connectedPlayers.has(i));
     }
@@ -289,6 +317,20 @@ export class Game {
     this.car0.fixedUpdate(dt);
     this.ball.fixedUpdate(dt);
     this.world.step();
+    this.detectOfflineGoal();
+  }
+
+  detectOfflineGoal() {
+    const position = this.ball.body.translation();
+    const halfLength = ARENA_TUNING.length * 0.5;
+    if (Math.abs(position.z) <= halfLength + this.ball.radius * 0.35) return;
+    if (Math.abs(position.x) + this.ball.radius > ARENA_TUNING.goalWidth * 0.5
+      || position.y + this.ball.radius > ARENA_TUNING.goalHeight) return;
+    if (position.z > 0) this.blueScore += 1;
+    else this.orangeScore += 1;
+    this.car0.reset();
+    this.ball.reset();
+    this.hud.setScore(this.orangeScore, this.blueScore);
   }
 
   applyNetworkState(dt, now) {
@@ -296,10 +338,13 @@ export class Game {
     if (!state?.ball || !Array.isArray(state.cars) || state.cars.length < 4) return;
 
     if (Array.isArray(state.connected)) {
-      const roster = [];
-      for (let i = 0; i < state.connected.length; i++) if (state.connected[i]) roster.push(i);
-      this.setRoster(roster, this.network?.maxPlayers ?? 4);
+      const connectedIds = [];
+      for (let i = 0; i < state.connected.length; i++) if (state.connected[i]) connectedIds.push(i);
+      const roster = (this.network?.players ?? []).filter((player) => connectedIds.includes(Number(player.playerId)));
+      this.setRoster(roster.length > 0 ? roster : connectedIds, this.network?.maxPlayers ?? 4);
     }
+
+    this.hud.setScore(state.orangeScore, state.blueScore);
 
     const packetAge = Math.max(0, now - this.latestNetworkStateReceivedAt);
     const rttMs = this.network?.rttMs ?? 0;

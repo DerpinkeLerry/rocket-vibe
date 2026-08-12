@@ -22,6 +22,9 @@ export class Car {
     this.spawn = new THREE.Vector3(spawn.x, spawn.y, spawn.z);
     this.spawnYaw = options.spawnYaw ?? 0;
     this.paintColor = options.color ?? 0xf46b20;
+    this.playerName = String(options.playerName || 'Spieler').slice(0, 16);
+    this.team = options.team === 'blue' ? 'blue' : 'orange';
+    this.isLocalPlayer = Boolean(options.localPlayer);
     this.maxGroundSpeed = 39;
     this.maxBoostSpeed = 52;
     this.driveForce = 12200;
@@ -59,9 +62,14 @@ export class Car {
     this.forward = new THREE.Vector3();
     this.right = new THREE.Vector3();
     this.up = new THREE.Vector3();
+    this.surfaceRight = new THREE.Vector3();
+    this.surfaceBack = new THREE.Vector3();
+    this.surfaceMatrix = new THREE.Matrix4();
+    this.surfaceTargetQ = new THREE.Quaternion();
 
     this.createPhysics();
     this.createVisual();
+    this.createNameTag();
   }
 
   createPhysics() {
@@ -83,8 +91,7 @@ export class Car {
     this.body = this.world.createRigidBody(bodyDesc);
     this.setSpawnRotation();
 
-    const colliderDesc = R.ColliderDesc.cuboid(0.83, 0.39, 1.48)
-      .setTranslation(0, -0.06, 0)
+    const colliderDesc = R.ColliderDesc.cuboid(0.83, 0.45, 1.48)
       .setDensity(145)
       .setFriction(0.04)
       .setRestitution(0)
@@ -272,6 +279,56 @@ export class Car {
     });
   }
 
+  createNameTag() {
+    this.nameCanvas = document.createElement('canvas');
+    this.nameCanvas.width = 512;
+    this.nameCanvas.height = 128;
+    this.nameTexture = new THREE.CanvasTexture(this.nameCanvas);
+    this.nameTexture.colorSpace = THREE.SRGBColorSpace;
+    this.nameTexture.minFilter = THREE.LinearFilter;
+    this.nameTexture.generateMipmaps = false;
+    const material = new THREE.SpriteMaterial({
+      map: this.nameTexture,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false
+    });
+    this.nameTag = new THREE.Sprite(material);
+    this.nameTag.position.set(0, 2.05, 0);
+    this.nameTag.scale.set(4.8, 1.2, 1);
+    this.nameTag.renderOrder = 30;
+    this.group.add(this.nameTag);
+    this.redrawNameTag();
+  }
+
+  setPlayerIdentity(name, team, localPlayer = false) {
+    this.playerName = String(name || 'Spieler').trim().slice(0, 16) || 'Spieler';
+    this.team = team === 'blue' ? 'blue' : 'orange';
+    this.isLocalPlayer = Boolean(localPlayer);
+    this.redrawNameTag();
+  }
+
+  redrawNameTag() {
+    if (!this.nameCanvas || !this.nameTexture) return;
+    const context = this.nameCanvas.getContext('2d');
+    const teamColor = this.team === 'blue' ? '#238cff' : '#ff7a18';
+    context.clearRect(0, 0, this.nameCanvas.width, this.nameCanvas.height);
+    context.fillStyle = 'rgba(3, 10, 20, 0.82)';
+    context.strokeStyle = teamColor;
+    context.lineWidth = this.isLocalPlayer ? 8 : 5;
+    context.beginPath();
+    context.roundRect(12, 15, 488, 98, 24);
+    context.fill();
+    context.stroke();
+    context.fillStyle = '#ffffff';
+    context.font = `900 ${this.playerName.length > 12 ? 42 : 48}px Inter, Arial, sans-serif`;
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(this.playerName, 256, 64, 445);
+    this.nameTexture.needsUpdate = true;
+  }
+
   setSpawnRotation() {
     const half = this.spawnYaw * 0.5;
     this.body.setRotation({ x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) }, true);
@@ -280,6 +337,10 @@ export class Car {
   getTransformBasis() {
     const rot = this.body.rotation();
     this.tempQ.set(rot.x, rot.y, rot.z, rot.w);
+    this.up.copy(VEC3_UP).applyQuaternion(this.tempQ).normalize();
+    this.rayDir.x = -this.up.x;
+    this.rayDir.y = -this.up.y;
+    this.rayDir.z = -this.up.z;
     this.forward.copy(VEC3_FORWARD).applyQuaternion(this.tempQ).normalize();
     this.right.copy(VEC3_RIGHT).applyQuaternion(this.tempQ).normalize();
     this.up.copy(VEC3_UP).applyQuaternion(this.tempQ).normalize();
@@ -341,6 +402,16 @@ export class Car {
     this.groundContactLockout = Math.max(0, this.groundContactLockout - dt);
     this.sampleGround(dt);
 
+    if (this.grounded) {
+      this.forward.addScaledVector(this.groundNormal, -this.forward.dot(this.groundNormal));
+      if (this.forward.lengthSq() < 0.000001) {
+        if (Math.abs(this.groundNormal.y) < 0.9) this.forward.set(0, -1, 0);
+        else this.forward.set(0, 0, -1);
+      }
+      this.forward.normalize();
+      this.right.crossVectors(this.forward, this.groundNormal).normalize();
+    }
+
     // Context-sensitive Rocket-League-style controls:
     // GROUND: W/S = throttle/reverse, A/D = steering.
     // AIR:    W/S = pitch, A/D = yaw, Q/E = roll.
@@ -354,7 +425,7 @@ export class Car {
     this.velocityVec.set(vRaw.x, vRaw.y, vRaw.z);
     const speedForward = this.velocityVec.dot(this.forward);
     const speedLateral = this.velocityVec.dot(this.right);
-    const flatSpeed = Math.hypot(vRaw.x, vRaw.z);
+    const flatSpeed = Math.hypot(speedForward, speedLateral);
 
     if (this.grounded) {
       this.applyGroundDrive(dt, forwardInput, sideInput, speedForward, speedLateral, flatSpeed, boosting);
@@ -377,9 +448,9 @@ export class Car {
     if (this.input.consumePressed('Space')) {
       if (this.grounded && this.jumpCount === 0) {
         this.body.applyImpulse({
-          x: this.groundNormal.x * this.jumpImpulse * 0.08,
-          y: this.jumpImpulse,
-          z: this.groundNormal.z * this.jumpImpulse * 0.08
+          x: this.groundNormal.x * this.jumpImpulse,
+          y: this.groundNormal.y * this.jumpImpulse,
+          z: this.groundNormal.z * this.jumpImpulse
         }, true);
         this.jumpCount = 1;
         this.grounded = false;
@@ -397,6 +468,7 @@ export class Car {
         y: -this.groundNormal.y * downImpulse,
         z: -this.groundNormal.z * downImpulse
       }, true);
+      this.alignToGround(dt);
     }
 
     this.updateVisualAnimation(dt, this.grounded ? sideInput : 0, speedForward, boosting);
@@ -410,7 +482,7 @@ export class Car {
       const driveImpulse = force * throttle * dt;
       this.body.applyImpulse({
         x: this.forward.x * driveImpulse,
-        y: 0,
+        y: this.forward.y * driveImpulse,
         z: this.forward.z * driveImpulse
       }, true);
     }
@@ -432,12 +504,32 @@ export class Car {
     const reverseSign = Math.sign(speedForward || throttle || 1);
     const targetYaw = steer * this.steerRate * steerStrength * reverseSign;
     const ang = this.body.angvel();
-    const yaw = damp(ang.y, targetYaw, this.steerResponse, dt);
+    const spin = ang.x * this.groundNormal.x + ang.y * this.groundNormal.y + ang.z * this.groundNormal.z;
+    const tangentDamping = Math.exp(-7.5 * dt);
+    const yaw = damp(spin, targetYaw, this.steerResponse, dt);
     this.body.setAngvel({
-      x: damp(ang.x, 0, 7.5, dt),
-      y: yaw,
-      z: damp(ang.z, 0, 7.5, dt)
+      x: (ang.x - this.groundNormal.x * spin) * tangentDamping + this.groundNormal.x * yaw,
+      y: (ang.y - this.groundNormal.y * spin) * tangentDamping + this.groundNormal.y * yaw,
+      z: (ang.z - this.groundNormal.z * spin) * tangentDamping + this.groundNormal.z * yaw
     }, true);
+  }
+
+  alignToGround(dt) {
+    const rotation = this.body.rotation();
+    this.tempQ.set(rotation.x, rotation.y, rotation.z, rotation.w).normalize();
+    this.forward.copy(VEC3_FORWARD).applyQuaternion(this.tempQ);
+    this.forward.addScaledVector(this.groundNormal, -this.forward.dot(this.groundNormal));
+    if (this.forward.lengthSq() < 0.000001) {
+      if (Math.abs(this.groundNormal.y) < 0.9) this.forward.set(0, -1, 0);
+      else this.forward.set(0, 0, -1);
+    }
+    this.forward.normalize();
+    this.surfaceRight.crossVectors(this.forward, this.groundNormal).normalize();
+    this.surfaceBack.copy(this.forward).multiplyScalar(-1);
+    this.surfaceMatrix.makeBasis(this.surfaceRight, this.groundNormal, this.surfaceBack);
+    this.surfaceTargetQ.setFromRotationMatrix(this.surfaceMatrix).normalize();
+    this.tempQ.slerp(this.surfaceTargetQ, 1 - Math.exp(-12 * dt));
+    this.body.setRotation({ x: this.tempQ.x, y: this.tempQ.y, z: this.tempQ.z, w: this.tempQ.w }, true);
   }
 
   applyAirControl(dt, forwardInput, sideInput, rollInput) {

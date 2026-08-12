@@ -16,6 +16,9 @@ const (
 	EdgeJump      uint8 = 1 << 0
 	EdgeReset     uint8 = 1 << 1
 	EdgeBallReset uint8 = 1 << 2
+
+	TeamOrange = "orange"
+	TeamBlue   = "blue"
 )
 
 type Input struct {
@@ -41,6 +44,7 @@ type Car struct {
 	JumpCount     int     `json:"-"`
 	AirTime       float64 `json:"-"`
 	GroundLockout float64 `json:"-"`
+	GroundNormal  Vec3    `json:"-"`
 }
 
 type Ball struct {
@@ -58,15 +62,26 @@ type Snapshot struct {
 	Tick          uint64                  `json:"tick"`
 	ConnectedMask uint8                   `json:"connectedMask"`
 	GroundMask    uint8                   `json:"groundMask"`
+	OrangeScore   uint16                  `json:"orangeScore"`
+	BlueScore     uint16                  `json:"blueScore"`
 	Cars          [MaxPlayers]EntityState `json:"cars"`
 	Ball          EntityState             `json:"ball"`
 }
 
 type World struct {
-	Config Config
-	Cars   [MaxPlayers]Car
-	Ball   Ball
-	Tick   uint64
+	Config      Config
+	Cars        [MaxPlayers]Car
+	Ball        Ball
+	Tick        uint64
+	OrangeScore uint16
+	BlueScore   uint16
+}
+
+func TeamForSlot(slot int) string {
+	if slot%2 == 0 {
+		return TeamOrange
+	}
+	return TeamBlue
 }
 
 var playerSpawns = [MaxPlayers]struct {
@@ -97,6 +112,15 @@ func (world *World) SetConnected(slot int, connected bool) bool {
 	car.Connected = connected
 	world.resetCar(car)
 	return true
+}
+
+func (world *World) ResetMatch() {
+	world.OrangeScore = 0
+	world.BlueScore = 0
+	for index := range world.Cars {
+		world.resetCar(&world.Cars[index])
+	}
+	world.resetBall()
 }
 
 func (world *World) SetInput(slot int, input Input) bool {
@@ -168,6 +192,7 @@ func (world *World) Step(dt float64) {
 			resolveCarBall(carA, &world.Ball, world.Config)
 		}
 	}
+	world.detectGoal()
 
 	for index := range world.Cars {
 		car := &world.Cars[index]
@@ -202,6 +227,9 @@ func (world *World) stepCar(car *Car, dt float64) {
 	up := rotation.Rotate(Vec3{Y: 1}).NormalizeOr(Vec3{Y: 1})
 	nearFloor := car.Position.Y < 1.55 && up.Y > 0.35 && math.Abs(car.Velocity.Y) < 6.5
 	driveGrounded := car.GroundLockout <= 0 && (car.Grounded || nearFloor)
+	if nearFloor && !car.Grounded {
+		car.GroundNormal = Vec3{Y: 1}
+	}
 
 	forwardInput := boolValue(inputMask&InputW != 0) - boolValue(inputMask&InputS != 0)
 	steerInput := boolValue(inputMask&InputA != 0) - boolValue(inputMask&InputD != 0)
@@ -218,7 +246,9 @@ func (world *World) stepCar(car *Car, dt float64) {
 
 	if car.Input.Edges&EdgeJump != 0 {
 		if driveGrounded && car.JumpCount == 0 {
-			car.Velocity.Y = math.Max(car.Velocity.Y, config.JumpSpeed)
+			groundNormal := car.GroundNormal.NormalizeOr(Vec3{Y: 1})
+			normalSpeed := car.Velocity.Dot(groundNormal)
+			car.Velocity = car.Velocity.Add(groundNormal.Mul(math.Max(0, config.JumpSpeed-normalSpeed)))
 			car.JumpCount = 1
 			car.Grounded = false
 			car.GroundLockout = 0.18
@@ -229,7 +259,8 @@ func (world *World) stepCar(car *Car, dt float64) {
 	}
 
 	if driveGrounded {
-		car.Velocity.Y -= config.DownAcceleration * dt
+		groundNormal := car.GroundNormal.NormalizeOr(Vec3{Y: 1})
+		car.Velocity = car.Velocity.Sub(groundNormal.Mul(config.DownAcceleration * dt))
 	}
 	car.Velocity.Y -= world.Config.Gravity * dt
 	car.Velocity = car.Velocity.Mul(math.Exp(-config.LinearDamping * dt))
@@ -241,14 +272,13 @@ func (world *World) stepCar(car *Car, dt float64) {
 
 func (world *World) applyGroundDrive(car *Car, forward, right Vec3, throttle, steer float64, boosting bool, dt float64) {
 	config := world.Config.Car
-	forward.Y = 0
-	right.Y = 0
-	forward = forward.NormalizeOr(Vec3{Z: -1})
-	right = right.NormalizeOr(Vec3{X: 1})
+	groundNormal := car.GroundNormal.NormalizeOr(Vec3{Y: 1})
+	forward = forward.Sub(groundNormal.Mul(forward.Dot(groundNormal))).NormalizeOr(Vec3{Z: -1})
+	right = forward.Cross(groundNormal).NormalizeOr(right)
 
 	forwardSpeed := car.Velocity.Dot(forward)
 	lateralSpeed := car.Velocity.Dot(right)
-	flatSpeed := math.Hypot(car.Velocity.X, car.Velocity.Z)
+	tangentSpeed := math.Hypot(forwardSpeed, lateralSpeed)
 	maximumSpeed := config.MaxGroundSpeed
 	if boosting {
 		maximumSpeed = config.MaxBoostSpeed
@@ -275,18 +305,21 @@ func (world *World) applyGroundDrive(car *Car, forward, right Vec3, throttle, st
 		nextForward = moveTowards(nextForward, config.MaxBoostSpeed, config.BoostAcceleration*dt)
 	}
 	nextLateral := lateralSpeed * math.Exp(-config.Grip*dt)
-	car.Velocity.X = forward.X*nextForward + right.X*nextLateral
-	car.Velocity.Z = forward.Z*nextForward + right.Z*nextLateral
+	normalSpeed := math.Min(0, car.Velocity.Dot(groundNormal))
+	car.Velocity = forward.Mul(nextForward).
+		Add(right.Mul(nextLateral)).
+		Add(groundNormal.Mul(normalSpeed))
 
-	steerStrength := clamp(math.Max(math.Abs(nextForward), 1.5)/7, 0.18, 1) * clamp(1-flatSpeed/62, 0.38, 1)
+	steerStrength := clamp(math.Max(math.Abs(nextForward), 1.5)/7, 0.18, 1) * clamp(1-tangentSpeed/62, 0.38, 1)
 	reverseSign := 1.0
 	if nextForward < -0.01 || (math.Abs(nextForward) <= 0.01 && throttle < 0) {
 		reverseSign = -1
 	}
 	targetYaw := steer * config.SteerRate * steerStrength * reverseSign
-	car.AngularVelocity.X = damp(car.AngularVelocity.X, 0, config.GroundAngularDamping, dt)
-	car.AngularVelocity.Y = damp(car.AngularVelocity.Y, targetYaw, config.SteerResponse, dt)
-	car.AngularVelocity.Z = damp(car.AngularVelocity.Z, 0, config.GroundAngularDamping, dt)
+	spin := car.AngularVelocity.Dot(groundNormal)
+	tangentAngular := car.AngularVelocity.Sub(groundNormal.Mul(spin)).Mul(math.Exp(-config.GroundAngularDamping * dt))
+	spin = damp(spin, targetYaw, config.SteerResponse, dt)
+	car.AngularVelocity = tangentAngular.Add(groundNormal.Mul(spin))
 }
 
 func (world *World) applyAirControl(car *Car, forward, right, up Vec3, pitch, yaw, roll float64, boosting bool, dt float64) {
@@ -318,12 +351,14 @@ func (world *World) finishCarStep(car *Car, dt float64) {
 	if !car.Grounded || car.GroundLockout > 0 {
 		return
 	}
+	groundNormal := car.GroundNormal.NormalizeOr(Vec3{Y: 1})
 	forward := car.Rotation.Rotate(Vec3{Z: -1})
-	yaw := math.Atan2(-forward.X, -forward.Z)
-	target := QuatFromYaw(yaw)
-	car.Rotation = car.Rotation.NLerp(target, 1-math.Exp(-8*dt))
-	car.AngularVelocity.X *= math.Exp(-8 * dt)
-	car.AngularVelocity.Z *= math.Exp(-8 * dt)
+	forward = forward.Sub(groundNormal.Mul(forward.Dot(groundNormal))).NormalizeOr(Vec3{Z: -1})
+	target := QuatFromForwardUp(forward, groundNormal)
+	car.Rotation = car.Rotation.NLerp(target, 1-math.Exp(-12*dt))
+	spin := car.AngularVelocity.Dot(groundNormal)
+	perpendicular := car.AngularVelocity.Sub(groundNormal.Mul(spin)).Mul(math.Exp(-8 * dt))
+	car.AngularVelocity = perpendicular.Add(groundNormal.Mul(spin))
 	car.JumpCount = 0
 	car.AirTime = 0
 }
@@ -346,6 +381,7 @@ func (world *World) resetCar(car *Car) {
 	car.JumpCount = 0
 	car.AirTime = 0
 	car.GroundLockout = 0
+	car.GroundNormal = Vec3{Y: 1}
 }
 
 func (world *World) resetBall() {
@@ -356,7 +392,7 @@ func (world *World) resetBall() {
 }
 
 func (world *World) Snapshot() Snapshot {
-	snapshot := Snapshot{Tick: world.Tick}
+	snapshot := Snapshot{Tick: world.Tick, OrangeScore: world.OrangeScore, BlueScore: world.BlueScore}
 	for index := range world.Cars {
 		car := &world.Cars[index]
 		if car.Connected {
@@ -369,6 +405,32 @@ func (world *World) Snapshot() Snapshot {
 	}
 	snapshot.Ball = stateFromBody(world.Ball.Body)
 	return snapshot
+}
+
+func (world *World) detectGoal() bool {
+	halfLength := world.Config.Arena.Length * 0.5
+	ball := &world.Ball
+	if math.Abs(ball.Position.Z) <= halfLength+world.Config.Ball.Radius*0.35 {
+		return false
+	}
+	if math.Abs(ball.Position.X)+world.Config.Ball.Radius > world.Config.Arena.GoalWidth*0.5 ||
+		ball.Position.Y+world.Config.Ball.Radius > world.Config.Arena.GoalHeight {
+		return false
+	}
+
+	// Positive Z is the orange goal; negative Z is the blue goal.
+	if ball.Position.Z > 0 {
+		world.BlueScore++
+	} else {
+		world.OrangeScore++
+	}
+	for index := range world.Cars {
+		if world.Cars[index].Connected {
+			world.resetCar(&world.Cars[index])
+		}
+	}
+	world.resetBall()
+	return true
 }
 
 func stateFromBody(body Body) EntityState {

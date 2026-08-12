@@ -13,7 +13,8 @@ const (
 
 	entityFloatCount = 13
 	entityCount      = game.MaxPlayers + 1
-	StateBytes       = 7 + entityFloatCount*entityCount*4
+	stateHeaderBytes = 11
+	StateBytes       = stateHeaderBytes + entityFloatCount*entityCount*4
 )
 
 type InputPacket struct {
@@ -39,8 +40,10 @@ func EncodeState(snapshot game.Snapshot) []byte {
 	binary.LittleEndian.PutUint32(buffer[1:5], uint32(snapshot.Tick))
 	buffer[5] = snapshot.ConnectedMask
 	buffer[6] = snapshot.GroundMask
+	binary.LittleEndian.PutUint16(buffer[7:9], snapshot.OrangeScore)
+	binary.LittleEndian.PutUint16(buffer[9:11], snapshot.BlueScore)
 
-	offset := 7
+	offset := stateHeaderBytes
 	for index := range snapshot.Cars {
 		offset = writeEntity(buffer, offset, snapshot.Cars[index])
 	}

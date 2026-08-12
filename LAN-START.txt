@@ -1,4 +1,4 @@
-ROCKET VIBE 1.5 - 4 SPIELER LAN / GO SERVER
+ROCKET VIBE 1.6 - 4 SPIELER LAN / GO SERVER
 
 Voraussetzungen:
   Node.js 22.13+

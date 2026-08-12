@@ -2,7 +2,8 @@ const MSG_INPUT = 1;
 const MSG_STATE = 2;
 const ENTITY_FLOATS = 13;
 const ENTITY_COUNT = 5; // 4 cars + ball.
-const STATE_BYTES = 7 + ENTITY_FLOATS * ENTITY_COUNT * 4;
+const STATE_HEADER_BYTES = 11;
+const STATE_BYTES = STATE_HEADER_BYTES + ENTITY_FLOATS * ENTITY_COUNT * 4;
 
 function makeEntity() {
   return {
@@ -14,12 +15,32 @@ function makeEntity() {
   };
 }
 
+function normalizePlayers(players, connectedPlayers = []) {
+  if (Array.isArray(players) && players.length > 0) {
+    return players
+      .map((player) => ({
+        playerId: Number(player?.playerId),
+        name: String(player?.name || '').trim().slice(0, 16),
+        team: player?.team === 'blue' ? 'blue' : 'orange'
+      }))
+      .filter((player) => Number.isInteger(player.playerId) && player.playerId >= 0 && player.playerId < 4);
+  }
+  return connectedPlayers.map((playerId) => ({
+    playerId: Number(playerId),
+    name: `Spieler ${Number(playerId) + 1}`,
+    team: Number(playerId) % 2 === 0 ? 'orange' : 'blue'
+  }));
+}
+
 export class LanClient {
-  constructor() {
+  constructor(playerName = '') {
     this.socket = null;
     this.playerId = 0;
+    this.playerName = String(playerName || '').trim().slice(0, 16);
+    this.team = 'orange';
     this.maxPlayers = 4;
     this.connectedPlayers = [];
+    this.players = [];
     this.connected = false;
     this.inputSeq = 0;
     this.lastInputAck = 0;
@@ -29,6 +50,8 @@ export class LanClient {
     this.pingTimer = null;
     this.state = {
       tick: 0,
+      orangeScore: 0,
+      blueScore: 0,
       connected: [0, 0, 0, 0],
       cars: [makeEntity(), makeEntity(), makeEntity(), makeEntity()],
       ball: makeEntity()
@@ -41,11 +64,12 @@ export class LanClient {
 
   async connect() {
     const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
-    const url = `${scheme}://${location.host}/lan`;
+    const url = new URL(`${scheme}://${location.host}/lan`);
+    url.searchParams.set('name', this.playerName);
 
     return new Promise((resolve, reject) => {
       let settled = false;
-      const socket = new WebSocket(url);
+      const socket = new WebSocket(url.toString());
       socket.binaryType = 'arraybuffer';
       this.socket = socket;
 
@@ -76,8 +100,11 @@ export class LanClient {
 
         if (message.type === 'welcome') {
           this.playerId = Number(message.playerId) || 0;
+          this.playerName = String(message.playerName || this.playerName || `Spieler ${this.playerId + 1}`);
+          this.team = message.team === 'blue' ? 'blue' : 'orange';
           this.maxPlayers = Number(message.maxPlayers) || 4;
           this.connectedPlayers = Array.isArray(message.connectedPlayers) ? message.connectedPlayers : [this.playerId];
+          this.players = normalizePlayers(message.players, this.connectedPlayers);
           this.connected = true;
           clearTimeout(timeout);
           this.emitStatus(this.statusText('ONLINE'));
@@ -123,7 +150,8 @@ export class LanClient {
         if (message.type === 'roster') {
           this.maxPlayers = Number(message.maxPlayers) || this.maxPlayers;
           this.connectedPlayers = Array.isArray(message.connectedPlayers) ? message.connectedPlayers : this.connectedPlayers;
-          this.onRoster?.(this.connectedPlayers, this.maxPlayers);
+          this.players = normalizePlayers(message.players, this.connectedPlayers);
+          this.onRoster?.(this.players, this.maxPlayers);
           this.emitStatus(this.statusText(this.motionConfirmed ? 'PHYSIK OK' : (this.activeInputConfirmed ? 'INPUT OK' : (this.lastInputAck > 0 ? 'NETZWERK OK' : 'ONLINE'))));
           return;
         }
@@ -156,12 +184,14 @@ export class LanClient {
     this.state.tick = view.getUint32(1, true);
     const connectedMask = view.getUint8(5);
     const groundMask = view.getUint8(6);
+    this.state.orangeScore = view.getUint16(7, true);
+    this.state.blueScore = view.getUint16(9, true);
     for (let i = 0; i < 4; i++) {
       this.state.connected[i] = (connectedMask >> i) & 1;
       this.state.cars[i].g = (groundMask >> i) & 1;
     }
 
-    let offset = 7;
+    let offset = STATE_HEADER_BYTES;
     for (let entityIndex = 0; entityIndex < 5; entityIndex++) {
       const entity = entityIndex < 4 ? this.state.cars[entityIndex] : this.state.ball;
       for (let i = 0; i < 3; i++, offset += 4) entity.p[i] = view.getFloat32(offset, true);
@@ -190,7 +220,7 @@ export class LanClient {
   }
 
   statusText(state) {
-    return `SPIELER ${this.playerId + 1} · ${state} · ${this.connectedPlayers.length}/${this.maxPlayers}`;
+    return `${this.playerName || `SPIELER ${this.playerId + 1}`} · ${this.team.toUpperCase()} · ${state} · ${this.connectedPlayers.length}/${this.maxPlayers}`;
   }
 
   emitStatus(text) {

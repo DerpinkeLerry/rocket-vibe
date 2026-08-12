@@ -64,6 +64,50 @@ func QuatFromYaw(yaw float64) Quat {
 	return Quat{Y: math.Sin(half), W: math.Cos(half)}
 }
 
+// QuatFromForwardUp builds an orientation whose local -Z axis follows forward
+// and whose local +Y axis follows up. The vectors are orthonormalized first so
+// it stays stable while a car transitions from floor to wall.
+func QuatFromForwardUp(forward, up Vec3) Quat {
+	up = up.NormalizeOr(Vec3{Y: 1})
+	forward = forward.Sub(up.Mul(forward.Dot(up))).NormalizeOr(Vec3{Z: -1})
+	right := forward.Cross(up).NormalizeOr(Vec3{X: 1})
+	forward = up.Cross(right).NormalizeOr(forward)
+	back := forward.Mul(-1)
+
+	m00, m01, m02 := right.X, up.X, back.X
+	m10, m11, m12 := right.Y, up.Y, back.Y
+	m20, m21, m22 := right.Z, up.Z, back.Z
+	trace := m00 + m11 + m22
+	var result Quat
+	switch {
+	case trace > 0:
+		s := math.Sqrt(trace+1) * 2
+		result.W = 0.25 * s
+		result.X = (m21 - m12) / s
+		result.Y = (m02 - m20) / s
+		result.Z = (m10 - m01) / s
+	case m00 > m11 && m00 > m22:
+		s := math.Sqrt(1+m00-m11-m22) * 2
+		result.W = (m21 - m12) / s
+		result.X = 0.25 * s
+		result.Y = (m01 + m10) / s
+		result.Z = (m02 + m20) / s
+	case m11 > m22:
+		s := math.Sqrt(1+m11-m00-m22) * 2
+		result.W = (m02 - m20) / s
+		result.X = (m01 + m10) / s
+		result.Y = 0.25 * s
+		result.Z = (m12 + m21) / s
+	default:
+		s := math.Sqrt(1+m22-m00-m11) * 2
+		result.W = (m10 - m01) / s
+		result.X = (m02 + m20) / s
+		result.Y = (m12 + m21) / s
+		result.Z = 0.25 * s
+	}
+	return result.Normalize()
+}
+
 func quatFromAxisAngle(axis Vec3, angle float64) Quat {
 	axis = axis.NormalizeOr(Vec3{Y: 1})
 	half := angle * 0.5

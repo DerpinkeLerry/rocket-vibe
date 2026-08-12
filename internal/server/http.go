@@ -112,7 +112,7 @@ func (server *HTTPServer) webSocket(writer http.ResponseWriter, request *http.Re
 		_ = connection.Close(websocket.StatusInternalError, "could not create player id")
 		return
 	}
-	connected := newClient(clientID, connection)
+	connected := newClient(clientID, connection, sanitizePlayerName(request.URL.Query().Get("name")))
 	joinContext, cancelJoin := context.WithTimeout(request.Context(), 3*time.Second)
 	_, err = server.match.Join(joinContext, connected)
 	cancelJoin()

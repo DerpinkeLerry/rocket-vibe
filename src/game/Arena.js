@@ -6,6 +6,8 @@ const FIELD_L = ARENA_TUNING.length;
 const WALL_H = ARENA_TUNING.wallHeight;
 const WALL_T = ARENA_TUNING.wallThickness;
 const CORNER_R = ARENA_TUNING.cornerRadius;
+const RAMP_R = ARENA_TUNING.rampRadius;
+const RAMP_SEGMENTS = ARENA_TUNING.rampSegments;
 const GOAL_W = ARENA_TUNING.goalWidth;
 const GOAL_H = ARENA_TUNING.goalHeight;
 const GOAL_D = ARENA_TUNING.goalDepth;
@@ -111,18 +113,8 @@ export class Arena {
 
     this.createGlassEnclosure(glassMaterial, frameMaterial);
 
-    const goalWallMaterial = this.lowDetail
-      ? new THREE.MeshBasicMaterial({ color: 0x12374b, transparent: true, opacity: 0.5 })
-      : new THREE.MeshStandardMaterial({
-          color: 0x15384b,
-          transparent: true,
-          opacity: 0.62,
-          roughness: 0.4,
-          metalness: 0.16,
-          depthWrite: false
-        });
-    this.createGoal(1, goalWallMaterial);
-    this.createGoal(-1, goalWallMaterial);
+    this.createGoal(1);
+    this.createGoal(-1);
   }
 
   buildBoundarySegments() {
@@ -132,8 +124,8 @@ export class Arena {
     const straightZ = halfLength - CORNER_R;
     const goalHalfWidth = GOAL_W * 0.5;
     const panels = [
-      { x: halfWidth + WALL_T * 0.5, z: 0, length: straightZ * 2, yaw: Math.PI / 2 },
-      { x: -halfWidth - WALL_T * 0.5, z: 0, length: straightZ * 2, yaw: Math.PI / 2 }
+      { x: halfWidth + WALL_T * 0.5, z: 0, length: straightZ * 2, yaw: Math.PI / 2, nx: 1, nz: 0, minY: RAMP_R },
+      { x: -halfWidth - WALL_T * 0.5, z: 0, length: straightZ * 2, yaw: Math.PI / 2, nx: -1, nz: 0, minY: RAMP_R }
     ];
 
     const endSegmentLength = straightX - goalHalfWidth;
@@ -141,15 +133,18 @@ export class Arena {
     for (const signZ of [-1, 1]) {
       const z = signZ * (halfLength + WALL_T * 0.5);
       panels.push(
-        { x: -endSegmentCenter, z, length: endSegmentLength, yaw: 0 },
-        { x: endSegmentCenter, z, length: endSegmentLength, yaw: 0 },
+        { x: -endSegmentCenter, z, length: endSegmentLength, yaw: 0, nx: 0, nz: signZ, minY: RAMP_R },
+        { x: endSegmentCenter, z, length: endSegmentLength, yaw: 0, nx: 0, nz: signZ, minY: RAMP_R },
         {
           x: 0,
-          y: GOAL_H + (WALL_H - GOAL_H) * 0.5,
           z,
           length: GOAL_W,
+          minY: GOAL_H,
           height: WALL_H - GOAL_H,
-          yaw: 0
+          yaw: 0,
+          nx: 0,
+          nz: signZ,
+          ramp: false
         }
       );
     }
@@ -172,7 +167,10 @@ export class Arena {
           x: centerX + Math.cos(theta) * panelRadius,
           z: centerZ + Math.sin(theta) * panelRadius,
           length: cornerLength,
-          yaw: Math.PI / 2 - theta
+          yaw: Math.PI / 2 - theta,
+          nx: Math.cos(theta),
+          nz: Math.sin(theta),
+          minY: RAMP_R
         });
       }
     }
@@ -181,13 +179,15 @@ export class Arena {
 
   createGlassEnclosure(glassMaterial, frameMaterial) {
     const panels = this.buildBoundarySegments();
+    this.createWallRamps(panels);
     const panelGeometry = new THREE.BoxGeometry(1, 1, 1);
     const glass = new THREE.InstancedMesh(panelGeometry, glassMaterial, panels.length);
     const dummy = new THREE.Object3D();
     for (let index = 0; index < panels.length; index++) {
       const panel = panels[index];
-      const height = panel.height ?? WALL_H;
-      dummy.position.set(panel.x, panel.y ?? height * 0.5, panel.z);
+      const minY = panel.minY ?? 0;
+      const height = panel.height ?? WALL_H - minY;
+      dummy.position.set(panel.x, minY + height * 0.5, panel.z);
       dummy.rotation.set(0, panel.yaw, 0);
       dummy.scale.set(panel.length, height, WALL_T);
       dummy.updateMatrix();
@@ -202,9 +202,10 @@ export class Arena {
     const rails = new THREE.InstancedMesh(panelGeometry, frameMaterial, panels.length * 2);
     let railIndex = 0;
     for (const panel of panels) {
-      const height = panel.height ?? WALL_H;
-      const centerY = panel.y ?? height * 0.5;
-      for (const y of [centerY - height * 0.5 + 0.13, centerY + height * 0.5 - 0.13]) {
+      const minY = panel.minY ?? 0;
+      const height = panel.height ?? WALL_H - minY;
+      const centerY = minY + height * 0.5;
+      for (const y of [minY + 0.13, centerY + height * 0.5 - 0.13]) {
         dummy.position.set(panel.x, y, panel.z);
         dummy.rotation.set(0, panel.yaw, 0);
         dummy.scale.set(panel.length, 0.22, 0.24);
@@ -249,6 +250,51 @@ export class Arena {
     this.group.add(roof);
   }
 
+  createWallRamps(panels) {
+    const rampPanels = panels.filter((panel) => panel.ramp !== false);
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const material = this.lowDetail
+      ? new THREE.MeshBasicMaterial({ color: 0x174b50 })
+      : new THREE.MeshStandardMaterial({ color: 0x1c5357, roughness: 0.78, metalness: 0.08 });
+    const ramps = new THREE.InstancedMesh(geometry, material, rampPanels.length * RAMP_SEGMENTS);
+    const matrix = new THREE.Matrix4();
+    const basis = new THREE.Matrix4();
+    const quaternion = new THREE.Quaternion();
+    const position = new THREE.Vector3();
+    const scale = new THREE.Vector3();
+    const tangent = new THREE.Vector3();
+    const normal = new THREE.Vector3();
+    const slope = new THREE.Vector3();
+    const delta = Math.PI * 0.5 / RAMP_SEGMENTS;
+    const arcLength = RAMP_R * delta * 1.055;
+    let instance = 0;
+
+    for (const panel of rampPanels) {
+      const boundaryX = panel.x - panel.nx * WALL_T * 0.5;
+      const boundaryZ = panel.z - panel.nz * WALL_T * 0.5;
+      tangent.set(panel.nz, 0, -panel.nx).normalize();
+      for (let index = 0; index < RAMP_SEGMENTS; index++) {
+        const angle = (index + 0.5) * delta;
+        const sine = Math.sin(angle);
+        const cosine = Math.cos(angle);
+        normal.set(-panel.nx * sine, cosine, -panel.nz * sine).normalize();
+        slope.crossVectors(tangent, normal).normalize();
+        basis.makeBasis(tangent, normal, slope);
+        quaternion.setFromRotationMatrix(basis);
+        position.set(
+          boundaryX - panel.nx * (RAMP_R - RAMP_R * sine),
+          RAMP_R - RAMP_R * cosine,
+          boundaryZ - panel.nz * (RAMP_R - RAMP_R * sine)
+        ).addScaledVector(normal, -0.10);
+        scale.set(panel.length * 1.035, 0.20, arcLength);
+        matrix.compose(position, quaternion, scale);
+        ramps.setMatrixAt(instance++, matrix);
+      }
+    }
+    ramps.instanceMatrix.needsUpdate = true;
+    this.group.add(ramps);
+  }
+
   addBoxVisual(x, y, z, w, h, d, material) {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
     mesh.position.set(x, y, z);
@@ -256,10 +302,27 @@ export class Arena {
     return mesh;
   }
 
-  createGoal(sign, wallMaterial) {
+  createGoal(sign) {
     const zFront = sign * (FIELD_L / 2 - 0.4);
     const zCenter = sign * (FIELD_L / 2 + GOAL_D / 2);
     const zBack = sign * (FIELD_L / 2 + GOAL_D);
+
+    const isOrange = sign > 0;
+    const color = isOrange ? 0xff7a18 : 0x238cff;
+    const darkColor = isOrange ? 0x532109 : 0x0b2d67;
+    const teamName = isOrange ? 'ORANGE' : 'BLAU';
+    const wallMaterial = this.lowDetail
+      ? new THREE.MeshBasicMaterial({ color: darkColor, transparent: true, opacity: 0.72 })
+      : new THREE.MeshStandardMaterial({
+          color: darkColor,
+          emissive: color,
+          emissiveIntensity: 0.16,
+          transparent: true,
+          opacity: 0.76,
+          roughness: 0.42,
+          metalness: 0.14,
+          depthWrite: false
+        });
 
     if (this.lowDetail) {
       const half = GOAL_W / 2;
@@ -270,31 +333,31 @@ export class Arena {
       ];
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
-      const goalLine = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: 0xc9f2ff }));
+      const goalLine = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color }));
       this.group.add(goalLine);
-      return;
+    } else {
+      const goal = new THREE.Group();
+      goal.position.set(0, 0, zFront);
+      goal.rotation.y = sign > 0 ? Math.PI : 0;
+      const frameMat = new THREE.MeshStandardMaterial({
+        color,
+        emissive: color,
+        emissiveIntensity: 1.7,
+        roughness: 0.32,
+        metalness: 0.44
+      });
+      const postGeo = new THREE.BoxGeometry(0.55, GOAL_H, 0.55);
+      const barGeo = new THREE.BoxGeometry(GOAL_W, 0.55, 0.55);
+      for (const px of [-GOAL_W / 2 + 0.275, GOAL_W / 2 - 0.275]) {
+        const post = new THREE.Mesh(postGeo, frameMat);
+        post.position.set(px, GOAL_H / 2, 0);
+        goal.add(post);
+      }
+      const bar = new THREE.Mesh(barGeo, frameMat);
+      bar.position.set(0, GOAL_H - 0.275, 0);
+      goal.add(bar);
+      this.group.add(goal);
     }
-
-    const goal = new THREE.Group();
-    goal.position.set(0, 0, zFront);
-    goal.rotation.y = sign > 0 ? Math.PI : 0;
-    const frameMat = new THREE.MeshStandardMaterial({
-      color: 0xe8f8ff,
-      emissive: 0x123a47,
-      emissiveIntensity: 0.8,
-      roughness: 0.5
-    });
-    const postGeo = new THREE.BoxGeometry(0.3, GOAL_H, 0.3);
-    const barGeo = new THREE.BoxGeometry(GOAL_W, 0.3, 0.3);
-    for (const px of [-GOAL_W / 2 + 0.15, GOAL_W / 2 - 0.15]) {
-      const post = new THREE.Mesh(postGeo, frameMat);
-      post.position.set(px, GOAL_H / 2, 0);
-      goal.add(post);
-    }
-    const bar = new THREE.Mesh(barGeo, frameMat);
-    bar.position.set(0, GOAL_H - 0.15, 0);
-    goal.add(bar);
-    this.group.add(goal);
 
     const sideT = 0.28;
     this.addBoxVisual(-GOAL_W / 2, GOAL_H / 2, zCenter, sideT, GOAL_H, GOAL_D, wallMaterial);
@@ -302,11 +365,34 @@ export class Arena {
     this.addBoxVisual(0, GOAL_H, zCenter, GOAL_W, sideT, GOAL_D, wallMaterial);
     this.addBoxVisual(0, GOAL_H / 2, zBack, GOAL_W, GOAL_H, sideT, wallMaterial);
 
-    const goalFloorMat = new THREE.MeshStandardMaterial({ color: 0x123b45, roughness: 0.92, metalness: 0 });
+    const goalFloorMat = this.lowDetail
+      ? new THREE.MeshBasicMaterial({ color: darkColor })
+      : new THREE.MeshStandardMaterial({ color: darkColor, emissive: color, emissiveIntensity: 0.12, roughness: 0.88, metalness: 0 });
     const goalFloor = new THREE.Mesh(new THREE.PlaneGeometry(GOAL_W, GOAL_D), goalFloorMat);
     goalFloor.rotation.x = -Math.PI / 2;
     goalFloor.position.set(0, 0.004, zCenter);
     this.group.add(goalFloor);
+
+    if (!this.lowDetail) {
+      const labelCanvas = document.createElement('canvas');
+      labelCanvas.width = 512;
+      labelCanvas.height = 128;
+      const context = labelCanvas.getContext('2d');
+      context.fillStyle = isOrange ? '#ff9a43' : '#62aaff';
+      context.font = '900 76px Arial';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillText(teamName, 256, 68);
+      const texture = new THREE.CanvasTexture(labelCanvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      const label = new THREE.Mesh(
+        new THREE.PlaneGeometry(10, 2.5),
+        new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide, depthWrite: false })
+      );
+      label.position.set(0, GOAL_H + 1.7, zFront - sign * 0.06);
+      label.rotation.y = sign > 0 ? Math.PI : 0;
+      this.group.add(label);
+    }
   }
 
   createPhysics() {
@@ -322,22 +408,25 @@ export class Arena {
 
     const halfWidth = FIELD_W * 0.5;
     const halfLength = FIELD_L * 0.5;
-    const straightX = halfWidth - CORNER_R;
-    const straightZ = halfLength - CORNER_R;
-    const goalHalfWidth = GOAL_W * 0.5;
-    const endSegmentLength = straightX - goalHalfWidth;
-    const endSegmentCenter = goalHalfWidth + endSegmentLength * 0.5;
-
-    this.addFixedCollider(halfWidth + WALL_T * 0.5, WALL_H * 0.5, 0, WALL_T * 0.5, WALL_H * 0.5, straightZ, 0.12, 0);
-    this.addFixedCollider(-halfWidth - WALL_T * 0.5, WALL_H * 0.5, 0, WALL_T * 0.5, WALL_H * 0.5, straightZ, 0.12, 0);
+    const panels = this.buildBoundarySegments();
+    for (const panel of panels) {
+      const minY = panel.minY ?? 0;
+      const height = panel.height ?? WALL_H - minY;
+      this.addFixedColliderRotated(
+        panel.x,
+        minY + height * 0.5,
+        panel.z,
+        panel.length * 0.5,
+        height * 0.5,
+        WALL_T * 0.5,
+        panel.yaw,
+        0.12,
+        0
+      );
+      if (panel.ramp !== false) this.addRampPhysics(panel);
+    }
 
     for (const sign of [-1, 1]) {
-      const z = sign * (halfLength + WALL_T * 0.5);
-      this.addFixedCollider(-endSegmentCenter, WALL_H * 0.5, z, endSegmentLength * 0.5, WALL_H * 0.5, WALL_T * 0.5, 0.12, 0);
-      this.addFixedCollider(endSegmentCenter, WALL_H * 0.5, z, endSegmentLength * 0.5, WALL_H * 0.5, WALL_T * 0.5, 0.12, 0);
-      const topHeight = WALL_H - GOAL_H;
-      this.addFixedCollider(0, GOAL_H + topHeight * 0.5, z, GOAL_W * 0.5, topHeight * 0.5, WALL_T * 0.5, 0.12, 0);
-
       const zCenter = sign * (halfLength + GOAL_D * 0.5);
       const zBack = sign * (halfLength + GOAL_D);
       const t = 0.2;
@@ -348,37 +437,47 @@ export class Arena {
       this.addFixedCollider(0, -0.2, zCenter, GOAL_W * 0.5, 0.2, GOAL_D * 0.5, 0.72, 0);
     }
 
-    const delta = Math.PI * 0.5 / CORNER_SEGMENTS;
-    const colliderRadius = CORNER_R + WALL_T * 0.5;
-    const colliderLength = 2 * colliderRadius * Math.sin(delta * 0.5) * 1.05;
-    const physicsCorners = [
-      { start: 0, centerX: straightX, centerZ: straightZ },
-      { start: Math.PI / 2, centerX: -straightX, centerZ: straightZ },
-      { start: Math.PI, centerX: -straightX, centerZ: -straightZ },
-      { start: Math.PI * 1.5, centerX: straightX, centerZ: -straightZ }
-    ];
-    for (const corner of physicsCorners) {
-      for (let index = 0; index < CORNER_SEGMENTS; index++) {
-        const theta = corner.start + (index + 0.5) * delta;
-        const x = corner.centerX + Math.cos(theta) * colliderRadius;
-        const z = corner.centerZ + Math.sin(theta) * colliderRadius;
-        this.addFixedColliderRotated(
-          x,
-          WALL_H * 0.5,
-          z,
-          colliderLength * 0.5,
-          WALL_H * 0.5,
-          WALL_T * 0.5,
-          Math.PI / 2 - theta,
-          0.12,
-          0
-        );
-      }
-    }
-
     // A thin physical glass roof completes the enclosure. CCD plus four CCD
     // substeps in Game prevents fast cars/balls from tunnelling through it.
     this.addFixedCollider(0, ARENA_TUNING.ceiling + 0.2, 0, halfWidth, 0.2, halfLength, 0.08, 0);
+  }
+
+  addRampPhysics(panel) {
+    const delta = Math.PI * 0.5 / RAMP_SEGMENTS;
+    const arcLength = RAMP_R * delta * 1.065;
+    const boundaryX = panel.x - panel.nx * WALL_T * 0.5;
+    const boundaryZ = panel.z - panel.nz * WALL_T * 0.5;
+    const tangent = new THREE.Vector3(panel.nz, 0, -panel.nx).normalize();
+    const normal = new THREE.Vector3();
+    const slope = new THREE.Vector3();
+    const basis = new THREE.Matrix4();
+    const quaternion = new THREE.Quaternion();
+
+    for (let index = 0; index < RAMP_SEGMENTS; index++) {
+      const angle = (index + 0.5) * delta;
+      const sine = Math.sin(angle);
+      const cosine = Math.cos(angle);
+      normal.set(-panel.nx * sine, cosine, -panel.nz * sine).normalize();
+      slope.crossVectors(tangent, normal).normalize();
+      basis.makeBasis(tangent, normal, slope);
+      quaternion.setFromRotationMatrix(basis);
+      const position = new THREE.Vector3(
+        boundaryX - panel.nx * (RAMP_R - RAMP_R * sine),
+        RAMP_R - RAMP_R * cosine,
+        boundaryZ - panel.nz * (RAMP_R - RAMP_R * sine)
+      ).addScaledVector(normal, -0.11);
+      this.addFixedColliderQuaternion(
+        position.x,
+        position.y,
+        position.z,
+        panel.length * 0.5 * 1.035,
+        0.11,
+        arcLength * 0.5,
+        quaternion,
+        0.72,
+        0
+      );
+    }
   }
 
   addFixedCollider(x, y, z, hx, hy, hz, friction, restitution) {
@@ -400,6 +499,22 @@ export class Arena {
       R.RigidBodyDesc.fixed()
         .setTranslation(x, y, z)
         .setRotation({ x: 0, y: Math.sin(halfYaw), z: 0, w: Math.cos(halfYaw) })
+    );
+    this.world.createCollider(
+      R.ColliderDesc.cuboid(hx, hy, hz)
+        .setFriction(friction)
+        .setRestitution(restitution)
+        .setContactSkin(0.01),
+      body
+    );
+  }
+
+  addFixedColliderQuaternion(x, y, z, hx, hy, hz, quaternion, friction, restitution) {
+    const R = this.RAPIER;
+    const body = this.world.createRigidBody(
+      R.RigidBodyDesc.fixed()
+        .setTranslation(x, y, z)
+        .setRotation({ x: quaternion.x, y: quaternion.y, z: quaternion.z, w: quaternion.w })
     );
     this.world.createCollider(
       R.ColliderDesc.cuboid(hx, hy, hz)

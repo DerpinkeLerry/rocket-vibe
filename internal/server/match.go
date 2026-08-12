@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -31,6 +32,12 @@ type joinResult struct {
 type inputEvent struct {
 	clientID string
 	input    game.Input
+}
+
+type rosterPlayer struct {
+	PlayerID int    `json:"playerId"`
+	Name     string `json:"name"`
+	Team     string `json:"team"`
 }
 
 type Stats struct {
@@ -161,12 +168,17 @@ func (match *Match) run() {
 				continue
 			}
 			request.client.slot = slot
+			if request.client.name == "" {
+				request.client.name = fmt.Sprintf("Spieler %d", slot+1)
+			}
+			request.client.team = game.TeamForSlot(slot)
 			clients[request.client.id] = request.client
 			match.world.SetConnected(slot, true)
 			match.playerCount.Store(int32(len(clients)))
 			welcome, _ := json.Marshal(map[string]any{
 				"type": "welcome", "playerId": slot, "maxPlayers": match.config.MaxPlayers,
-				"connectedPlayers": connectedSlots(clients), "protocol": 2,
+				"playerName": request.client.name, "team": request.client.team,
+				"connectedPlayers": connectedSlots(clients), "players": rosterPlayers(clients), "protocol": 3,
 				"serverHz": match.config.PhysicsHz, "snapshotHz": match.config.SnapshotHz,
 			})
 			request.client.offerJSON(welcome)
@@ -182,6 +194,9 @@ func (match *Match) run() {
 			match.world.SetConnected(connected.slot, false)
 			match.playerCount.Store(int32(len(clients)))
 			connected.stop()
+			if len(clients) == 0 {
+				match.world.ResetMatch()
+			}
 			match.broadcastRoster(clients)
 
 		case event := <-match.inputs:
@@ -244,11 +259,24 @@ func (match *Match) confirmMotion(clients map[string]*client) {
 func (match *Match) broadcastRoster(clients map[string]*client) {
 	message, _ := json.Marshal(map[string]any{
 		"type": "roster", "connectedPlayers": connectedSlots(clients),
-		"maxPlayers": match.config.MaxPlayers,
+		"players": rosterPlayers(clients), "maxPlayers": match.config.MaxPlayers,
 	})
 	for _, connected := range clients {
 		connected.offerJSON(message)
 	}
+}
+
+func rosterPlayers(clients map[string]*client) []rosterPlayer {
+	players := make([]rosterPlayer, 0, len(clients))
+	for slot := 0; slot < game.MaxPlayers; slot++ {
+		for _, connected := range clients {
+			if connected.slot == slot {
+				players = append(players, rosterPlayer{PlayerID: slot, Name: connected.name, Team: connected.team})
+				break
+			}
+		}
+	}
+	return players
 }
 
 func connectedSlots(clients map[string]*client) []int {

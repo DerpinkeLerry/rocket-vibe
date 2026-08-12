@@ -12,6 +12,7 @@ type ArenaConfig struct {
 	Ceiling      float64 `json:"ceiling"`
 	WallHeight   float64 `json:"wallHeight"`
 	CornerRadius float64 `json:"cornerRadius"`
+	RampRadius   float64 `json:"rampRadius"`
 	GoalWidth    float64 `json:"goalWidth"`
 	GoalHeight   float64 `json:"goalHeight"`
 	GoalDepth    float64 `json:"goalDepth"`
@@ -74,8 +75,8 @@ func DefaultConfig() Config {
 		SolverSteps: 4,
 		Gravity:     20.5,
 		Arena: ArenaConfig{
-			Width: 110, Length: 160, Ceiling: 25, WallHeight: 25, CornerRadius: 16,
-			GoalWidth: 13, GoalHeight: 5.2, GoalDepth: 8,
+			Width: 110, Length: 160, Ceiling: 25, WallHeight: 25, CornerRadius: 16, RampRadius: 7,
+			GoalWidth: 34, GoalHeight: 12, GoalDepth: 14,
 		},
 		Car: CarConfig{
 			HalfExtents:          Vec3{X: 0.83, Y: 0.45, Z: 1.48},
@@ -103,7 +104,7 @@ func DefaultConfig() Config {
 			Restitution:          0,
 		},
 		Ball: BallConfig{
-			Radius:          1.75,
+			Radius:          2.2,
 			Mass:            30,
 			Restitution:     0.62,
 			Friction:        0.24,
@@ -111,7 +112,7 @@ func DefaultConfig() Config {
 			AngularDamping:  0.06,
 			MaxSpeed:        56,
 			MaxAngularSpeed: 32,
-			SpawnY:          5,
+			SpawnY:          5.5,
 		},
 	}
 }
