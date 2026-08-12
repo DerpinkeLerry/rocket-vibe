@@ -8,7 +8,21 @@
 
 * { box-sizing: border-box; }
 html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; }
-body { user-select: none; }
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+button, label, fieldset, legend, .hud, .mobile-controls {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+input, textarea {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
 canvas { display: block; width: 100%; height: 100%; }
 
 .join-screen {
@@ -23,7 +37,10 @@ canvas { display: block; width: 100%; height: 100%; }
     radial-gradient(circle at 78% 80%, rgba(255, 122, 24, 0.22), transparent 34%),
     rgba(3, 9, 18, 0.96);
   pointer-events: auto;
-  user-select: text;
+  touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .join-card {
@@ -466,10 +483,10 @@ html, body, #app {
 
 .mobile-controls__left {
   position: absolute;
-  left: calc(env(safe-area-inset-left, 0px) + 14px);
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 13px);
-  width: 164px;
-  height: 164px;
+  left: calc(env(safe-area-inset-left, 0px) + 6px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 5px);
+  width: 220px;
+  height: 220px;
   pointer-events: none;
 }
 
@@ -479,48 +496,36 @@ html, body, #app {
   border-radius: 50%;
   pointer-events: auto;
   touch-action: none;
-  background: radial-gradient(circle, rgba(15, 33, 54, 0.44) 0 40%, rgba(5, 14, 28, 0.58) 41% 100%);
-  border: 1px solid rgba(225, 246, 255, 0.24);
-  box-shadow: inset 0 0 26px rgba(86, 192, 255, 0.08);
+  background: transparent;
+  border: 0;
+  box-shadow: none;
 }
 
-.mobile-stick__ring {
-  position: absolute;
-  inset: 25%;
-  border: 1px solid rgba(255,255,255,0.11);
-  border-radius: 50%;
-}
-
+.mobile-stick__ring,
 .mobile-stick::before,
-.mobile-stick::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  background: rgba(255,255,255,0.10);
-  transform: translate(-50%, -50%);
+.mobile-stick::after,
+.mobile-stick__hint {
+  display: none;
 }
-
-.mobile-stick::before { width: 1px; height: 70%; }
-.mobile-stick::after { width: 70%; height: 1px; }
 
 .mobile-stick__knob {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 62px;
-  height: 62px;
-  margin: -31px 0 0 -31px;
+  width: 30px;
+  height: 30px;
+  margin: -15px 0 0 -15px;
   border-radius: 50%;
-  border: 2px solid rgba(190, 236, 255, 0.62);
-  background: rgba(61, 157, 208, 0.50);
-  box-shadow: 0 7px 20px rgba(0,0,0,0.28), inset 0 0 18px rgba(174, 233, 255, 0.16);
-  transition: background 70ms ease;
+  border: 1px solid rgba(213, 244, 255, 0.34);
+  background: rgba(103, 202, 242, 0.24);
+  box-shadow: 0 3px 10px rgba(0,0,0,0.18);
+  transition: background 70ms ease, border-color 70ms ease;
   will-change: transform;
 }
 
 .mobile-stick.is-active .mobile-stick__knob {
-  background: rgba(78, 191, 239, 0.70);
+  background: rgba(111, 214, 255, 0.42);
+  border-color: rgba(221, 248, 255, 0.52);
 }
 
 .mobile-stick__hint {
@@ -747,16 +752,16 @@ html, body, #app {
   .mobile-orientation-hint { display: flex; }
 
   .mobile-controls__left {
-    left: calc(env(safe-area-inset-left, 0px) + 8px);
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
-    width: 124px;
-    height: 124px;
+    left: calc(env(safe-area-inset-left, 0px) + 4px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 5px);
+    width: 180px;
+    height: 180px;
   }
 
   .mobile-stick__knob {
-    width: 50px;
-    height: 50px;
-    margin: -25px 0 0 -25px;
+    width: 27px;
+    height: 27px;
+    margin: -13.5px 0 0 -13.5px;
   }
 
   .mobile-stick__hint { bottom: 6px; font-size: 7px; }
@@ -801,8 +806,8 @@ html, body, #app {
 
 @media (orientation: landscape) and (max-height: 430px) and (any-pointer: coarse) {
   .mobile-controls__left {
-    width: 146px;
-    height: 146px;
+    width: 205px;
+    height: 205px;
   }
 
   .mobile-controls__right {

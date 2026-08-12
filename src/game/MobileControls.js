@@ -2,12 +2,15 @@ import { canRequestFullscreen, isFullscreenActive, toggleGameFullscreen } from '
 
 const STICK_CODES = ['KeyW', 'KeyS', 'KeyA', 'KeyD'];
 
-export function resolveStickCodes(x, y, deadZone = 0.24) {
+export function resolveStickCodes(x, y, throttleDeadZone = 0.22, steeringDeadZone = 0.34) {
   const codes = [];
-  if (x <= -deadZone) codes.push('KeyA');
-  if (x >= deadZone) codes.push('KeyD');
-  if (y <= -deadZone) codes.push('KeyW');
-  if (y >= deadZone) codes.push('KeyS');
+  // Steering intentionally needs more thumb travel than throttle/brake. This
+  // makes small corrections on a phone much less twitchy while preserving
+  // quick acceleration and braking.
+  if (x <= -steeringDeadZone) codes.push('KeyA');
+  if (x >= steeringDeadZone) codes.push('KeyD');
+  if (y <= -throttleDeadZone) codes.push('KeyW');
+  if (y >= throttleDeadZone) codes.push('KeyS');
   return codes;
 }
 
@@ -129,7 +132,7 @@ export class MobileControls {
     const rect = this.stickRect || this.stick.getBoundingClientRect();
     const cx = rect.left + rect.width * 0.5;
     const cy = rect.top + rect.height * 0.5;
-    const radius = Math.max(1, Math.min(rect.width, rect.height) * 0.38);
+    const radius = Math.max(1, Math.min(rect.width, rect.height) * 0.44);
     let dx = (clientX - cx) / radius;
     let dy = (clientY - cy) / radius;
     const length = Math.hypot(dx, dy);
@@ -138,7 +141,7 @@ export class MobileControls {
       dy /= length;
     }
 
-    this.stickKnob.style.transform = `translate(${(dx * radius * 0.62).toFixed(1)}px, ${(dy * radius * 0.62).toFixed(1)}px)`;
+    this.stickKnob.style.transform = `translate(${(dx * radius * 0.78).toFixed(1)}px, ${(dy * radius * 0.78).toFixed(1)}px)`;
 
     const nextCodes = new Set(resolveStickCodes(dx, dy));
     for (const code of STICK_CODES) {

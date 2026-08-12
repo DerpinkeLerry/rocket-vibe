@@ -131,3 +131,10 @@ go test -race ./...
 ```
 
 Die Tests decken Fahrbewegung, 70/100-km/h-Speed-Caps und erhaltenes Boost-Momentum, Boostverbrauch, Boost-Pickups/Respawn, Sprung-Lockout, Boden-Tunneling, die Fahrt vom Boden auf senkrechtes Glas, den Ball-Uebergang an der Boden/Wand-Naht ohne Tunneling, beide farbigen Tore, Spielstand, Namen, Auto-Ball-Impuls, Input-Reihenfolge, das exakte Binaerprotokoll und einen echten HTTP/WebSocket-Verbindungsaufbau ab.
+
+
+### Mobile Bedienung
+- Browser-Zoom, Doppeltipp-Zoom und Pinch-Gesten sind während des Spiels deaktiviert.
+- UI-Texte und Touch-Buttons sind nicht auswählbar; das Namensfeld bleibt normal editierbar.
+- Der linke Joystick besitzt eine große unsichtbare Touch-Fläche und nur einen kleinen transparenten Thumb-Punkt.
+- Die seitliche Lenk-Deadzone ist größer als die Gas/Brems-Deadzone für feinere Smartphone-Lenkung.

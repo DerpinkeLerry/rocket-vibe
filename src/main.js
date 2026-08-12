@@ -5,6 +5,25 @@ import { prefersMobileControls } from './game/MobileControls.js';
 import { canRequestFullscreen, isFullscreenActive, requestGameFullscreen } from './game/Fullscreen.js';
 import './style.css';
 
+function installMobileBrowserGuards() {
+  if (!prefersMobileControls()) return;
+
+  // iOS Safari historically ignores parts of the viewport zoom policy in some
+  // embedding modes. Blocking gesture events plus double-click zoom keeps the
+  // game stable from the start screen onward. Text editing inside the name
+  // field remains available.
+  const preventGesture = (event) => event.preventDefault();
+  const preventDoubleTapZoom = (event) => {
+    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+    event.preventDefault();
+  };
+
+  document.addEventListener('gesturestart', preventGesture, { passive: false });
+  document.addEventListener('gesturechange', preventGesture, { passive: false });
+  document.addEventListener('gestureend', preventGesture, { passive: false });
+  document.addEventListener('dblclick', preventDoubleTapZoom, { passive: false });
+}
+
 function rememberedPlayerName() {
   try {
     return localStorage.getItem('rocket-vibe-player-name') || '';
@@ -165,6 +184,7 @@ function requestPlayerIdentity(root) {
 }
 
 async function boot() {
+  installMobileBrowserGuards();
   const app = document.querySelector('#app');
   const multiplayerEnabled = import.meta.env.MODE === 'lan' || import.meta.env.PROD;
   const identity = await requestPlayerIdentity(app);

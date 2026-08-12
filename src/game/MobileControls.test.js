@@ -14,3 +14,10 @@ test('mobile stick supports diagonal drive/air control and a center dead zone', 
   assert.deepEqual(resolveStickCodes(0.8, 0.8), ['KeyD', 'KeyS']);
   assert.deepEqual(resolveStickCodes(0.1, -0.1), []);
 });
+
+
+test('mobile stick uses a larger steering dead zone than throttle', () => {
+  assert.deepEqual(resolveStickCodes(0.3, 0), []);
+  assert.deepEqual(resolveStickCodes(0.36, 0), ['KeyD']);
+  assert.deepEqual(resolveStickCodes(0, -0.24), ['KeyW']);
+});
