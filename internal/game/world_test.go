@@ -571,7 +571,7 @@ func TestCarCanRollFromWallOntoRoundedCeiling(t *testing.T) {
 	}
 }
 
-func TestCarHitGivesBallExtraPowerAndLift(t *testing.T) {
+func TestCarHitIsForwardBiasedWithModerateLift(t *testing.T) {
 	config := DefaultConfig()
 	world := NewWorld(config)
 	car := &world.Cars[0]
@@ -584,11 +584,32 @@ func TestCarHitGivesBallExtraPowerAndLift(t *testing.T) {
 	ball.AngularVelocity = Vec3{}
 
 	resolveCarBall(car, ball, config)
-	if ball.Velocity.Z > -12 {
-		t.Fatalf("car hit did not launch ball strongly enough: velocity=%+v", ball.Velocity)
+	forwardSpeed := math.Abs(ball.Velocity.Z)
+	if forwardSpeed < 24 {
+		t.Fatalf("frontal car hit did not carry enough forward speed: velocity=%+v", ball.Velocity)
 	}
-	if ball.Velocity.Y < 4.5 {
-		t.Fatalf("car hit did not add the requested upward pop: velocity=%+v", ball.Velocity)
+	if ball.Velocity.Y < 1.0 || ball.Velocity.Y > 3.5 {
+		t.Fatalf("frontal car hit should have moderate lift instead of a lob: velocity=%+v", ball.Velocity)
+	}
+	if ball.Velocity.Y/forwardSpeed > 0.15 {
+		t.Fatalf("frontal car hit is still too vertical: velocity=%+v", ball.Velocity)
+	}
+}
+
+func TestBallKeepsRollingMomentum(t *testing.T) {
+	config := DefaultConfig()
+	world := NewWorld(config)
+	world.Ball.Position = Vec3{Y: config.Ball.Radius}
+	world.Ball.Velocity = Vec3{Z: 12}
+
+	dt := 1 / float64(config.PhysicsHz)
+	for step := 0; step < config.PhysicsHz*5; step++ {
+		world.Step(dt)
+	}
+
+	horizontalSpeed := math.Hypot(world.Ball.Velocity.X, world.Ball.Velocity.Z)
+	if horizontalSpeed < 4.0 {
+		t.Fatalf("ball lost rolling momentum too quickly after five seconds: speed=%.3f velocity=%+v", horizontalSpeed, world.Ball.Velocity)
 	}
 }
 

@@ -205,12 +205,12 @@ export class Ball {
   applyPreparedCarHit() {
     if (this.clientOnly || this.pendingHitSpeed <= 0) return;
     const impactSpeed = this.pendingHitSpeed;
-    const extraForward = THREE.MathUtils.clamp(impactSpeed * BALL_TUNING.carHitPower, 0, 5.5);
-    const liftRamp = THREE.MathUtils.clamp((impactSpeed - 1) / 3, 0, 1);
+    const extraForward = THREE.MathUtils.clamp(impactSpeed * BALL_TUNING.carHitPower, 0, 7.5);
+    const liftRamp = THREE.MathUtils.clamp((impactSpeed - 1) / 4, 0, 1);
     const lift = THREE.MathUtils.clamp(
       (BALL_TUNING.carHitLiftBase + impactSpeed * BALL_TUNING.carHitLift) * liftRamp,
       0,
-      7.5
+      3.25
     );
     const velocity = this.body.linvel();
     let x = velocity.x + this.pendingHitNormal.x * extraForward;
@@ -227,13 +227,24 @@ export class Ball {
     this.pendingHitSpeed = 0;
   }
 
-  fixedUpdate() {
+  fixedUpdate(dt) {
     if (this.body.translation().y < -12) {
       this.reset();
       return;
     }
 
     const v = this.body.linvel();
+
+    // Rapier has Coulomb friction but no dedicated rolling-resistance knob.
+    // Apply the same gentle time-based decay as the authoritative server only
+    // while the ball is actually resting/rolling on the floor.
+    if (this.body.translation().y <= this.radius + 0.08 && v.y <= 0.35) {
+      const decay = Math.exp(-BALL_TUNING.rollingResistance * dt);
+      v.x *= decay;
+      v.z *= decay;
+      this.body.setLinvel(v, true);
+    }
+
     const speed = Math.hypot(v.x, v.y, v.z);
     if (speed > this.maxSpeed) {
       const s = this.maxSpeed / speed;

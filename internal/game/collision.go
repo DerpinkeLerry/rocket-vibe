@@ -236,9 +236,14 @@ func resolveBallArena(ball *Ball, config Config) {
 			} else if ball.Velocity.Y < 0 {
 				ball.Velocity.Y = 0
 			}
-			friction := math.Exp(-config.Ball.Friction * 0.12)
-			ball.Velocity.X *= friction
-			ball.Velocity.Z *= friction
+			// Rolling resistance must be time based. The old fixed per-contact
+			// multiplier was applied every physics tick and killed almost all
+			// horizontal speed within a second. Keep the ball rolling while still
+			// letting it settle naturally over several seconds.
+			physicsHz := math.Max(1, float64(config.PhysicsHz))
+			rollingDecay := math.Exp(-config.Ball.RollingResistance / physicsHz)
+			ball.Velocity.X *= rollingDecay
+			ball.Velocity.Z *= rollingDecay
 			rolling := Vec3{X: ball.Velocity.Z / radius, Z: -ball.Velocity.X / radius}
 			ball.AngularVelocity.X = lerp(ball.AngularVelocity.X, rolling.X, 0.04)
 			ball.AngularVelocity.Z = lerp(ball.AngularVelocity.Z, rolling.Z, 0.04)
@@ -498,15 +503,15 @@ func resolveCarBall(car *Car, ball *Ball, config Config) {
 		applyCarBallImpulse(car, ball, contact, tangent.Mul(frictionMagnitude), config, carInverseInertia, ballInverseInertia)
 	}
 
-	// Add a controlled arcade kick on meaningful car hits. The normal component
-	// makes shots feel heavier, while a modest world-up component gives bumper
-	// hits the requested pop instead of sending every low contact flat along the
-	// grass. Small resting contacts are deliberately ignored.
+	// Add a controlled arcade kick on meaningful car hits. Frontal hits are
+	// intentionally forward-biased: most of the extra energy follows the contact
+	// direction, while world-up lift is only a moderate pop. This keeps shots
+	// powerful without making a bumper hit behave like a lob.
 	impactSpeed := -closingSpeed
 	if impactSpeed > 1.0 {
-		extraForward := clamp(impactSpeed*config.Ball.CarHitPower, 0, 5.5)
-		liftRamp := clamp((impactSpeed-1)/3, 0, 1)
-		lift := clamp((config.Ball.CarHitLiftBase+impactSpeed*config.Ball.CarHitLift)*liftRamp, 0, 7.5)
+		extraForward := clamp(impactSpeed*config.Ball.CarHitPower, 0, 7.5)
+		liftRamp := clamp((impactSpeed-1)/4, 0, 1)
+		lift := clamp((config.Ball.CarHitLiftBase+impactSpeed*config.Ball.CarHitLift)*liftRamp, 0, 3.25)
 		ball.Velocity = ball.Velocity.Add(normal.Mul(extraForward)).Add(Vec3{Y: lift})
 	}
 }

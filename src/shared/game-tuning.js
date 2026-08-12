@@ -65,11 +65,12 @@ export const BALL_TUNING = Object.freeze({
   density: 0.67,
   restitution: 0.68,
   friction: 0.22,
-  linearDamping: 0.03,
+  rollingResistance: 0.18,
+  linearDamping: 0.015,
   angularDamping: 0.055,
-  carHitPower: 0.24,
-  carHitLift: 0.30,
-  carHitLiftBase: 1.5,
+  carHitPower: 0.34,
+  carHitLift: 0.11,
+  carHitLiftBase: 0.45,
   maxSpeed: 60,
   maxAngularSpeed: 34
 });

@@ -58,18 +58,19 @@ type CarConfig struct {
 }
 
 type BallConfig struct {
-	Radius          float64 `json:"radius"`
-	Mass            float64 `json:"mass"`
-	Restitution     float64 `json:"restitution"`
-	Friction        float64 `json:"friction"`
-	LinearDamping   float64 `json:"linearDamping"`
-	AngularDamping  float64 `json:"angularDamping"`
-	MaxSpeed        float64 `json:"maxSpeed"`
-	MaxAngularSpeed float64 `json:"maxAngularSpeed"`
-	CarHitPower     float64 `json:"carHitPower"`
-	CarHitLift      float64 `json:"carHitLift"`
-	CarHitLiftBase  float64 `json:"carHitLiftBase"`
-	SpawnY          float64 `json:"spawnY"`
+	Radius            float64 `json:"radius"`
+	Mass              float64 `json:"mass"`
+	Restitution       float64 `json:"restitution"`
+	Friction          float64 `json:"friction"`
+	RollingResistance float64 `json:"rollingResistance"`
+	LinearDamping     float64 `json:"linearDamping"`
+	AngularDamping    float64 `json:"angularDamping"`
+	MaxSpeed          float64 `json:"maxSpeed"`
+	MaxAngularSpeed   float64 `json:"maxAngularSpeed"`
+	CarHitPower       float64 `json:"carHitPower"`
+	CarHitLift        float64 `json:"carHitLift"`
+	CarHitLiftBase    float64 `json:"carHitLiftBase"`
+	SpawnY            float64 `json:"spawnY"`
 }
 
 type Config struct {
@@ -132,18 +133,19 @@ func DefaultConfig() Config {
 			Restitution:          0,
 		},
 		Ball: BallConfig{
-			Radius:          2.2,
-			Mass:            30,
-			Restitution:     0.68,
-			Friction:        0.22,
-			LinearDamping:   0.03,
-			AngularDamping:  0.055,
-			MaxSpeed:        60,
-			MaxAngularSpeed: 34,
-			CarHitPower:     0.24,
-			CarHitLift:      0.30,
-			CarHitLiftBase:  1.5,
-			SpawnY:          5.5,
+			Radius:            2.2,
+			Mass:              30,
+			Restitution:       0.68,
+			Friction:          0.22,
+			RollingResistance: 0.18,
+			LinearDamping:     0.015,
+			AngularDamping:    0.055,
+			MaxSpeed:          60,
+			MaxAngularSpeed:   34,
+			CarHitPower:       0.34,
+			CarHitLift:        0.11,
+			CarHitLiftBase:    0.45,
+			SpawnY:            5.5,
 		},
 	}
 }
