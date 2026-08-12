@@ -157,3 +157,10 @@ Die Tests decken Fahrbewegung, 70/100-km/h-Speed-Caps und erhaltenes Boost-Momen
 - UI-Texte und Touch-Buttons sind nicht auswählbar; das Namensfeld bleibt normal editierbar.
 - Der linke Joystick besitzt eine große unsichtbare Touch-Fläche und nur einen kleinen transparenten Thumb-Punkt.
 - Die seitliche Lenk-Deadzone ist größer als die Gas/Brems-Deadzone für feinere Smartphone-Lenkung.
+
+## Visual Palette v1.10.1
+
+- Satterer, kontrastreicher Turf mit grossen Mow-Blocks und dezenten Blau/Orange-Zonen direkt in einer einzelnen Canvas-Textur.
+- Dunklere Graphit-Waende, neutraleres Glas und kraeftigere Team-Akzente fuer einen lebendigeren Arena-Look.
+- AgX-Tonemapping und neu abgestimmtes Tageslicht fuer mehr Farbtiefe ohne zusaetzliche Post-Processing-Kosten.
+- Ultra-High-3D-Gras nutzt dunklere, sattere Halme und bleibt weiterhin instanziert/culling-optimiert.

@@ -16,10 +16,10 @@ import { DEFAULT_CAR_STYLE, normalizeCarStyle } from '../shared/car-styles.js';
 const CLIENT_INPUT_HEARTBEAT_HZ = 15;
 
 const PLAYER_CONFIGS = [
-  { spawn: { x: -13, y: 0.52, z: 44 }, spawnYaw: 0, color: 0xf46b20, team: 'orange' },
-  { spawn: { x: -13, y: 0.52, z: -44 }, spawnYaw: Math.PI, color: 0x238cff, team: 'blue' },
-  { spawn: { x: 13, y: 0.52, z: 44 }, spawnYaw: 0, color: 0xffa51f, team: 'orange' },
-  { spawn: { x: 13, y: 0.52, z: -44 }, spawnYaw: Math.PI, color: 0x35d7ff, team: 'blue' }
+  { spawn: { x: -13, y: 0.52, z: 44 }, spawnYaw: 0, color: 0xf45a13, team: 'orange' },
+  { spawn: { x: -13, y: 0.52, z: -44 }, spawnYaw: Math.PI, color: 0x087dff, team: 'blue' },
+  { spawn: { x: 13, y: 0.52, z: 44 }, spawnYaw: 0, color: 0xff8b16, team: 'orange' },
+  { spawn: { x: 13, y: 0.52, z: -44 }, spawnYaw: Math.PI, color: 0x23bfff, team: 'blue' }
 ];
 
 export class Game {
@@ -60,10 +60,10 @@ export class Game {
     this.scene = new THREE.Scene();
     // Bright daylight is intentionally cheap: a flat background + light fog do
     // most of the work, while the sky dome below is a single unlit draw call.
-    const daylightSky = this.profile.ultraHigh ? 0x69a8ce : 0x9fd3ed;
+    const daylightSky = this.profile.ultraHigh ? 0x5687ad : 0x7fb4d3;
     this.scene.background = new THREE.Color(daylightSky);
     this.scene.fog = this.profile.useFog
-      ? new THREE.Fog(this.profile.ultraHigh ? 0x809fa9 : 0xb8d7e3, 150, 345)
+      ? new THREE.Fog(this.profile.ultraHigh ? 0x6f8790 : 0x9bb9c5, 155, 360)
       : null;
 
     this.camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, this.profile.ultraLow ? 230 : (this.profile.ultraHigh ? 520 : 390));
@@ -88,8 +88,8 @@ export class Game {
     }
     this.renderer.sortObjects = !this.profile.ultraLow;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = this.profile.useToneMapping ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
-    this.renderer.toneMappingExposure = this.profile.ultraHigh ? 0.88 : 1.08;
+    this.renderer.toneMapping = this.profile.useToneMapping ? THREE.AgXToneMapping : THREE.NoToneMapping;
+    this.renderer.toneMappingExposure = this.profile.ultraHigh ? 0.96 : 1.02;
     this.root.appendChild(this.renderer.domElement);
     this.root.classList.toggle('perf-ultra', this.profile.ultraLow);
     this.root.classList.toggle('perf-ultra-low', this.profile.ultraLow);
@@ -264,9 +264,9 @@ export class Game {
     );
     const positions = domeGeometry.getAttribute('position');
     const colors = new Float32Array(positions.count * 3);
-    const horizon = new THREE.Color(this.profile.ultraHigh ? 0xb7cfcb : 0xdce8e3);
-    const midSky = new THREE.Color(this.profile.ultraHigh ? 0x78b7d9 : 0x92cae8);
-    const zenith = new THREE.Color(this.profile.ultraHigh ? 0x3c83ba : 0x5eafe0);
+    const horizon = new THREE.Color(this.profile.ultraHigh ? 0x8fa8aa : 0xb8ced0);
+    const midSky = new THREE.Color(this.profile.ultraHigh ? 0x5f91b7 : 0x79afd0);
+    const zenith = new THREE.Color(this.profile.ultraHigh ? 0x2e6598 : 0x4a8dbb);
     const color = new THREE.Color();
     for (let index = 0; index < positions.count; index++) {
       const h = THREE.MathUtils.clamp(positions.getY(index) / radius, -1, 1);
@@ -298,7 +298,7 @@ export class Game {
     // Static sun sprite. No shadow casting: the directional light supplies the
     // daylight cue without allocating a shadow texture.
     const sun = new THREE.Sprite(new THREE.SpriteMaterial({
-      color: 0xfff1b0,
+      color: 0xffdc9b,
       transparent: true,
       opacity: 0.92,
       depthWrite: false,
@@ -312,9 +312,9 @@ export class Game {
 
     if (this.profile.ultraHigh) {
       const halo = new THREE.Sprite(new THREE.SpriteMaterial({
-        color: 0xffe4a1,
+        color: 0xffbe69,
         transparent: true,
-        opacity: 0.09,
+        opacity: 0.07,
         depthWrite: false,
         depthTest: true,
         fog: false,
@@ -330,9 +330,9 @@ export class Game {
     // Even in normal mode this remains one draw call.
     const cloudGeometry = new THREE.SphereGeometry(1, this.profile.lowDetail ? 5 : (this.profile.ultraHigh ? 10 : 7), this.profile.ultraHigh ? 6 : 4);
     const cloudMaterial = new THREE.MeshBasicMaterial({
-      color: 0xf7fbff,
+      color: 0xeaf3f8,
       transparent: true,
-      opacity: this.profile.lowDetail ? 0.34 : (this.profile.ultraHigh ? 0.52 : 0.46),
+      opacity: this.profile.lowDetail ? 0.30 : (this.profile.ultraHigh ? 0.44 : 0.40),
       depthWrite: false,
       fog: false
     });

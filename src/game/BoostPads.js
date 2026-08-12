@@ -20,10 +20,10 @@ export class BoostPads {
     const large = spec.kind === 'large';
     const baseRadius = large ? 2.35 : 1.08;
     const baseMaterial = this.lowDetail
-      ? new THREE.MeshBasicMaterial({ color: large ? 0xff9b35 : 0xffc65b, transparent: true, opacity: 0.48 })
+      ? new THREE.MeshBasicMaterial({ color: large ? 0xff8a22 : 0xffc34e, transparent: true, opacity: 0.48 })
       : new THREE.MeshStandardMaterial({
-          color: large ? 0xff9b35 : 0xffc65b,
-          emissive: large ? 0xff5a00 : 0xff9a16,
+          color: large ? 0xff8a22 : 0xffc34e,
+          emissive: large ? 0xff4b00 : 0xff8b0b,
           emissiveIntensity: large ? (this.ultraHigh ? 0.88 : 0.8) : (this.ultraHigh ? 0.56 : 0.45),
           roughness: this.ultraHigh ? 0.5 : 0.48,
           metalness: this.ultraHigh ? 0.24 : 0.22,
@@ -35,9 +35,9 @@ export class BoostPads {
     group.add(base);
 
     const ringMaterial = this.lowDetail
-      ? new THREE.MeshBasicMaterial({ color: 0xffd27a, side: THREE.DoubleSide, transparent: true, opacity: 0.9 })
+      ? new THREE.MeshBasicMaterial({ color: 0xffd36b, side: THREE.DoubleSide, transparent: true, opacity: 0.9 })
       : new THREE.MeshStandardMaterial({
-          color: 0xffd27a,
+          color: 0xffd36b,
           emissive: 0xff8a14,
           emissiveIntensity: large ? (this.ultraHigh ? 3.5 : 3.1) : (this.ultraHigh ? 2.6 : 2.1),
           side: THREE.DoubleSide,
@@ -56,7 +56,7 @@ export class BoostPads {
     const pickupMaterial = this.lowDetail
       ? new THREE.MeshBasicMaterial({ color: 0xffb13b })
       : new THREE.MeshStandardMaterial({
-          color: 0xffc15a,
+          color: 0xffbd43,
           emissive: 0xff760d,
           emissiveIntensity: large ? (this.ultraHigh ? 5.1 : 4.5) : (this.ultraHigh ? 3.6 : 3.0),
           roughness: this.ultraHigh ? 0.3 : 0.2,

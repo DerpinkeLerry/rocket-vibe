@@ -114,10 +114,10 @@ export class Arena {
     // A large visual-only apron prevents the camera from revealing a black void
     // when it moves behind the transparent arena walls.
     const material = this.lowDetail
-      ? new THREE.MeshBasicMaterial({ color: 0x76957c })
+      ? new THREE.MeshBasicMaterial({ color: 0x3f6a4e })
       : (this.ultraHigh
-        ? new THREE.MeshStandardMaterial({ color: 0x6f8d75, roughness: 1.0, metalness: 0.0 })
-        : new THREE.MeshStandardMaterial({ color: 0x78967f, roughness: 1.0, metalness: 0.0 }));
+        ? new THREE.MeshStandardMaterial({ color: 0x385e46, roughness: 1.0, metalness: 0.0 })
+        : new THREE.MeshStandardMaterial({ color: 0x456f53, roughness: 1.0, metalness: 0.0 }));
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(250, 320), material);
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.055;
@@ -128,42 +128,99 @@ export class Arena {
   createTurfTexture(highDetail = false) {
     const canvas = document.createElement('canvas');
     canvas.width = highDetail ? 1024 : 512;
-    canvas.height = highDetail ? 2048 : 1024;
+    canvas.height = highDetail ? 1536 : 768;
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
-    // Baked mowing bands, blade speckles and subtle dry patches add most of the
-    // perceived grass detail without adding geometry or another render pass.
-    const stripeHeight = highDetail ? 148 : 92;
-    for (let y = 0; y < canvas.height; y += stripeHeight) {
-      ctx.fillStyle = Math.floor(y / stripeHeight) % 2 === 0 ? '#2a805f' : '#257456';
-      ctx.fillRect(0, y, canvas.width, stripeHeight);
+    // Render the whole pitch into one texture instead of repeating a small
+    // swatch. This lets us bake in Rocket-League-like mowing blocks, subtle
+    // team colour at each end and a richer mid-green without extra draw calls.
+    ctx.fillStyle = '#225f38';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const rows = 12;
+    const cols = 6;
+    const rowH = canvas.height / rows;
+    const colW = canvas.width / cols;
+    const greens = ['#276a3d', '#2c7542', '#24673a', '#307947'];
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const paletteIndex = (row + col + (row % 3 === 0 ? 1 : 0)) % greens.length;
+        ctx.fillStyle = greens[paletteIndex];
+        ctx.globalAlpha = 0.62;
+        ctx.fillRect(col * colW, row * rowH, colW + 1, rowH + 1);
+      }
     }
+    ctx.globalAlpha = 1;
+
+    // Wide mowing bands keep the pitch readable at speed and create the large
+    // dark/light regions visible in the reference arena.
+    for (let row = 0; row < rows; row++) {
+      const band = ctx.createLinearGradient(0, row * rowH, canvas.width, row * rowH);
+      const light = row % 2 === 0;
+      band.addColorStop(0, light ? 'rgba(93,145,91,0.10)' : 'rgba(4,35,24,0.08)');
+      band.addColorStop(0.5, light ? 'rgba(150,184,113,0.08)' : 'rgba(3,29,20,0.10)');
+      band.addColorStop(1, light ? 'rgba(93,145,91,0.10)' : 'rgba(4,35,24,0.08)');
+      ctx.fillStyle = band;
+      ctx.fillRect(0, row * rowH, canvas.width, rowH);
+    }
+
+    // Team colour is strongest close to the goals and fades into the green.
+    // It is intentionally subtle so the field still reads as grass rather
+    // than a blue/orange carpet.
+    const blueZone = ctx.createLinearGradient(0, 0, 0, canvas.height * 0.34);
+    blueZone.addColorStop(0, 'rgba(20,103,232,0.25)');
+    blueZone.addColorStop(0.42, 'rgba(16,91,214,0.11)');
+    blueZone.addColorStop(1, 'rgba(16,91,214,0)');
+    ctx.fillStyle = blueZone;
+    ctx.fillRect(0, 0, canvas.width, canvas.height * 0.36);
+
+    const orangeZone = ctx.createLinearGradient(0, canvas.height, 0, canvas.height * 0.66);
+    orangeZone.addColorStop(0, 'rgba(255,102,24,0.24)');
+    orangeZone.addColorStop(0.42, 'rgba(231,83,15,0.10)');
+    orangeZone.addColorStop(1, 'rgba(231,83,15,0)');
+    ctx.fillStyle = orangeZone;
+    ctx.fillRect(0, canvas.height * 0.64, canvas.width, canvas.height * 0.36);
+
+    // A faint circular mow around midfield adds texture without competing with
+    // the actual white centre-circle mesh rendered above the turf.
+    ctx.save();
+    ctx.translate(canvas.width * 0.5, canvas.height * 0.5);
+    ctx.strokeStyle = 'rgba(151,187,116,0.065)';
+    ctx.lineWidth = canvas.width * 0.075;
+    ctx.beginPath();
+    ctx.arc(0, 0, canvas.width * 0.205, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
     let seed = 0x13579bdf;
     const random = () => {
       seed = (seed * 1664525 + 1013904223) >>> 0;
       return seed / 4294967296;
     };
-    const bladeCount = highDetail ? 14500 : 4200;
+    const bladeCount = highDetail ? 18500 : 5200;
     for (let i = 0; i < bladeCount; i++) {
       const x = random() * canvas.width;
       const y = random() * canvas.height;
-      const blade = 1 + random() * 3.2;
+      const blade = 1 + random() * (highDetail ? 4.2 : 3.2);
       const light = random();
-      ctx.strokeStyle = light > 0.72
-        ? `rgba(166,210,151,${0.07 + random() * 0.09})`
-        : `rgba(12,67,46,${0.055 + random() * 0.085})`;
-      ctx.lineWidth = random() > 0.9 ? 1.4 : 0.8;
+      ctx.strokeStyle = light > 0.74
+        ? `rgba(146,194,112,${0.08 + random() * 0.10})`
+        : `rgba(5,49,31,${0.07 + random() * 0.11})`;
+      ctx.lineWidth = random() > 0.91 ? 1.35 : 0.75;
       ctx.beginPath();
       ctx.moveTo(x, y);
-      ctx.lineTo(x + (random() - 0.5) * 1.4, y - blade);
+      ctx.lineTo(x + (random() - 0.5) * 1.6, y - blade);
       ctx.stroke();
     }
-    for (let i = 0; i < (highDetail ? 380 : 110); i++) {
+
+    // Sparse dark/warm wear variation keeps the surface from looking like a
+    // flat procedural checkerboard.
+    for (let i = 0; i < (highDetail ? 520 : 150); i++) {
       const x = random() * canvas.width;
       const y = random() * canvas.height;
-      const radius = 2 + random() * 8;
-      ctx.fillStyle = random() > 0.5 ? 'rgba(198,180,116,0.035)' : 'rgba(5,45,33,0.045)';
+      const radius = 2 + random() * 10;
+      ctx.fillStyle = random() > 0.62 ? 'rgba(178,150,76,0.027)' : 'rgba(4,34,23,0.050)';
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.fill();
@@ -171,10 +228,10 @@ export class Arena {
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
-    texture.wrapS = THREE.RepeatWrapping;
-    texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set(2.4, 4.8);
-    texture.anisotropy = Math.min(highDetail ? 12 : 6, this.maxAnisotropy);
+    texture.wrapS = THREE.ClampToEdgeWrapping;
+    texture.wrapT = THREE.ClampToEdgeWrapping;
+    texture.repeat.set(1, 1);
+    texture.anisotropy = Math.min(highDetail ? 16 : 8, this.maxAnisotropy);
     return texture;
   }
 
@@ -217,31 +274,35 @@ export class Arena {
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
-    ctx.fillStyle = '#25383c';
+    // Dark graphite panels give the glass cage a much stronger contrast than
+    // the old pale teal wall while still retaining visible surface detail.
+    ctx.fillStyle = '#111a21';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     const rows = highDetail ? 12 : 8;
     const cols = highDetail ? 8 : 6;
     const rowHeight = canvas.height / rows;
     const colWidth = canvas.width / cols;
+    const panelTones = ['#1b2931', '#202f37', '#18252d', '#23343b'];
 
-    // Baked edge darkening/highlights give the wall panels depth without a
-    // normal map or extra material pass.
     for (let row = 0; row < rows; row++) {
       const offset = row % 2 === 0 ? 0 : colWidth * 0.5;
       for (let column = -1; column <= cols; column++) {
         const x = column * colWidth + offset;
         const y = row * rowHeight;
+        ctx.fillStyle = panelTones[(row * 3 + column + 8) % panelTones.length];
+        ctx.fillRect(x + 2, y + 2, colWidth - 4, rowHeight - 4);
         const gradient = ctx.createLinearGradient(x, y, x, y + rowHeight);
-        gradient.addColorStop(0, 'rgba(102,126,127,0.16)');
-        gradient.addColorStop(0.13, 'rgba(64,87,89,0.05)');
-        gradient.addColorStop(1, 'rgba(4,15,18,0.18)');
+        gradient.addColorStop(0, 'rgba(126,151,160,0.13)');
+        gradient.addColorStop(0.14, 'rgba(70,93,102,0.045)');
+        gradient.addColorStop(0.70, 'rgba(11,23,29,0.04)');
+        gradient.addColorStop(1, 'rgba(0,4,8,0.28)');
         ctx.fillStyle = gradient;
         ctx.fillRect(x + 2, y + 2, colWidth - 4, rowHeight - 4);
       }
     }
 
     ctx.lineWidth = highDetail ? 3 : 2;
-    ctx.strokeStyle = 'rgba(6,15,18,0.72)';
+    ctx.strokeStyle = 'rgba(2,7,11,0.88)';
     for (let row = 0; row <= rows; row++) {
       const y = Math.round(row * rowHeight) + 0.5;
       ctx.beginPath();
@@ -265,10 +326,13 @@ export class Arena {
       seed = (seed * 1664525 + 1013904223) >>> 0;
       return seed / 4294967296;
     };
-    for (let i = 0; i < (highDetail ? 1500 : 420); i++) {
-      const shade = 75 + Math.floor(random() * 45);
-      ctx.fillStyle = `rgba(${shade},${shade + 8},${shade + 7},${0.025 + random() * 0.045})`;
-      const size = 0.5 + random() * (highDetail ? 2.2 : 1.5);
+    for (let i = 0; i < (highDetail ? 1900 : 520); i++) {
+      const cool = random() > 0.50;
+      const alpha = 0.025 + random() * 0.05;
+      ctx.fillStyle = cool
+        ? `rgba(79,123,143,${alpha})`
+        : `rgba(131,101,72,${alpha * 0.75})`;
+      const size = 0.5 + random() * (highDetail ? 2.3 : 1.5);
       ctx.fillRect(random() * canvas.width, random() * canvas.height, size, size);
     }
 
@@ -277,7 +341,7 @@ export class Arena {
     texture.wrapS = THREE.RepeatWrapping;
     texture.wrapT = THREE.RepeatWrapping;
     texture.repeat.set(1, 1);
-    texture.anisotropy = Math.min(highDetail ? 10 : 5, this.maxAnisotropy);
+    texture.anisotropy = Math.min(highDetail ? 12 : 6, this.maxAnisotropy);
     return texture;
   }
 
@@ -355,7 +419,7 @@ export class Arena {
       seed = (seed * 1664525 + 1013904223) >>> 0;
       return seed / 4294967296;
     };
-    const bladeColors = ['#4f9c67', '#3f8959', '#66aa76', '#347b50', '#78b47e'];
+    const bladeColors = ['#3d8a52', '#2f7845', '#58a663', '#286c3e', '#6aae70'];
     for (let index = 0; index < 52; index++) {
       const baseX = 10 + random() * 236;
       const baseY = 255;
@@ -453,10 +517,10 @@ export class Arena {
     const chunkWidth = halfW * 2 / chunksX;
     const chunkLength = halfL * 2 / chunksZ;
     const instancePalette = [
-      new THREE.Color(0xa9d2ae),
-      new THREE.Color(0x9bc7a2),
-      new THREE.Color(0xb7d9b8),
-      new THREE.Color(0x8fbc98)
+      new THREE.Color(0x4c9a5a),
+      new THREE.Color(0x3f874e),
+      new THREE.Color(0x5ca866),
+      new THREE.Color(0x357b47)
     ];
     const insideField = (x, z) => {
       const ax = Math.abs(x);
@@ -528,18 +592,18 @@ export class Arena {
     const turfTexture = this.lowDetail ? null : this.createTurfTexture(this.ultraHigh);
     const turfBump = this.ultraHigh ? this.createUltraTurfBumpTexture() : null;
     const turfMat = this.lowDetail
-      ? new THREE.MeshBasicMaterial({ color: 0x2b8767 })
+      ? new THREE.MeshBasicMaterial({ color: 0x2a7746 })
       : (this.ultraHigh
         ? new THREE.MeshStandardMaterial({
-            color: 0xc7dfcb,
+            color: 0xffffff,
             map: turfTexture,
             bumpMap: turfBump,
-            bumpScale: 0.048,
+            bumpScale: 0.038,
             roughness: 0.98,
             metalness: 0.0
           })
         : new THREE.MeshStandardMaterial({
-            color: 0xe7f3e8,
+            color: 0xf8fff9,
             map: turfTexture,
             roughness: 0.97,
             metalness: 0.0
@@ -553,7 +617,7 @@ export class Arena {
     this.group.add(turf);
     if (this.ultraHigh) this.createUltraGrass();
 
-    const lineMaterial = new THREE.MeshBasicMaterial({ color: 0xd7fbff, transparent: true, opacity: 0.72 });
+    const lineMaterial = new THREE.MeshBasicMaterial({ color: 0xf4fbff, transparent: true, opacity: 0.94, toneMapped: false });
     const centerLine = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_W - 2, 0.14), lineMaterial);
     centerLine.rotation.x = -Math.PI / 2;
     centerLine.position.y = 0.012;
@@ -571,27 +635,27 @@ export class Arena {
 
     const glassMaterial = this.lowDetail
       ? new THREE.MeshBasicMaterial({
-          color: 0x91d9e9,
+          color: 0x98c3d2,
           transparent: true,
-          opacity: 0.085,
+          opacity: 0.070,
           depthWrite: false,
           side: THREE.DoubleSide
         })
       : new THREE.MeshStandardMaterial({
-          color: this.ultraHigh ? 0xaedbe4 : 0xa4dce8,
+          color: this.ultraHigh ? 0x9fbecb : 0xa8d0dc,
           transparent: true,
-          opacity: this.ultraHigh ? 0.095 : 0.115,
-          roughness: this.ultraHigh ? 0.48 : 0.40,
+          opacity: this.ultraHigh ? 0.075 : 0.095,
+          roughness: this.ultraHigh ? 0.56 : 0.48,
           metalness: this.ultraHigh ? 0.015 : 0.0,
           depthWrite: false,
           side: THREE.DoubleSide
         });
     const frameMaterial = this.lowDetail
-      ? new THREE.MeshBasicMaterial({ color: 0x294650 })
+      ? new THREE.MeshBasicMaterial({ color: 0x111b24 })
       : new THREE.MeshStandardMaterial({
-          color: this.ultraHigh ? 0x293a43 : 0x304650,
-          emissive: this.ultraHigh ? 0x082c36 : 0x0d4150,
-          emissiveIntensity: this.ultraHigh ? 0.30 : 0.48,
+          color: this.ultraHigh ? 0x141d26 : 0x1b2832,
+          emissive: this.ultraHigh ? 0x071923 : 0x0a2836,
+          emissiveIntensity: this.ultraHigh ? 0.18 : 0.32,
           roughness: this.ultraHigh ? 0.67 : 0.58,
           metalness: this.ultraHigh ? 0.46 : 0.42
         });
@@ -910,7 +974,7 @@ export class Arena {
     const material = this.lowDetail
       ? new THREE.MeshBasicMaterial({ color: 0x253f43, side: THREE.DoubleSide })
       : new THREE.MeshStandardMaterial({
-          color: this.ultraHigh ? 0xc8d2ce : 0xbdcbc7,
+          color: this.ultraHigh ? 0xffffff : 0xf6fbfa,
           map: wallTexture,
           bumpMap: wallBump,
           bumpScale: this.ultraHigh ? 0.075 : 0,
@@ -984,9 +1048,9 @@ export class Arena {
     this.group.add(frames);
 
     const accentMaterial = new THREE.MeshStandardMaterial({
-      color: 0x4fb3c9,
-      emissive: 0x124e60,
-      emissiveIntensity: this.ultraHigh ? 0.42 : 0.70,
+      color: 0x37b6e6,
+      emissive: 0x0d5678,
+      emissiveIntensity: this.ultraHigh ? 0.56 : 0.82,
       roughness: 0.64,
       metalness: 0.24
     });
@@ -1006,6 +1070,41 @@ export class Arena {
     }
     accents.instanceMatrix.needsUpdate = true;
     this.group.add(accents);
+  }
+
+  createTeamSideRibbons() {
+    if (this.lowDetail) return;
+    const halfWidth = FIELD_W * 0.5;
+    const straightZ = FIELD_L * 0.5 - CORNER_R;
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const material = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
+    const ribbons = new THREE.InstancedMesh(geometry, material, 8);
+    ribbons.name = 'arena-team-side-ribbons';
+    ribbons.userData.shadowRole = 'arena-frame';
+    const orange = new THREE.Color(0xff6a00);
+    const blue = new THREE.Color(0x087dff);
+    const dummy = new THREE.Object3D();
+    let index = 0;
+    const ribbonHeights = [GLASS_START_Y + 0.24, WALL_H - CEILING_R - 0.24];
+    for (const signX of [-1, 1]) {
+      for (const signZ of [-1, 1]) {
+        for (const ribbonY of ribbonHeights) {
+          dummy.position.set(
+            signX * (halfWidth - 0.032),
+            ribbonY,
+            signZ * straightZ * 0.5
+          );
+          dummy.scale.set(0.075, 0.075, straightZ * 0.98);
+          dummy.updateMatrix();
+          ribbons.setMatrixAt(index, dummy.matrix);
+          ribbons.setColorAt(index, signZ > 0 ? orange : blue);
+          index += 1;
+        }
+      }
+    }
+    ribbons.instanceMatrix.needsUpdate = true;
+    if (ribbons.instanceColor) ribbons.instanceColor.needsUpdate = true;
+    this.group.add(ribbons);
   }
 
   createGlassEnclosure(glassMaterial, frameMaterial) {
@@ -1054,6 +1153,7 @@ export class Arena {
     this.group.add(rails);
 
     this.createWallFrameGrid(panels, frameMaterial);
+    this.createTeamSideRibbons();
 
     const straightX = FIELD_W * 0.5 - CORNER_R;
     const straightZ = FIELD_L * 0.5 - CORNER_R;
@@ -1402,8 +1502,8 @@ export class Arena {
     const signZ = sign >= 0 ? 1 : -1;
     const zThroat = signZ * (FIELD_L * 0.5 + GOAL_MOUTH_R);
     const isOrange = signZ > 0;
-    const color = isOrange ? 0xff7a18 : 0x238cff;
-    const darkColor = isOrange ? 0x352b25 : 0x26323d;
+    const color = isOrange ? 0xff6800 : 0x087dff;
+    const darkColor = isOrange ? 0x2f2119 : 0x152536;
     const teamName = isOrange ? 'ORANGE' : 'BLAU';
     const wallTexture = this.lowDetail
       ? null
@@ -1414,12 +1514,12 @@ export class Arena {
     const wallMaterial = this.lowDetail
       ? new THREE.MeshBasicMaterial({ color: darkColor, side: THREE.DoubleSide })
       : new THREE.MeshStandardMaterial({
-          color: this.ultraHigh ? 0xcbd3cf : 0xbfcac6,
+          color: this.ultraHigh ? 0xffffff : 0xf5faf9,
           map: wallTexture,
           bumpMap: wallBump,
           bumpScale: this.ultraHigh ? 0.075 : 0,
           emissive: color,
-          emissiveIntensity: this.ultraHigh ? 0.025 : 0.045,
+          emissiveIntensity: this.ultraHigh ? 0.040 : 0.060,
           roughness: 0.98,
           metalness: 0.01,
           side: THREE.DoubleSide
@@ -1458,12 +1558,12 @@ export class Arena {
     const goalFloorMat = this.lowDetail
       ? new THREE.MeshBasicMaterial({ color: darkColor, side: THREE.DoubleSide })
       : new THREE.MeshStandardMaterial({
-          color: isOrange ? 0x99a59c : 0x929fa7,
+          color: isOrange ? 0x85796d : 0x687888,
           map: floorTexture,
           bumpMap: floorBump,
           bumpScale: this.ultraHigh ? 0.052 : 0,
           emissive: color,
-          emissiveIntensity: this.ultraHigh ? 0.018 : 0.032,
+          emissiveIntensity: this.ultraHigh ? 0.030 : 0.045,
           roughness: 0.99,
           metalness: 0.0,
           side: THREE.DoubleSide
@@ -1475,7 +1575,7 @@ export class Arena {
       labelCanvas.width = 512;
       labelCanvas.height = 128;
       const context = labelCanvas.getContext('2d');
-      context.fillStyle = isOrange ? '#ff9a43' : '#62aaff';
+      context.fillStyle = isOrange ? '#ff7b21' : '#3d9cff';
       context.font = '900 76px Arial';
       context.textAlign = 'center';
       context.textBaseline = 'middle';
@@ -1770,8 +1870,8 @@ export class Arena {
     const count = this.lowDetail ? 14 : (this.ultraHigh ? 54 : 28);
     const trunkGeometry = new THREE.CylinderGeometry(0.28, 0.38, 3.0, 5);
     const crownGeometry = new THREE.ConeGeometry(2.2, 5.4, 6);
-    const trunkMaterial = new THREE.MeshBasicMaterial({ color: 0x6f5439 });
-    const crownMaterial = new THREE.MeshBasicMaterial({ color: 0x3e7851 });
+    const trunkMaterial = new THREE.MeshBasicMaterial({ color: 0x5f432e });
+    const crownMaterial = new THREE.MeshBasicMaterial({ color: 0x2f6f40 });
     const trunks = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, count);
     const crowns = new THREE.InstancedMesh(crownGeometry, crownMaterial, count);
     const dummy = new THREE.Object3D();
@@ -1805,8 +1905,8 @@ export class Arena {
     const buildings = new THREE.InstancedMesh(geometry, material, count);
     const dummy = new THREE.Object3D();
     const colors = [
-      new THREE.Color(0x8ba1ac), new THREE.Color(0x718c9b), new THREE.Color(0xa0adb0),
-      new THREE.Color(0x6f8790)
+      new THREE.Color(0x657986), new THREE.Color(0x506775), new THREE.Color(0x7a8790),
+      new THREE.Color(0x485f6b)
     ];
     for (let index = 0; index < count; index++) {
       const angle = (index / count) * Math.PI * 2 + 0.05;
@@ -1830,7 +1930,7 @@ export class Arena {
   createUltraHighStadiumDetails() {
     const box = new THREE.BoxGeometry(1, 1, 1);
     const steel = new THREE.MeshStandardMaterial({
-      color: 0x354850,
+      color: 0x202d36,
       roughness: 0.76,
       metalness: 0.38
     });
@@ -1852,9 +1952,9 @@ export class Arena {
     this.group.add(beams);
 
     const lampMaterial = new THREE.MeshStandardMaterial({
-      color: 0xe7f5ff,
-      emissive: 0xcfeeff,
-      emissiveIntensity: 1.75,
+      color: 0xf1f7ff,
+      emissive: 0xb7dcff,
+      emissiveIntensity: 1.45,
       roughness: 0.48,
       metalness: 0.14,
       toneMapped: false
@@ -1893,15 +1993,15 @@ export class Arena {
 
   createLights() {
     const hemi = new THREE.HemisphereLight(
-      this.ultraHigh ? 0xcbdfe6 : 0xd6efff,
-      this.ultraHigh ? 0x526152 : 0x5e765c,
-      this.lowDetail ? 1.85 : (this.ultraHigh ? 0.98 : 2.15)
+      this.ultraHigh ? 0x9fc8dd : 0xb9dded,
+      this.ultraHigh ? 0x243e2d : 0x33553b,
+      this.lowDetail ? 1.70 : (this.ultraHigh ? 0.88 : 1.72)
     );
     this.scene.add(hemi);
 
     const sun = new THREE.DirectionalLight(
-      this.ultraHigh ? 0xffefd2 : 0xfff2d0,
-      this.lowDetail ? 1.65 : (this.ultraHigh ? 1.36 : 2.35)
+      this.ultraHigh ? 0xffdfb4 : 0xffe6bd,
+      this.lowDetail ? 1.55 : (this.ultraHigh ? 1.48 : 2.02)
     );
     if (this.ultraHigh) sun.position.set(-42, 76, -36);
     else sun.position.set(-34, 62, -28);
