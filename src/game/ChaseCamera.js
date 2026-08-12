@@ -29,6 +29,8 @@ export class ChaseCamera {
     this.ball = ball;
     this.scene = scene;
     this.mode = MODE_BALL;
+    this.replaySavedCar = null;
+    this.replaySavedMode = null;
 
     this.position = new THREE.Vector3(0, 4.4, 8.8);
     this.desired = new THREE.Vector3();
@@ -59,6 +61,42 @@ export class ChaseCamera {
 
   getMode() {
     return this.mode;
+  }
+
+  beginReplay(car) {
+    if (!car || car === this.car && this.replaySavedCar) return;
+    if (!this.replaySavedCar) {
+      this.replaySavedCar = this.car;
+      this.replaySavedMode = this.mode;
+    }
+    this.car = car;
+    this.mode = MODE_BALL;
+    this.resetTargetTracking();
+  }
+
+  endReplay() {
+    if (!this.replaySavedCar) return;
+    this.car = this.replaySavedCar;
+    this.mode = this.replaySavedMode || MODE_BALL;
+    this.replaySavedCar = null;
+    this.replaySavedMode = null;
+    this.resetTargetTracking();
+  }
+
+  resetTargetTracking() {
+    const p = this.car?.body?.translation?.();
+    const r = this.car?.body?.rotation?.();
+    if (p) this.carPosition.set(p.x, p.y, p.z);
+    if (r) {
+      this.q.set(r.x, r.y, r.z, r.w).normalize();
+      this.carForward.set(0, 0, -1).applyQuaternion(this.q).normalize();
+    }
+    this.carHeadingDirection.set(this.carForward.x, 0, this.carForward.z);
+    if (this.carHeadingDirection.lengthSq() < 0.0001) this.carHeadingDirection.set(0, 0, -1);
+    this.carHeadingDirection.normalize();
+    this.orbitDirection.copy(this.carHeadingDirection);
+    this.targetOrbitDirection.copy(this.carHeadingDirection);
+    this.occlusionCandidates = null;
   }
 
   update(dt) {

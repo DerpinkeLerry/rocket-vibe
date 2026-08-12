@@ -47,6 +47,8 @@ export class LanClient {
     this.carStyle = normalizeCarStyle(carStyle);
     this.team = 'orange';
     this.maxPlayers = 4;
+    this.serverHz = 60;
+    this.snapshotHz = 20;
     this.connectedPlayers = [];
     this.players = [];
     this.connected = false;
@@ -71,6 +73,8 @@ export class LanClient {
     this.onLatency = null;
     this.onKickoff = null;
     this.kickoff = null;
+    this.onReplay = null;
+    this.replay = null;
   }
 
   async connect() {
@@ -116,6 +120,8 @@ export class LanClient {
           this.carStyle = normalizeCarStyle(message.carStyle || this.carStyle);
           this.team = message.team === 'blue' ? 'blue' : 'orange';
           this.maxPlayers = Number(message.maxPlayers) || 4;
+          this.serverHz = Math.max(1, Number(message.serverHz) || 60);
+          this.snapshotHz = Math.max(1, Number(message.snapshotHz) || 20);
           this.connectedPlayers = Array.isArray(message.connectedPlayers) ? message.connectedPlayers : [this.playerId];
           this.players = normalizePlayers(message.players, this.connectedPlayers);
           this.connected = true;
@@ -131,6 +137,11 @@ export class LanClient {
 
         if (message.type === 'kickoff') {
           this.applyKickoffMessage(message);
+          return;
+        }
+
+        if (message.type === 'replay') {
+          this.applyReplayMessage(message);
           return;
         }
 
@@ -199,8 +210,36 @@ export class LanClient {
     const count = phase === 'countdown'
       ? Math.max(1, Math.min(3, Math.round(Number(message?.count) || 1)))
       : 0;
-    this.kickoff = { phase, count };
+    this.kickoff = { phase, count, resetScore: Boolean(message?.resetScore) };
     this.onKickoff?.(this.kickoff);
+  }
+
+  applyReplayMessage(message) {
+    const phase = ['start', 'progress', 'end', 'wait'].includes(message?.phase) ? message.phase : 'progress';
+    if (phase === 'start' || phase === 'wait') {
+      this.replay = {
+        phase,
+        scorerId: Number.isInteger(Number(message?.scorerId)) ? Number(message.scorerId) : -1,
+        scorerName: String(message?.scorerName || 'Unbekannt').slice(0, 16),
+        goalTick: Math.max(0, Number(message?.goalTick) || 0),
+        lookbackSeconds: Math.max(1, Number(message?.lookbackSeconds) || 5),
+        durationMs: Math.max(500, Number(message?.durationMs ?? message?.remainingMs) || 5500),
+        skipped: Math.max(0, Number(message?.skipped) || 0),
+        required: Math.max(0, Number(message?.required) || 0),
+        orangeScore: Math.max(0, Number(message?.orangeScore) || 0),
+        blueScore: Math.max(0, Number(message?.blueScore) || 0)
+      };
+    } else if (phase === 'progress') {
+      this.replay = {
+        ...(this.replay || {}),
+        phase,
+        skipped: Math.max(0, Number(message?.skipped) || 0),
+        required: Math.max(0, Number(message?.required) || 0)
+      };
+    } else {
+      this.replay = { ...(this.replay || {}), phase: 'end', reason: String(message?.reason || 'complete') };
+    }
+    this.onReplay?.(this.replay);
   }
 
   readBinaryMessage(buffer) {
@@ -255,6 +294,12 @@ export class LanClient {
 
   emitStatus(text) {
     this.onStatus?.(text);
+  }
+
+  sendReplaySkip() {
+    if (!this.connected || this.socket?.readyState !== WebSocket.OPEN) return false;
+    this.socket.send(JSON.stringify({ type: 'replay-skip' }));
+    return true;
   }
 
   sendInput(input) {

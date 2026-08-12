@@ -949,3 +949,44 @@ func TestDriftTurnsFasterAndPreservesLateralSlip(t *testing.T) {
 		t.Fatalf("drift did not preserve enough lateral slide: normal=%f drift=%f", normalSlip, driftSlip)
 	}
 }
+
+func TestGoalReplayTracksLastBallTouchAsScorer(t *testing.T) {
+	config := DefaultConfig()
+	world := NewWorld(config)
+	world.SetConnected(0, true)
+	world.SetConnected(1, true)
+	world.Tick = 123
+	world.LastBallTouchSlot = 1
+	world.LastBallTouchTick = 120
+	world.Ball.Position = Vec3{Y: config.Ball.Radius, Z: config.Arena.Length*0.5 + config.Ball.Radius}
+
+	if !world.detectGoal() {
+		t.Fatal("expected a goal")
+	}
+	if world.LastGoalScorer != 1 {
+		t.Fatalf("replay scorer=%d, want last toucher slot 1", world.LastGoalScorer)
+	}
+	if world.LastGoalTick != 123 || world.GoalSequence != 1 {
+		t.Fatalf("goal replay metadata not recorded: tick=%d sequence=%d", world.LastGoalTick, world.GoalSequence)
+	}
+}
+
+func TestKickoffResetAfterReplayPreservesScore(t *testing.T) {
+	world := NewWorld(DefaultConfig())
+	world.SetConnected(0, true)
+	world.OrangeScore = 3
+	world.BlueScore = 2
+	world.Cars[0].Position = Vec3{X: 20, Y: 8, Z: 0}
+	world.Ball.Position = Vec3{X: 10, Y: 7, Z: 4}
+
+	world.ResetKickoff()
+	if world.OrangeScore != 3 || world.BlueScore != 2 {
+		t.Fatalf("kickoff reset changed score: orange=%d blue=%d", world.OrangeScore, world.BlueScore)
+	}
+	if world.Cars[0].Position != playerSpawns[0].Position {
+		t.Fatalf("car was not reset to kickoff spawn: %+v", world.Cars[0].Position)
+	}
+	if world.Ball.Position != (Vec3{Y: world.Config.Ball.SpawnY}) {
+		t.Fatalf("ball was not reset for kickoff: %+v", world.Ball.Position)
+	}
+}

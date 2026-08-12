@@ -1082,3 +1082,87 @@ html, body, #app {
     font-size: 10px;
   }
 }
+
+/* Goal replay overlay. The HUD itself ignores pointer events, but the skip
+   control must remain clickable/touchable on desktop and mobile. */
+.hud__replay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(3, 8, 16, 0.54) 0 9%, transparent 23% 76%, rgba(3, 8, 16, 0.62) 92% 100%);
+}
+.hud__replay[hidden] { display: none; }
+.hud__replay-top {
+  position: absolute;
+  left: 50%;
+  top: max(76px, env(safe-area-inset-top));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(4, 11, 22, 0.78);
+  border: 1px solid rgba(255,255,255,0.16);
+  backdrop-filter: blur(8px);
+  white-space: nowrap;
+}
+.hud__replay-top span {
+  color: #ffc17c;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.18em;
+}
+.hud__replay-top strong {
+  font-size: 13px;
+  letter-spacing: 0.06em;
+}
+.hud__replay-bottom {
+  position: absolute;
+  left: 50%;
+  bottom: max(26px, calc(env(safe-area-inset-bottom) + 12px));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transform: translateX(-50%);
+}
+.hud__replay-bottom button {
+  pointer-events: auto;
+  touch-action: manipulation;
+  min-width: 190px;
+  padding: 11px 16px;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 12px;
+  color: #fff;
+  background: rgba(5, 12, 24, 0.88);
+  font: 900 11px/1 inherit;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+.hud__replay-bottom button:disabled { opacity: 0.62; cursor: default; }
+.hud__replay-bottom span {
+  min-width: 86px;
+  color: rgba(255,255,255,0.72);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+@media (max-width: 700px), (pointer: coarse) {
+  .hud__replay-top { top: max(58px, calc(env(safe-area-inset-top) + 10px)); }
+  .hud__replay-top span { font-size: 9px; }
+  .hud__replay-top strong { font-size: 11px; }
+  .hud__replay-bottom {
+    bottom: max(18px, calc(env(safe-area-inset-bottom) + 8px));
+    gap: 8px;
+  }
+  .hud__replay-bottom button {
+    min-width: 168px;
+    min-height: 44px;
+    padding: 12px 14px;
+  }
+  .hud__replay-bottom span { font-size: 10px; }
+}
+.replay-active .mobile-controls { opacity: 0.18; pointer-events: none; }
+.replay-active .hud__controls { opacity: 0.22; }
+.replay-active .hud { z-index: 40; }

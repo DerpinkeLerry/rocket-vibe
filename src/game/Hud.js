@@ -12,7 +12,7 @@ export class Hud {
     this.el = document.createElement('div');
     this.el.className = 'hud';
     this.el.innerHTML = `
-      <div class="hud__title">ROCKET VIBE // ONLINE 1.10.6 <span class="hud__perf" data-perf>${profile}</span></div>
+      <div class="hud__title">ROCKET VIBE // ONLINE 1.10.7 <span class="hud__perf" data-perf>${profile}</span></div>
       <div class="hud__scoreboard" aria-label="Spielstand Orange gegen Blau">
         <div class="hud__score-team hud__score-team--orange"><span>ORANGE</span><strong data-orange-score>0</strong></div>
         <div class="hud__score-separator">:</div>
@@ -21,6 +21,16 @@ export class Hud {
       <div class="hud__kickoff" data-kickoff hidden aria-live="polite" aria-atomic="true">
         <strong data-kickoff-value>3</strong>
         <span data-kickoff-caption>KICKOFF</span>
+      </div>
+      <div class="hud__replay" data-replay hidden aria-live="polite">
+        <div class="hud__replay-top">
+          <span>WIEDERHOLUNG</span>
+          <strong data-replay-scorer>TOR</strong>
+        </div>
+        <div class="hud__replay-bottom">
+          <button type="button" data-replay-skip>REPLAY ÜBERSPRINGEN</button>
+          <span data-replay-votes>0/0 bereit</span>
+        </div>
       </div>
       <div class="hud__network">
         <strong class="hud__identity hud__identity--${team}" data-identity></strong>
@@ -70,6 +80,19 @@ export class Hud {
     this.kickoffValue = this.el.querySelector('[data-kickoff-value]');
     this.kickoffCaption = this.el.querySelector('[data-kickoff-caption]');
     this.kickoffHideTimer = null;
+    this.replay = this.el.querySelector('[data-replay]');
+    this.replayScorer = this.el.querySelector('[data-replay-scorer]');
+    this.replaySkip = this.el.querySelector('[data-replay-skip]');
+    this.replayVotes = this.el.querySelector('[data-replay-votes]');
+    this.replaySkipHandler = null;
+    this.replaySkipRequested = false;
+    this.replaySkip?.addEventListener('click', () => {
+      if (this.replaySkipRequested || !this.replaySkipHandler) return;
+      this.replaySkipRequested = true;
+      this.replaySkip.disabled = true;
+      this.replaySkip.textContent = 'SKIP ✓';
+      this.replaySkipHandler();
+    });
   }
 
   setNetworkStatus(text) {
@@ -133,6 +156,44 @@ export class Hud {
 
     this.kickoff.hidden = true;
     this.kickoff.classList.remove('hud__kickoff--go');
+  }
+
+
+  setReplaySkipHandler(handler) {
+    this.replaySkipHandler = typeof handler === 'function' ? handler : null;
+  }
+
+  setReplay(replay) {
+    if (!this.replay) return;
+    const phase = replay?.phase;
+    if (!replay || phase === 'end' || phase === 'hidden') {
+      this.replay.hidden = true;
+      this.replaySkipRequested = false;
+      if (this.replaySkip) {
+        this.replaySkip.disabled = false;
+        this.replaySkip.textContent = 'REPLAY ÜBERSPRINGEN';
+      }
+      return;
+    }
+
+    this.replay.hidden = false;
+    const scorerName = String(replay.scorerName || 'Unbekannt').slice(0, 16);
+    if (this.replayScorer) this.replayScorer.textContent = `TOR VON ${scorerName.toUpperCase()}`;
+    const skipped = Math.max(0, Number(replay.skipped) || 0);
+    const required = Math.max(0, Number(replay.required) || 0);
+    if (this.replayVotes) {
+      this.replayVotes.textContent = phase === 'wait'
+        ? 'Replay läuft · Einstieg nach Kickoff'
+        : `${skipped}/${required} Skip${required === 1 ? '' : 's'}`;
+    }
+    if (this.replaySkip) {
+      const canSkip = phase !== 'wait';
+      this.replaySkip.hidden = !canSkip;
+      if (!this.replaySkipRequested) {
+        this.replaySkip.disabled = !canSkip;
+        this.replaySkip.textContent = 'REPLAY ÜBERSPRINGEN';
+      }
+    }
   }
 
   pulseKickoff() {

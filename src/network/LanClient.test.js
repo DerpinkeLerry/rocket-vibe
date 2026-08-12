@@ -71,17 +71,43 @@ test('kickoff control messages persist and notify the game layer', () => {
   client.applyKickoffMessage({ type: 'kickoff', phase: 'go', count: 0 });
 
   assert.deepEqual(received, [
-    { phase: 'countdown', count: 3 },
-    { phase: 'countdown', count: 2 },
-    { phase: 'go', count: 0 }
+    { phase: 'countdown', count: 3, resetScore: false },
+    { phase: 'countdown', count: 2, resetScore: false },
+    { phase: 'go', count: 0, resetScore: false }
   ]);
-  assert.deepEqual(client.kickoff, { phase: 'go', count: 0 });
+  assert.deepEqual(client.kickoff, { phase: 'go', count: 0, resetScore: false });
 });
 
 test('kickoff countdown values are clamped to the three-second format', () => {
   const client = new LanClient('Clamp Pilot');
   client.applyKickoffMessage({ type: 'kickoff', phase: 'countdown', count: 99 });
-  assert.deepEqual(client.kickoff, { phase: 'countdown', count: 3 });
+  assert.deepEqual(client.kickoff, { phase: 'countdown', count: 3, resetScore: false });
   client.applyKickoffMessage({ type: 'kickoff', phase: 'countdown', count: -4 });
-  assert.deepEqual(client.kickoff, { phase: 'countdown', count: 1 });
+  assert.deepEqual(client.kickoff, { phase: 'countdown', count: 1, resetScore: false });
+});
+
+
+test('kickoff control message carries whether the score must reset', () => {
+  const client = new LanClient('Score Pilot');
+  client.applyKickoffMessage({ type: 'kickoff', phase: 'countdown', count: 3, resetScore: true });
+  assert.deepEqual(client.kickoff, { phase: 'countdown', count: 3, resetScore: true });
+});
+
+test('replay messages keep scorer metadata and unanimous skip progress', () => {
+  const client = new LanClient('Replay Pilot');
+  const received = [];
+  client.onReplay = (replay) => received.push({ ...replay });
+  client.applyReplayMessage({
+    type: 'replay', phase: 'start', scorerId: 1, scorerName: 'GoalGuy', goalTick: 420,
+    lookbackSeconds: 5, durationMs: 5500, skipped: 0, required: 2, orangeScore: 1, blueScore: 2
+  });
+  client.applyReplayMessage({ type: 'replay', phase: 'progress', skipped: 1, required: 2 });
+  client.applyReplayMessage({ type: 'replay', phase: 'end', reason: 'all-skipped' });
+
+  assert.equal(received[0].scorerId, 1);
+  assert.equal(received[0].goalTick, 420);
+  assert.equal(received[1].skipped, 1);
+  assert.equal(received[1].required, 2);
+  assert.equal(received[2].phase, 'end');
+  assert.equal(received[2].reason, 'all-skipped');
 });

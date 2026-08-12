@@ -1,4 +1,4 @@
-# Rocket Vibe 1.10.6 – Go Multiplayer / Railway
+# Rocket Vibe 1.10.7 – Go Multiplayer / Railway
 
 Browser-Spiel fuer bis zu vier Spieler mit Three.js-Rendering, lokaler Client-Prediction und einem autoritativen Go-Server. Frontend und Server werden auf Railway als **ein Service** betrieben. Dadurch verwendet der Browser dieselbe HTTPS-Domain fuer Seite und WebSocket (`/lan`); eine separate Backend-URL oder CORS-Konfiguration ist nicht erforderlich.
 
@@ -213,3 +213,12 @@ Die Tests decken Fahrbewegung, 70/100-km/h-Speed-Caps und erhaltenes Boost-Momen
 - Auf `LOS!` wird die Physik gleichzeitig fuer alle freigegeben.
 - Gehaltenes Gas/Boost darf waehrend des Countdowns vorbereitet werden; Jump-/Reset-Klicks werden nicht gepuffert.
 - Spieler 3 startet keinen Reset und kann direkt in das laufende Match einsteigen.
+
+
+## Goal Replay + Unanimous Skip v1.10.7
+
+Nach jedem Tor startet serverweit eine Wiederholung aus der Ball-Cam-Perspektive des letzten Spielers, der den Ball vor dem Tor berührt hat. Jeder Client hält dafür nur einen kleinen Ringpuffer der letzten fünf Sekunden autoritativer Netzwerk-Snapshots; es wird kein Video übertragen. Die Replay-Frames werden clientseitig interpoliert und mit der normalen 3D-Szene gerendert.
+
+Während der Wiederholung steht das Live-Match serverseitig still. Jeder Spieler, der beim Tor bereits in der Lobby war, bekommt einen `REPLAY ÜBERSPRINGEN`-Button. Der Server zählt jeden Skip genau einmal und beendet die Wiederholung sofort, sobald alle Replay-Teilnehmer geskippt haben. Verlässt jemand die Lobby, wird die notwendige Stimmenzahl entsprechend reduziert. Spieler, die erst während eines laufenden Replays beitreten, warten auf den nächsten Kickoff und blockieren die Abstimmung nicht.
+
+Nach Replay-Ende werden Ball, Autos und Boost-Pads auf Kickoff zurückgesetzt, der aktuelle Spielstand bleibt bestehen und der bekannte 3-Sekunden-Countdown startet. Falls während des Replays durch einen Join gerade ein neues faires 1v1/2v2 entstanden ist, greift weiterhin die bestehende Regel und der Match-Spielstand wird für dieses neue Duell zurückgesetzt.

@@ -10,6 +10,7 @@ import { Hud } from './Hud.js';
 import { getPerformanceProfile, togglePerformanceProfile } from './PerformanceProfile.js';
 import { VirtualInput } from '../network/VirtualInput.js';
 import { LocalCarPredictor } from '../network/LocalCarPredictor.js';
+import { ReplayBuffer, sampleReplayFrames } from './ReplayBuffer.js';
 import { ARENA_TUNING } from '../shared/arena-tuning.js';
 import { DEFAULT_CAR_STYLE, normalizeCarStyle } from '../shared/car-styles.js';
 
@@ -49,6 +50,13 @@ export class Game {
     this.orangeScore = 0;
     this.blueScore = 0;
     this.kickoffActive = false;
+    this.replayActive = false;
+    this.replayWaiting = false;
+    this.replayFrames = [];
+    this.replayStartedAt = 0;
+    this.replayPlaybackSeconds = 5;
+    this.replayState = null;
+    this.replayBuffer = new ReplayBuffer(network?.serverHz ?? 60, 8);
 
     this.perfElapsed = 0;
     this.perfFrames = 0;
@@ -174,17 +182,21 @@ export class Game {
     });
     this.mobileControls = new MobileControls(this.root, this.input);
     this.mobileControls.setCameraMode?.(this.chaseCamera.getMode());
+    this.hud.setReplaySkipHandler(() => this.network?.sendReplaySkip?.());
 
     if (this.network) {
       this.network.onStatus = (text) => this.hud.setNetworkStatus(text);
       this.network.onState = (state) => {
+        this.replayBuffer.push(state);
         this.latestNetworkState = state;
         this.latestNetworkStateReceivedAt = performance.now() / 1000;
       };
       this.network.onRoster = (players, maxPlayers) => this.setRoster(players, maxPlayers);
       this.network.onLatency = (rttMs) => this.hud.setPing(rttMs);
       this.network.onKickoff = (kickoff) => this.handleKickoff(kickoff);
+      this.network.onReplay = (replay) => this.handleReplay(replay);
       if (this.network.kickoff) this.handleKickoff(this.network.kickoff);
+      if (this.network.replay && this.network.replay.phase !== 'end') this.handleReplay(this.network.replay);
 
       // Key transitions bypass requestAnimationFrame and go to Railway immediately.
       this.input.setNetworkChangeHandler(() => this.sendNetworkInput());
@@ -484,8 +496,12 @@ export class Game {
         this.sendNetworkInput();
       }
 
-      this.applyNetworkState(frameDt, now);
-      if (!this.kickoffActive) this.localPredictor?.step(frameDt);
+      if (this.replayActive) {
+        this.updateReplay(now);
+      } else {
+        this.applyNetworkState(frameDt, now);
+        if (!this.kickoffActive) this.localPredictor?.step(frameDt);
+      }
     } else {
       this.accumulator += frameDt;
       let steps = 0;
@@ -503,7 +519,7 @@ export class Game {
 
       for (const car of this.cars) if (car.group.visible) car.syncVisual();
       this.ball.syncVisual();
-      if (this.input.consumePressed('KeyC')) {
+      if (!this.replayActive && this.input.consumePressed('KeyC')) {
         const cameraMode = this.chaseCamera.toggleMode();
         this.hud.setCameraMode(cameraMode);
         this.mobileControls.setCameraMode?.(cameraMode);
@@ -515,7 +531,7 @@ export class Game {
       this.hudAccumulator += renderDt;
       if (this.hudAccumulator >= 1 / this.profile.hudHz) {
         this.hudAccumulator = 0;
-        this.hud.update(this.car);
+        this.hud.update(this.replayActive ? this.chaseCamera.car : this.car);
       }
 
       this.chaseCamera.prepareRender();
@@ -578,7 +594,7 @@ export class Game {
     // Keep held controls warm during kickoff so W/Boost can launch on LOS, but
     // never buffer a jump/reset edge inside local prediction. The server applies
     // the same rule, so prediction and authority unlock from the same state.
-    const predictorPacket = this.kickoffActive ? { ...packet, edges: 0 } : packet;
+    const predictorPacket = (this.kickoffActive || this.replayActive) ? { ...packet, edges: 0 } : packet;
     this.localPredictor?.setInput(predictorPacket);
     this.network.sendInput(packet);
   }
@@ -589,7 +605,7 @@ export class Game {
       const count = Math.max(1, Math.min(3, Math.round(Number(kickoff.count) || 1)));
       const startingFreshCountdown = count === 3 || !this.kickoffActive;
       this.kickoffActive = true;
-      if (startingFreshCountdown) this.resetForNetworkKickoff();
+      if (startingFreshCountdown) this.resetForNetworkKickoff(Boolean(kickoff.resetScore));
       this.hud.setKickoff('countdown', count);
       return;
     }
@@ -600,7 +616,88 @@ export class Game {
     }
   }
 
-  resetForNetworkKickoff() {
+  handleReplay(replay) {
+    if (!this.networked || !replay) return;
+    if (replay.phase === 'progress') {
+      this.replayState = { ...(this.replayState || {}), ...replay };
+      this.hud.setReplay(this.replayState);
+      return;
+    }
+    if (replay.phase === 'end') {
+      this.endReplay();
+      return;
+    }
+    if (replay.phase !== 'start' && replay.phase !== 'wait') return;
+
+    this.replayActive = true;
+    this.replayWaiting = replay.phase === 'wait';
+    this.kickoffActive = false;
+    this.replayState = { ...replay };
+    this.replayFrames = this.replayWaiting
+      ? []
+      : this.replayBuffer.window(replay.goalTick, replay.lookbackSeconds || 5);
+    this.replayStartedAt = performance.now() / 1000;
+
+    if (this.replayFrames.length >= 2) {
+      const sourceSeconds = (this.replayFrames.at(-1).tick - this.replayFrames[0].tick) / Math.max(1, this.network?.serverHz || 60);
+      const serverWindow = Math.max(1, (Number(replay.durationMs) || 5500) / 1000 - 0.35);
+      this.replayPlaybackSeconds = Math.max(0.75, Math.min(serverWindow, sourceSeconds || serverWindow));
+    } else {
+      this.replayPlaybackSeconds = 1;
+    }
+
+    const scorerId = Number(replay.scorerId);
+    const scorerCar = Number.isInteger(scorerId) && scorerId >= 0 && scorerId < this.cars.length
+      ? this.cars[scorerId]
+      : this.car;
+    this.chaseCamera.beginReplay(scorerCar);
+    this.root.classList.add('replay-active');
+    this.hud.setScore(replay.orangeScore, replay.blueScore);
+    this.hud.setKickoff('hidden');
+    this.hud.setReplay(this.replayState);
+  }
+
+  updateReplay(now) {
+    if (!this.replayActive || this.replayWaiting || this.replayFrames.length === 0) return;
+    const elapsed = Math.max(0, now - this.replayStartedAt);
+    const progress = Math.min(1, elapsed / Math.max(0.001, this.replayPlaybackSeconds));
+    const frame = sampleReplayFrames(this.replayFrames, progress);
+    if (frame) this.applyReplayState(frame);
+  }
+
+  applyReplayState(state) {
+    const applyEntity = (body, entity) => {
+      if (!body || !entity) return;
+      body.setTranslation({ x: entity.p[0], y: entity.p[1], z: entity.p[2] }, true);
+      body.setRotation({ x: entity.r[0], y: entity.r[1], z: entity.r[2], w: entity.r[3] }, true);
+      body.setLinvel({ x: entity.v[0], y: entity.v[1], z: entity.v[2] }, true);
+      body.setAngvel({ x: entity.w[0], y: entity.w[1], z: entity.w[2] }, true);
+    };
+
+    for (let i = 0; i < this.cars.length; i++) {
+      const entity = state.cars?.[i];
+      if (!entity) continue;
+      applyEntity(this.cars[i].body, entity);
+      this.cars[i].grounded = Boolean(entity.g);
+      this.cars[i].setBoost?.(entity.b);
+    }
+    applyEntity(this.ball.body, state.ball);
+    this.boostPads.setActiveMask(state.boostPadMask);
+  }
+
+  endReplay() {
+    if (!this.replayActive) return;
+    this.replayActive = false;
+    this.replayWaiting = false;
+    this.replayFrames = [];
+    this.replayState = null;
+    this.chaseCamera.endReplay();
+    this.root.classList.remove('replay-active');
+    this.hud.setReplay({ phase: 'end' });
+    this.lastReconciledTick = -1;
+  }
+
+  resetForNetworkKickoff(resetScore = false) {
     for (let i = 0; i < this.cars.length; i++) {
       if (i === this.playerId) continue;
       this.cars[i]?.reset();
@@ -608,7 +705,7 @@ export class Game {
     this.localPredictor?.resetForKickoff();
     this.ball.reset();
     this.boostPads.resetAll();
-    this.hud.setScore(0, 0);
+    if (resetScore) this.hud.setScore(0, 0);
     this.lastReconciledTick = -1;
   }
 

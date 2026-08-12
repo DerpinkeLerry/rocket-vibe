@@ -709,10 +709,10 @@ func horizontalCarAxes(rotation Quat) (Vec3, Vec3) {
 	return right, forward
 }
 
-func resolveCarBall(car *Car, ball *Ball, config Config) {
+func resolveCarBall(car *Car, ball *Ball, config Config) bool {
 	contact, normal, penetration, hit := sphereOBBContact(ball.Position, config.Ball.Radius, car.Body, config.Car.HalfExtents)
 	if !hit {
-		return
+		return false
 	}
 
 	inverseCarMass := 1 / config.Car.Mass
@@ -729,7 +729,7 @@ func resolveCarBall(car *Car, ball *Ball, config Config) {
 	relativeVelocity := ball.Velocity.Sub(carPointVelocity)
 	closingSpeed := relativeVelocity.Dot(normal)
 	if closingSpeed >= 0 {
-		return
+		return false
 	}
 
 	carInverseInertia := 1 / carAverageInertia(config.Car)
@@ -766,6 +766,7 @@ func resolveCarBall(car *Car, ball *Ball, config Config) {
 		lift := clamp((config.Ball.CarHitLiftBase+impactSpeed*config.Ball.CarHitLift)*liftRamp, 0, 3.25)
 		ball.Velocity = ball.Velocity.Add(normal.Mul(extraForward)).Add(Vec3{Y: lift})
 	}
+	return true
 }
 
 func applyCarBallImpulse(car *Car, ball *Ball, contact Vec3, impulse Vec3, config Config, carInverseInertia, ballInverseInertia float64) {

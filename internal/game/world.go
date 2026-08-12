@@ -102,6 +102,15 @@ type World struct {
 	OrangeScore uint16
 	BlueScore   uint16
 	BoostPads   [BoostPadCount]BoostPad
+
+	// Replay/goal attribution stays outside the snapshot protocol. The match
+	// server reads these fields after a scoring tick and tells every client which
+	// car should be used as the replay camera target.
+	LastBallTouchSlot int
+	LastBallTouchTick uint64
+	LastGoalScorer    int
+	LastGoalTick      uint64
+	GoalSequence      uint64
 }
 
 func TeamForSlot(slot int) string {
@@ -141,7 +150,7 @@ var boostPadSpecs = [BoostPadCount]BoostPad{
 }
 
 func NewWorld(config Config) *World {
-	world := &World{Config: config}
+	world := &World{Config: config, LastBallTouchSlot: -1, LastGoalScorer: -1}
 	for slot := range world.Cars {
 		world.Cars[slot].Slot = slot
 		world.resetCar(&world.Cars[slot])
@@ -164,6 +173,12 @@ func (world *World) SetConnected(slot int, connected bool) bool {
 func (world *World) ResetMatch() {
 	world.OrangeScore = 0
 	world.BlueScore = 0
+	world.ResetKickoff()
+}
+
+// ResetKickoff returns every gameplay object to a fair kickoff state without
+// touching the score. It is used after a goal replay finishes.
+func (world *World) ResetKickoff() {
 	for index := range world.Cars {
 		world.resetCar(&world.Cars[index])
 	}
@@ -239,7 +254,10 @@ func (world *World) Step(dt float64) {
 					resolveCarCar(carA, carB, world.Config.Car)
 				}
 			}
-			resolveCarBall(carA, &world.Ball, world.Config)
+			if resolveCarBall(carA, &world.Ball, world.Config) {
+				world.LastBallTouchSlot = carA.Slot
+				world.LastBallTouchTick = world.Tick
+			}
 		}
 	}
 	world.collectBoostPads()
@@ -691,6 +709,8 @@ func (world *World) resetBall() {
 		Position: Vec3{Y: world.Config.Ball.SpawnY},
 		Rotation: IdentityQuat(),
 	}
+	world.LastBallTouchSlot = -1
+	world.LastBallTouchTick = 0
 }
 
 func (world *World) Snapshot() Snapshot {
@@ -727,11 +747,34 @@ func (world *World) detectGoal() bool {
 	}
 
 	// Positive Z is the orange goal; negative Z is the blue goal.
+	scoringTeam := TeamOrange
 	if ball.Position.Z > 0 {
 		world.BlueScore++
+		scoringTeam = TeamBlue
 	} else {
 		world.OrangeScore++
 	}
+
+	// The replay follows the last meaningful car to touch the ball. If there was
+	// no recent touch (for example a debug/reset ball rolling in), fall back to a
+	// connected player on the scoring team so the replay still has a useful POV.
+	world.LastGoalScorer = -1
+	maxTouchAge := uint64(math.Max(1, float64(world.Config.PhysicsHz*10)))
+	if world.LastBallTouchSlot >= 0 && world.LastBallTouchSlot < len(world.Cars) &&
+		world.Cars[world.LastBallTouchSlot].Connected && world.Tick-world.LastBallTouchTick <= maxTouchAge {
+		world.LastGoalScorer = world.LastBallTouchSlot
+	}
+	if world.LastGoalScorer < 0 {
+		for index := range world.Cars {
+			if world.Cars[index].Connected && TeamForSlot(index) == scoringTeam {
+				world.LastGoalScorer = index
+				break
+			}
+		}
+	}
+	world.LastGoalTick = world.Tick
+	world.GoalSequence++
+
 	for index := range world.Cars {
 		if world.Cars[index].Connected {
 			world.resetCar(&world.Cars[index])

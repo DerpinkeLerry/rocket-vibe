@@ -197,6 +197,8 @@ func (server *HTTPServer) handleTextMessage(connected *client, payload []byte) {
 				Sequence: message.Seq, Mask: message.Input.Mask, Edges: message.Input.Edges, Flags: message.Input.Flags,
 			})
 		}
+	case "replay-skip":
+		server.match.SubmitReplaySkip(connected.id)
 	}
 }
 

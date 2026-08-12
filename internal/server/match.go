@@ -22,6 +22,8 @@ var (
 const (
 	kickoffCountdownSeconds  = 3
 	kickoffCountdownDuration = time.Duration(kickoffCountdownSeconds) * time.Second
+	goalReplayLookback       = 5.0
+	goalReplayDuration       = 5500 * time.Millisecond
 )
 
 func shouldStartKickoff(playerCount int) bool {
@@ -68,9 +70,10 @@ type Match struct {
 	wait     sync.WaitGroup
 	stopOnce sync.Once
 
-	joins  chan joinRequest
-	leaves chan string
-	inputs chan inputEvent
+	joins       chan joinRequest
+	leaves      chan string
+	inputs      chan inputEvent
+	replaySkips chan string
 
 	playerCount    atomic.Int32
 	lastTick       atomic.Uint64
@@ -82,13 +85,14 @@ type Match struct {
 func NewMatch(parent context.Context, config game.Config) *Match {
 	ctx, cancel := context.WithCancel(parent)
 	match := &Match{
-		config: config,
-		world:  game.NewWorld(config),
-		ctx:    ctx,
-		cancel: cancel,
-		joins:  make(chan joinRequest),
-		leaves: make(chan string, 32),
-		inputs: make(chan inputEvent, 256),
+		config:      config,
+		world:       game.NewWorld(config),
+		ctx:         ctx,
+		cancel:      cancel,
+		joins:       make(chan joinRequest),
+		leaves:      make(chan string, 32),
+		inputs:      make(chan inputEvent, 256),
+		replaySkips: make(chan string, 32),
 	}
 	match.latestState.Store(match.world.Snapshot())
 	match.wait.Add(1)
@@ -134,6 +138,14 @@ func (match *Match) SubmitInput(clientID string, input game.Input) {
 	}
 }
 
+func (match *Match) SubmitReplaySkip(clientID string) {
+	select {
+	case match.replaySkips <- clientID:
+	case <-match.ctx.Done():
+	default:
+	}
+}
+
 func (match *Match) Stats() Stats {
 	return Stats{
 		Players:        match.playerCount.Load(),
@@ -165,6 +177,78 @@ func (match *Match) run() {
 	var loopTick uint64
 	var kickoffEndsAt time.Time
 	kickoffLastAnnounced := 0
+	kickoffResetScore := false
+	lastGoalSequence := match.world.GoalSequence
+
+	replayActive := false
+	var replayEndsAt time.Time
+	replayParticipants := make(map[string]bool)
+	replaySkipped := make(map[string]bool)
+	replayScorerSlot := -1
+	replayScorerName := ""
+	replayGoalTick := uint64(0)
+	replayResetScoreAfter := false
+
+	participantCount := func() int {
+		return len(replayParticipants)
+	}
+	skippedCount := func() int {
+		count := 0
+		for id := range replaySkipped {
+			if replayParticipants[id] {
+				count++
+			}
+		}
+		return count
+	}
+
+	startKickoff := func(resetScore bool) {
+		if resetScore {
+			match.world.ResetMatch()
+		} else {
+			match.world.ResetKickoff()
+		}
+		kickoffEndsAt = time.Now().Add(kickoffCountdownDuration)
+		kickoffLastAnnounced = kickoffCountdownSeconds
+		kickoffResetScore = resetScore
+		state := match.world.Snapshot()
+		match.latestState.Store(state)
+		match.broadcastKickoff(clients, "countdown", kickoffCountdownSeconds, resetScore)
+		match.broadcastSnapshot(clients, state)
+	}
+
+	endReplay := func(reason string) {
+		if !replayActive {
+			return
+		}
+		replayActive = false
+		replayEndsAt = time.Time{}
+		match.broadcastReplayEnd(clients, reason)
+		startKickoff(replayResetScoreAfter)
+		replayParticipants = make(map[string]bool)
+		replaySkipped = make(map[string]bool)
+		replayScorerSlot = -1
+		replayScorerName = ""
+		replayGoalTick = 0
+		replayResetScoreAfter = false
+	}
+
+	startReplay := func() {
+		replayActive = true
+		replayEndsAt = time.Now().Add(goalReplayDuration)
+		replayParticipants = make(map[string]bool, len(clients))
+		replaySkipped = make(map[string]bool, len(clients))
+		for id := range clients {
+			replayParticipants[id] = true
+		}
+		replayScorerSlot = match.world.LastGoalScorer
+		replayScorerName = playerNameForSlot(clients, replayScorerSlot)
+		replayGoalTick = match.world.LastGoalTick
+		replayResetScoreAfter = false
+		kickoffEndsAt = time.Time{}
+		kickoffLastAnnounced = 0
+		match.broadcastReplayStart(clients, replayScorerSlot, replayScorerName, replayGoalTick, match.world.OrangeScore, match.world.BlueScore, participantCount())
+	}
 
 	for {
 		select {
@@ -197,24 +281,26 @@ func (match *Match) run() {
 			request.client.offerJSON(welcome)
 			match.broadcastRoster(clients)
 
-			// A fair team format exists at 2 players (1v1) and 4 players (2v2).
-			// Those joins restart the match and lock everybody on kickoff spawns for
-			// three seconds. Player three deliberately does not interrupt a running
-			// match; they can join the existing 2v1 immediately.
-			if shouldStartKickoff(len(clients)) {
-				match.world.ResetMatch()
-				kickoffEndsAt = time.Now().Add(kickoffCountdownDuration)
-				kickoffLastAnnounced = kickoffCountdownSeconds
-				match.latestState.Store(match.world.Snapshot())
-				match.broadcastKickoff(clients, "countdown", kickoffCountdownSeconds)
-				match.broadcastSnapshot(clients, match.world.Snapshot())
+			// A player joining while a goal replay is already running is not added to
+			// that replay's unanimous-skip vote because they have no pre-goal history.
+			// If their arrival creates a fair 1v1/2v2, perform the usual score-reset
+			// kickoff as soon as the current replay is over.
+			if replayActive {
+				if shouldStartKickoff(len(clients)) {
+					replayResetScoreAfter = true
+				}
+				remaining := max(0, time.Until(replayEndsAt).Milliseconds())
+				request.client.offerSnapshot(protocol.EncodeState(match.world.Snapshot()))
+				match.sendReplayWaiting(request.client, replayScorerSlot, replayScorerName, replayGoalTick, remaining, skippedCount(), participantCount(), match.world.OrangeScore, match.world.BlueScore)
+			} else if shouldStartKickoff(len(clients)) {
+				startKickoff(true)
 			} else if !kickoffEndsAt.IsZero() {
 				// Player three never restarts a match, but if they happen to arrive
 				// during the 1v1 countdown they still need to see the existing lock.
 				remaining := int(math.Ceil(time.Until(kickoffEndsAt).Seconds()))
 				if remaining > 0 {
 					message, _ := json.Marshal(map[string]any{
-						"type": "kickoff", "phase": "countdown", "count": remaining,
+						"type": "kickoff", "phase": "countdown", "count": remaining, "resetScore": kickoffResetScore,
 					})
 					request.client.offerJSON(message)
 				}
@@ -233,17 +319,35 @@ func (match *Match) run() {
 			if len(clients) == 0 {
 				match.world.ResetMatch()
 			}
+			if replayActive {
+				delete(replayParticipants, clientID)
+				delete(replaySkipped, clientID)
+				if participantCount() == 0 || skippedCount() >= participantCount() {
+					endReplay("all-skipped")
+				} else {
+					match.broadcastReplayProgress(clients, skippedCount(), participantCount())
+				}
+			}
 			match.broadcastRoster(clients)
+
+		case clientID := <-match.replaySkips:
+			if !replayActive || !replayParticipants[clientID] || replaySkipped[clientID] {
+				continue
+			}
+			replaySkipped[clientID] = true
+			match.broadcastReplayProgress(clients, skippedCount(), participantCount())
+			if skippedCount() >= participantCount() {
+				endReplay("all-skipped")
+			}
 
 		case event := <-match.inputs:
 			connected, exists := clients[event.clientID]
 			if !exists {
 				continue
 			}
-			// Held throttle/steer/boost may be queued during the countdown so players
-			// can launch on GO. One-shot actions (jump/reset) are discarded instead
-			// of being buffered and firing unexpectedly when the lock opens.
-			if !kickoffEndsAt.IsZero() {
+			// Held throttle/steer/boost may be queued during replay/countdown so
+			// players can launch on GO. One-shot actions are never buffered.
+			if replayActive || !kickoffEndsAt.IsZero() {
 				event.input.Edges = 0
 			}
 			if !match.world.SetInput(connected.slot, event.input) {
@@ -266,15 +370,24 @@ func (match *Match) run() {
 			started := time.Now()
 			loopTick++
 
+			if replayActive {
+				if !time.Now().Before(replayEndsAt) {
+					endReplay("complete")
+				}
+				state := match.world.Snapshot()
+				match.latestState.Store(state)
+				match.lastTick.Store(state.Tick)
+				match.lastTickMicros.Store(time.Since(started).Microseconds())
+				continue
+			}
+
 			if !kickoffEndsAt.IsZero() {
 				remaining := int(math.Ceil(time.Until(kickoffEndsAt).Seconds()))
 				if remaining > 0 {
 					if remaining != kickoffLastAnnounced {
 						kickoffLastAnnounced = remaining
-						match.broadcastKickoff(clients, "countdown", remaining)
+						match.broadcastKickoff(clients, "countdown", remaining, kickoffResetScore)
 					}
-					// World.Step is intentionally skipped while locked. Cars, ball and
-					// boost pads stay exactly on their reset state for every client.
 					state := match.world.Snapshot()
 					match.latestState.Store(state)
 					match.lastTick.Store(state.Tick)
@@ -287,7 +400,8 @@ func (match *Match) run() {
 
 				kickoffEndsAt = time.Time{}
 				kickoffLastAnnounced = 0
-				match.broadcastKickoff(clients, "go", 0)
+				match.broadcastKickoff(clients, "go", 0, kickoffResetScore)
+				kickoffResetScore = false
 			}
 
 			match.world.Step(dt)
@@ -295,6 +409,16 @@ func (match *Match) run() {
 			match.latestState.Store(state)
 			match.lastTick.Store(state.Tick)
 			match.confirmMotion(clients)
+
+			if match.world.GoalSequence != lastGoalSequence {
+				lastGoalSequence = match.world.GoalSequence
+				// Do not send the post-goal reset snapshot before the replay. Each
+				// client instead replays its authoritative pre-goal ring buffer.
+				startReplay()
+				match.lastTickMicros.Store(time.Since(started).Microseconds())
+				continue
+			}
+
 			if loopTick%snapshotEvery == 0 && len(clients) > 0 {
 				match.broadcastSnapshot(clients, state)
 			}
@@ -334,13 +458,61 @@ func (match *Match) broadcastRoster(clients map[string]*client) {
 	}
 }
 
-func (match *Match) broadcastKickoff(clients map[string]*client, phase string, count int) {
+func (match *Match) broadcastKickoff(clients map[string]*client, phase string, count int, resetScore bool) {
 	message, _ := json.Marshal(map[string]any{
-		"type": "kickoff", "phase": phase, "count": count,
+		"type": "kickoff", "phase": phase, "count": count, "resetScore": resetScore,
 	})
 	for _, connected := range clients {
 		connected.offerJSON(message)
 	}
+}
+
+func (match *Match) broadcastReplayStart(clients map[string]*client, scorerSlot int, scorerName string, goalTick uint64, orangeScore, blueScore uint16, required int) {
+	message, _ := json.Marshal(map[string]any{
+		"type": "replay", "phase": "start", "scorerId": scorerSlot, "scorerName": scorerName,
+		"goalTick": goalTick, "lookbackSeconds": goalReplayLookback, "durationMs": goalReplayDuration.Milliseconds(),
+		"skipped": 0, "required": required, "orangeScore": orangeScore, "blueScore": blueScore,
+	})
+	for _, connected := range clients {
+		connected.offerJSON(message)
+	}
+}
+
+func (match *Match) broadcastReplayProgress(clients map[string]*client, skipped, required int) {
+	message, _ := json.Marshal(map[string]any{
+		"type": "replay", "phase": "progress", "skipped": skipped, "required": required,
+	})
+	for _, connected := range clients {
+		connected.offerJSON(message)
+	}
+}
+
+func (match *Match) broadcastReplayEnd(clients map[string]*client, reason string) {
+	message, _ := json.Marshal(map[string]any{"type": "replay", "phase": "end", "reason": reason})
+	for _, connected := range clients {
+		connected.offerJSON(message)
+	}
+}
+
+func (match *Match) sendReplayWaiting(connected *client, scorerSlot int, scorerName string, goalTick uint64, remainingMs int64, skipped, required int, orangeScore, blueScore uint16) {
+	message, _ := json.Marshal(map[string]any{
+		"type": "replay", "phase": "wait", "scorerId": scorerSlot, "scorerName": scorerName,
+		"goalTick": goalTick, "remainingMs": remainingMs, "skipped": skipped, "required": required,
+		"orangeScore": orangeScore, "blueScore": blueScore,
+	})
+	connected.offerJSON(message)
+}
+
+func playerNameForSlot(clients map[string]*client, slot int) string {
+	for _, connected := range clients {
+		if connected.slot == slot {
+			return connected.name
+		}
+	}
+	if slot >= 0 {
+		return fmt.Sprintf("Spieler %d", slot+1)
+	}
+	return "Unbekannt"
 }
 
 func (match *Match) broadcastSnapshot(clients map[string]*client, state game.Snapshot) {
