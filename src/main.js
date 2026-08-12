@@ -134,7 +134,7 @@ function requestPlayerIdentity(root) {
             <label class="graphics-choice graphics-choice--high${selectedGraphics === 'ultra-high' ? ' is-selected' : ''}${ultraHighAvailable ? '' : ' is-disabled'}" data-graphics-choice="ultra-high">
               <input type="radio" name="graphicsMode" value="ultra-high" ${selectedGraphics === 'ultra-high' ? 'checked' : ''} ${ultraHighAvailable ? '' : 'disabled'} />
               <span class="graphics-choice__title">ULTRA HIGH</span>
-              <span class="graphics-choice__desc">${ultraHighAvailable ? (mobileGraphics ? 'Mobile High · 3D-Gras, Schatten, bessere Materialien · hoher Akkuverbrauch' : '3D-Gras, Schatten, bessere Felgen und Materialien') : 'Nicht verfügbar'}</span>
+              <span class="graphics-choice__desc">${ultraHighAvailable ? (mobileGraphics ? 'Optimiertes 3D-Gras, Schatten und Detailmaterialien · hoher Akkuverbrauch' : 'Dichtes 3D-Gras, detaillierte Wände/Felgen und Schatten') : 'Nicht verfügbar'}</span>
             </label>
           </div>
         </fieldset>

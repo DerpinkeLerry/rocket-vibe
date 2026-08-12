@@ -13,7 +13,12 @@ const GOAL_W = ARENA_TUNING.goalWidth;
 const GOAL_H = ARENA_TUNING.goalHeight;
 const GOAL_D = ARENA_TUNING.goalDepth;
 const GOAL_R = ARENA_TUNING.goalRampRadius;
-const CORNER_SEGMENTS = 8;
+const GOAL_MOUTH_R = ARENA_TUNING.goalMouthRadius;
+const CORNER_SEGMENTS = 10;
+// A compact quarter-pipe plus a short solid kick-wall makes the glass begin
+// much earlier than in the previous seven-metre ramp layout.
+const LOWER_WALL_HEIGHT = 0.46;
+const GLASS_START_Y = RAMP_R + LOWER_WALL_HEIGHT;
 
 function roundedRectGeometry(width, length, radius, segments) {
   const halfWidth = width * 0.5;
@@ -35,6 +40,43 @@ function roundedRectGeometry(width, length, radius, segments) {
   return geometry;
 }
 
+
+function goalPlanGeometry(sign, segments = 12) {
+  const halfWidth = GOAL_W * 0.5;
+  const backRadius = Math.min(GOAL_R, halfWidth - 0.1, GOAL_D - 0.1);
+  const mouthRadius = Math.min(GOAL_MOUTH_R, halfWidth - 0.1, GOAL_D - 0.1);
+  const shape = new THREE.Shape();
+
+  // Local shape Y is depth into the goal. The two quarter circles at the mouth
+  // exactly match the wall panels/colliders and eliminate the old rectangular
+  // floor overlap at the goal line.
+  shape.moveTo(-halfWidth - mouthRadius, 0);
+  for (let index = 1; index <= segments; index++) {
+    const angle = index / segments * Math.PI * 0.5;
+    shape.lineTo(
+      -halfWidth - (mouthRadius - mouthRadius * Math.sin(angle)),
+      mouthRadius - mouthRadius * Math.cos(angle)
+    );
+  }
+  shape.lineTo(-halfWidth, GOAL_D - backRadius);
+  shape.absarc(-halfWidth + backRadius, GOAL_D - backRadius, backRadius, Math.PI, Math.PI * 0.5, true);
+  shape.lineTo(halfWidth - backRadius, GOAL_D);
+  shape.absarc(halfWidth - backRadius, GOAL_D - backRadius, backRadius, Math.PI * 0.5, 0, true);
+  shape.lineTo(halfWidth, mouthRadius);
+  for (let index = segments - 1; index >= 0; index--) {
+    const angle = index / segments * Math.PI * 0.5;
+    shape.lineTo(
+      halfWidth + (mouthRadius - mouthRadius * Math.sin(angle)),
+      mouthRadius - mouthRadius * Math.cos(angle)
+    );
+  }
+  shape.closePath();
+
+  const geometry = new THREE.ShapeGeometry(shape, Math.max(2, segments));
+  geometry.rotateX(sign >= 0 ? Math.PI * 0.5 : -Math.PI * 0.5);
+  return geometry;
+}
+
 export class Arena {
   constructor(scene, world, RAPIER, options = {}) {
     this.scene = scene;
@@ -45,6 +87,7 @@ export class Arena {
     this.mobile = Boolean(options.mobile);
     this.maxAnisotropy = Math.max(1, Number(options.maxAnisotropy) || 1);
     this.enablePhysics = options.createPhysics !== false;
+    this.grassChunks = [];
     this.group = new THREE.Group();
     this.scene.add(this.group);
 
@@ -82,19 +125,18 @@ export class Arena {
     this.group.add(ground);
   }
 
-  createUltraTurfTexture() {
+  createTurfTexture(highDetail = false) {
     const canvas = document.createElement('canvas');
-    canvas.width = 1024;
-    canvas.height = 2048;
+    canvas.width = highDetail ? 1024 : 512;
+    canvas.height = highDetail ? 2048 : 1024;
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
-    // Layered procedural turf: broad mowing bands + fine blade clusters +
-    // subtle soil/dry-grass variation. This costs nothing after upload and is
-    // much less "flat green" than the normal preset.
-    const stripeHeight = 148;
+    // Baked mowing bands, blade speckles and subtle dry patches add most of the
+    // perceived grass detail without adding geometry or another render pass.
+    const stripeHeight = highDetail ? 148 : 92;
     for (let y = 0; y < canvas.height; y += stripeHeight) {
-      ctx.fillStyle = Math.floor(y / stripeHeight) % 2 === 0 ? '#27785b' : '#236d54';
+      ctx.fillStyle = Math.floor(y / stripeHeight) % 2 === 0 ? '#2a805f' : '#257456';
       ctx.fillRect(0, y, canvas.width, stripeHeight);
     }
     let seed = 0x13579bdf;
@@ -102,7 +144,8 @@ export class Arena {
       seed = (seed * 1664525 + 1013904223) >>> 0;
       return seed / 4294967296;
     };
-    for (let i = 0; i < 14500; i++) {
+    const bladeCount = highDetail ? 14500 : 4200;
+    for (let i = 0; i < bladeCount; i++) {
       const x = random() * canvas.width;
       const y = random() * canvas.height;
       const blade = 1 + random() * 3.2;
@@ -116,21 +159,22 @@ export class Arena {
       ctx.lineTo(x + (random() - 0.5) * 1.4, y - blade);
       ctx.stroke();
     }
-    for (let i = 0; i < 380; i++) {
+    for (let i = 0; i < (highDetail ? 380 : 110); i++) {
       const x = random() * canvas.width;
       const y = random() * canvas.height;
-      const r = 2 + random() * 8;
+      const radius = 2 + random() * 8;
       ctx.fillStyle = random() > 0.5 ? 'rgba(198,180,116,0.035)' : 'rgba(5,45,33,0.045)';
       ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.fill();
     }
+
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.wrapS = THREE.RepeatWrapping;
     texture.wrapT = THREE.RepeatWrapping;
     texture.repeat.set(2.4, 4.8);
-    texture.anisotropy = Math.min(16, this.maxAnisotropy);
+    texture.anisotropy = Math.min(highDetail ? 12 : 6, this.maxAnisotropy);
     return texture;
   }
 
@@ -166,57 +210,254 @@ export class Arena {
     return texture;
   }
 
-  createUltraGrass() {
-    // Actual 3D grass geometry. Every instance is a tiny cluster of three
-    // crossed triangular blades, so tens of thousands of stems stay a single
-    // draw call. Smartphone Ultra High uses a lighter density.
-    const vertices = [];
-    const bladeWidth = 0.022;
-    for (let blade = 0; blade < 3; blade++) {
-      const angle = blade * Math.PI / 3;
-      const dx = Math.cos(angle) * bladeWidth;
-      const dz = Math.sin(angle) * bladeWidth;
-      vertices.push(
-        -dx, 0, -dz,
-         dx, 0,  dz,
-         0,  1,  0
-      );
+  createWallTileTexture(highDetail = false) {
+    const canvas = document.createElement('canvas');
+    canvas.width = highDetail ? 512 : 256;
+    canvas.height = highDetail ? 512 : 256;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    ctx.fillStyle = '#25383c';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const rows = highDetail ? 12 : 8;
+    const cols = highDetail ? 8 : 6;
+    const rowHeight = canvas.height / rows;
+    const colWidth = canvas.width / cols;
+
+    // Baked edge darkening/highlights give the wall panels depth without a
+    // normal map or extra material pass.
+    for (let row = 0; row < rows; row++) {
+      const offset = row % 2 === 0 ? 0 : colWidth * 0.5;
+      for (let column = -1; column <= cols; column++) {
+        const x = column * colWidth + offset;
+        const y = row * rowHeight;
+        const gradient = ctx.createLinearGradient(x, y, x, y + rowHeight);
+        gradient.addColorStop(0, 'rgba(102,126,127,0.16)');
+        gradient.addColorStop(0.13, 'rgba(64,87,89,0.05)');
+        gradient.addColorStop(1, 'rgba(4,15,18,0.18)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(x + 2, y + 2, colWidth - 4, rowHeight - 4);
+      }
     }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    geometry.computeVertexNormals();
 
-    const material = new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      roughness: 1.0,
-      metalness: 0.0,
-      side: THREE.DoubleSide
-    });
+    ctx.lineWidth = highDetail ? 3 : 2;
+    ctx.strokeStyle = 'rgba(6,15,18,0.72)';
+    for (let row = 0; row <= rows; row++) {
+      const y = Math.round(row * rowHeight) + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(canvas.width, y);
+      ctx.stroke();
+    }
+    for (let row = 0; row < rows; row++) {
+      const offset = row % 2 === 0 ? 0 : colWidth * 0.5;
+      for (let column = -1; column <= cols; column++) {
+        const x = Math.round(column * colWidth + offset) + 0.5;
+        ctx.beginPath();
+        ctx.moveTo(x, row * rowHeight);
+        ctx.lineTo(x, (row + 1) * rowHeight);
+        ctx.stroke();
+      }
+    }
 
-    const clusterCount = this.mobile ? 9000 : 26000;
-    const grass = new THREE.InstancedMesh(geometry, material, clusterCount);
-    grass.name = 'ultra-high-3d-grass';
-    grass.userData.grassBlades = true;
-    grass.userData.cameraOcclusionIgnore = true;
-    grass.castShadow = false;
-    grass.receiveShadow = false;
-
-    const dummy = new THREE.Object3D();
-    const palette = [
-      new THREE.Color(0x2f8a60),
-      new THREE.Color(0x277b55),
-      new THREE.Color(0x3c9366),
-      new THREE.Color(0x246f4e),
-      new THREE.Color(0x4b9b6c)
-    ];
-    let seed = 0x52a4f19d;
+    let seed = 0x791bc421;
     const random = () => {
       seed = (seed * 1664525 + 1013904223) >>> 0;
       return seed / 4294967296;
     };
-    const halfW = FIELD_W * 0.5 - 0.7;
-    const halfL = FIELD_L * 0.5 - 0.7;
-    const corner = Math.max(0.1, CORNER_R - 0.7);
+    for (let i = 0; i < (highDetail ? 1500 : 420); i++) {
+      const shade = 75 + Math.floor(random() * 45);
+      ctx.fillStyle = `rgba(${shade},${shade + 8},${shade + 7},${0.025 + random() * 0.045})`;
+      const size = 0.5 + random() * (highDetail ? 2.2 : 1.5);
+      ctx.fillRect(random() * canvas.width, random() * canvas.height, size, size);
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(1, 1);
+    texture.anisotropy = Math.min(highDetail ? 10 : 5, this.maxAnisotropy);
+    return texture;
+  }
+
+  createWallBumpTexture(highDetail = false) {
+    const canvas = document.createElement('canvas');
+    canvas.width = highDetail ? 512 : 256;
+    canvas.height = highDetail ? 512 : 256;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    const rows = highDetail ? 12 : 8;
+    const cols = highDetail ? 8 : 6;
+    const rowHeight = canvas.height / rows;
+    const colWidth = canvas.width / cols;
+    ctx.fillStyle = '#858585';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Raised panel faces and recessed mortar lines make the wall read as
+    // physical tile/brickwork without adding any extra meshes or draw calls.
+    for (let row = 0; row < rows; row++) {
+      const offset = row % 2 === 0 ? 0 : colWidth * 0.5;
+      for (let column = -1; column <= cols; column++) {
+        const x = column * colWidth + offset;
+        const y = row * rowHeight;
+        const gradient = ctx.createLinearGradient(x, y, x, y + rowHeight);
+        gradient.addColorStop(0, '#b7b7b7');
+        gradient.addColorStop(0.16, '#999999');
+        gradient.addColorStop(0.82, '#888888');
+        gradient.addColorStop(1, '#6e6e6e');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(x + 3, y + 3, colWidth - 6, rowHeight - 6);
+      }
+    }
+
+    ctx.strokeStyle = '#343434';
+    ctx.lineWidth = highDetail ? 5 : 4;
+    for (let row = 0; row <= rows; row++) {
+      const y = Math.round(row * rowHeight) + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(canvas.width, y);
+      ctx.stroke();
+    }
+    for (let row = 0; row < rows; row++) {
+      const offset = row % 2 === 0 ? 0 : colWidth * 0.5;
+      for (let column = -1; column <= cols; column++) {
+        const x = Math.round(column * colWidth + offset) + 0.5;
+        ctx.beginPath();
+        ctx.moveTo(x, row * rowHeight);
+        ctx.lineTo(x, (row + 1) * rowHeight);
+        ctx.stroke();
+      }
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(1, 1);
+    texture.anisotropy = Math.min(highDetail ? 8 : 4, this.maxAnisotropy);
+    return texture;
+  }
+
+  createGrassTuftTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // One tiny alpha-tested card contains many painted blades. Three crossed
+    // cards therefore look like a dense tuft while costing only six triangles.
+    let seed = 0x6d2b79f5;
+    const random = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    const bladeColors = ['#4f9c67', '#3f8959', '#66aa76', '#347b50', '#78b47e'];
+    for (let index = 0; index < 52; index++) {
+      const baseX = 10 + random() * 236;
+      const baseY = 255;
+      const height = 84 + random() * 158;
+      const lean = (random() - 0.5) * 42;
+      const controlX = baseX + lean * 0.35 + (random() - 0.5) * 9;
+      const tipX = baseX + lean;
+      ctx.strokeStyle = bladeColors[Math.floor(random() * bladeColors.length)];
+      ctx.globalAlpha = 0.68 + random() * 0.30;
+      ctx.lineWidth = 1.35 + random() * 2.35;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(baseX, baseY);
+      ctx.quadraticCurveTo(controlX, baseY - height * 0.58, tipX, baseY - height);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // A dark, irregular foot hides the card intersection without a visible
+    // rectangular alpha fringe.
+    const foot = ctx.createLinearGradient(0, 205, 0, 256);
+    foot.addColorStop(0, 'rgba(35,105,67,0)');
+    foot.addColorStop(1, 'rgba(31,91,59,0.75)');
+    ctx.fillStyle = foot;
+    for (let index = 0; index < 28; index++) {
+      const x = random() * 256;
+      const radius = 5 + random() * 13;
+      ctx.beginPath();
+      ctx.ellipse(x, 249 + random() * 7, radius, 4 + random() * 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.wrapS = THREE.ClampToEdgeWrapping;
+    texture.wrapT = THREE.ClampToEdgeWrapping;
+    texture.minFilter = THREE.LinearMipmapLinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.generateMipmaps = true;
+    texture.anisotropy = Math.min(8, this.maxAnisotropy);
+    return texture;
+  }
+
+  createUltraGrass() {
+    // Dense grass is built from alpha-tested crossed cards instead of one mesh
+    // per blade. This version draws substantially more visible blades than the
+    // previous geometry while reducing triangle count and draw calls.
+    const cardWidth = this.mobile ? 0.62 : 0.58;
+    const cardHeight = this.mobile ? 0.105 : 0.118;
+    const positions = [];
+    const uvs = [];
+    const indices = [];
+    for (let card = 0; card < 4; card++) {
+      const angle = card * Math.PI / 4;
+      const dx = Math.cos(angle) * cardWidth * 0.5;
+      const dz = Math.sin(angle) * cardWidth * 0.5;
+      const base = positions.length / 3;
+      positions.push(
+        -dx, 0, -dz,
+         dx, 0,  dz,
+         dx, cardHeight,  dz,
+        -dx, cardHeight, -dz
+      );
+      uvs.push(0, 0, 1, 0, 1, 1, 0, 1);
+      indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    geometry.computeBoundingSphere();
+
+    const texture = this.createGrassTuftTexture();
+    const material = new THREE.MeshLambertMaterial({
+      color: 0xffffff,
+      map: texture,
+      alphaTest: 0.26,
+      transparent: false,
+      vertexColors: true,
+      side: THREE.DoubleSide,
+      depthWrite: true
+    });
+    material.alphaToCoverage = true;
+
+    // Twelve chunks keep draw calls low while still allowing Three.js frustum
+    // culling and a cheap distance cutoff on mobile hardware.
+    const chunksX = 3;
+    const chunksZ = 4;
+    const patchesPerChunk = this.mobile ? 320 : 900;
+    const halfW = FIELD_W * 0.5 - 0.48;
+    const halfL = FIELD_L * 0.5 - 0.48;
+    const corner = Math.max(0.1, CORNER_R - 0.48);
+    const chunkWidth = halfW * 2 / chunksX;
+    const chunkLength = halfL * 2 / chunksZ;
+    const instancePalette = [
+      new THREE.Color(0xa9d2ae),
+      new THREE.Color(0x9bc7a2),
+      new THREE.Color(0xb7d9b8),
+      new THREE.Color(0x8fbc98)
+    ];
     const insideField = (x, z) => {
       const ax = Math.abs(x);
       const az = Math.abs(z);
@@ -226,133 +467,136 @@ export class Arena {
       const dz = az - (halfL - corner);
       return dx * dx + dz * dz <= corner * corner;
     };
+    const dummy = new THREE.Object3D();
+    let seed = 0x52a4f19d;
+    const random = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
 
-    let placed = 0;
-    let attempts = 0;
-    while (placed < clusterCount && attempts < clusterCount * 4) {
-      attempts += 1;
-      const x = (random() * 2 - 1) * halfW;
-      const z = (random() * 2 - 1) * halfL;
-      if (!insideField(x, z)) continue;
+    for (let chunkZ = 0; chunkZ < chunksZ; chunkZ++) {
+      for (let chunkX = 0; chunkX < chunksX; chunkX++) {
+        const minX = -halfW + chunkX * chunkWidth;
+        const minZ = -halfL + chunkZ * chunkLength;
+        const centerX = minX + chunkWidth * 0.5;
+        const centerZ = minZ + chunkLength * 0.5;
+        const grass = new THREE.InstancedMesh(geometry, material, patchesPerChunk);
+        grass.name = `ultra-high-3d-grass-${chunkX}-${chunkZ}`;
+        grass.userData.grassBlades = true;
+        grass.userData.cameraOcclusionIgnore = true;
+        grass.userData.grassCenter = new THREE.Vector3(centerX, 0, centerZ);
+        grass.userData.grassCullDistance = this.mobile ? 68 : 104;
+        grass.castShadow = false;
+        grass.receiveShadow = false;
+        grass.frustumCulled = true;
 
-      // Keep the painted midfield markings readable instead of covering them
-      // with green geometry.
-      const centerRadius = Math.hypot(x, z);
-      if (Math.abs(z) < 0.13 || centerRadius < 0.52 || (centerRadius > 10.3 && centerRadius < 10.9)) continue;
+        let placed = 0;
+        let attempts = 0;
+        while (placed < patchesPerChunk && attempts < patchesPerChunk * 10) {
+          attempts += 1;
+          const x = minX + random() * chunkWidth;
+          const z = minZ + random() * chunkLength;
+          if (!insideField(x, z)) continue;
 
-      const height = 0.045 + random() * (this.mobile ? 0.045 : 0.065);
-      const widthScale = 0.72 + random() * 0.62;
-      dummy.position.set(x, 0.002, z);
-      dummy.rotation.set((random() - 0.5) * 0.08, random() * Math.PI, (random() - 0.5) * 0.08);
-      dummy.scale.set(widthScale, height, widthScale);
-      dummy.updateMatrix();
-      grass.setMatrixAt(placed, dummy.matrix);
-      grass.setColorAt(placed, palette[Math.floor(random() * palette.length)]);
-      placed += 1;
+          // Preserve the centre line, centre spot and circle. The cards are
+          // wider than their origin, so use a generous margin around markings.
+          const centreRadius = Math.hypot(x, z);
+          if (Math.abs(z) < 0.30 || centreRadius < 0.62 || (centreRadius > 10.15 && centreRadius < 10.92)) continue;
+
+          const scale = 0.82 + random() * 0.35;
+          dummy.position.set(x, 0.006, z);
+          dummy.rotation.set(0, random() * Math.PI * 2, 0);
+          dummy.scale.set(scale, 0.88 + random() * 0.26, scale);
+          dummy.updateMatrix();
+          grass.setMatrixAt(placed, dummy.matrix);
+          grass.setColorAt(placed, instancePalette[Math.floor(random() * instancePalette.length)]);
+          placed += 1;
+        }
+
+        grass.count = placed;
+        grass.instanceMatrix.needsUpdate = true;
+        if (grass.instanceColor) grass.instanceColor.needsUpdate = true;
+        grass.computeBoundingBox?.();
+        grass.computeBoundingSphere?.();
+        this.group.add(grass);
+        this.grassChunks.push(grass);
+      }
     }
-
-    grass.count = placed;
-    grass.instanceMatrix.needsUpdate = true;
-    if (grass.instanceColor) grass.instanceColor.needsUpdate = true;
-    grass.computeBoundingBox?.();
-    grass.computeBoundingSphere?.();
-    this.group.add(grass);
   }
 
   createField() {
-    const turfTexture = this.ultraHigh ? this.createUltraTurfTexture() : null;
+    const turfTexture = this.lowDetail ? null : this.createTurfTexture(this.ultraHigh);
     const turfBump = this.ultraHigh ? this.createUltraTurfBumpTexture() : null;
     const turfMat = this.lowDetail
       ? new THREE.MeshBasicMaterial({ color: 0x2b8767 })
       : (this.ultraHigh
         ? new THREE.MeshStandardMaterial({
-            color: 0xf2f7ee,
+            color: 0xc7dfcb,
             map: turfTexture,
             bumpMap: turfBump,
-            bumpScale: 0.075,
-            roughness: 0.96,
+            bumpScale: 0.048,
+            roughness: 0.98,
             metalness: 0.0
           })
-        : new THREE.MeshStandardMaterial({ color: 0x287f63, roughness: 0.9, metalness: 0.0 }));
+        : new THREE.MeshStandardMaterial({
+            color: 0xe7f3e8,
+            map: turfTexture,
+            roughness: 0.97,
+            metalness: 0.0
+          }));
     const turf = new THREE.Mesh(
-      roundedRectGeometry(FIELD_W, FIELD_L, CORNER_R, this.lowDetail ? 4 : 10),
+      roundedRectGeometry(FIELD_W, FIELD_L, CORNER_R, this.lowDetail ? 4 : 12),
       turfMat
     );
+    turf.name = 'arena-turf';
+    turf.userData.shadowRole = 'field';
     this.group.add(turf);
     if (this.ultraHigh) this.createUltraGrass();
 
-    const lineMaterial = new THREE.MeshBasicMaterial({ color: 0xd7fbff, transparent: true, opacity: 0.68 });
+    const lineMaterial = new THREE.MeshBasicMaterial({ color: 0xd7fbff, transparent: true, opacity: 0.72 });
     const centerLine = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_W - 2, 0.14), lineMaterial);
     centerLine.rotation.x = -Math.PI / 2;
     centerLine.position.y = 0.012;
     this.group.add(centerLine);
 
-    const circle = new THREE.Mesh(new THREE.RingGeometry(10.5, 10.68, this.lowDetail ? 24 : 48), lineMaterial);
+    const circle = new THREE.Mesh(new THREE.RingGeometry(10.5, 10.68, this.lowDetail ? 24 : 56), lineMaterial);
     circle.rotation.x = -Math.PI / 2;
     circle.position.y = 0.014;
     this.group.add(circle);
 
-    const centerDot = new THREE.Mesh(new THREE.CircleGeometry(0.38, this.lowDetail ? 8 : 16), lineMaterial);
+    const centerDot = new THREE.Mesh(new THREE.CircleGeometry(0.38, this.lowDetail ? 8 : 20), lineMaterial);
     centerDot.rotation.x = -Math.PI / 2;
     centerDot.position.y = 0.016;
     this.group.add(centerDot);
 
     const glassMaterial = this.lowDetail
       ? new THREE.MeshBasicMaterial({
-          color: 0x67d8f7,
+          color: 0x91d9e9,
           transparent: true,
-          opacity: 0.13,
+          opacity: 0.085,
           depthWrite: false,
           side: THREE.DoubleSide
         })
-      : (this.ultraHigh
-        ? new THREE.MeshPhysicalMaterial({
-            color: 0x8fcfe0,
-            transparent: true,
-            opacity: 0.17,
-            roughness: 0.24,
-            metalness: 0.0,
-            transmission: 0.05,
-            thickness: 0.12,
-            ior: 1.38,
-            clearcoat: 0.18,
-            clearcoatRoughness: 0.48,
-            envMapIntensity: 0.42,
-            depthWrite: false,
-            side: THREE.DoubleSide
-          })
-        : new THREE.MeshStandardMaterial({
-            color: 0x93e9ff,
-            transparent: true,
-            opacity: 0.17,
-            roughness: 0.12,
-            metalness: 0.08,
-            depthWrite: false,
-            side: THREE.DoubleSide
-          }));
+      : new THREE.MeshStandardMaterial({
+          color: this.ultraHigh ? 0xaedbe4 : 0xa4dce8,
+          transparent: true,
+          opacity: this.ultraHigh ? 0.095 : 0.115,
+          roughness: this.ultraHigh ? 0.48 : 0.40,
+          metalness: this.ultraHigh ? 0.015 : 0.0,
+          depthWrite: false,
+          side: THREE.DoubleSide
+        });
     const frameMaterial = this.lowDetail
-      ? new THREE.MeshBasicMaterial({ color: 0x31c9ef })
-      : (this.ultraHigh
-        ? new THREE.MeshPhysicalMaterial({
-            color: 0x86c5d5,
-            emissive: 0x0d5d77,
-            emissiveIntensity: 0.95,
-            roughness: 0.42,
-            metalness: 0.58,
-            clearcoat: 0.12,
-            clearcoatRoughness: 0.55,
-            envMapIntensity: 0.48
-          })
-        : new THREE.MeshStandardMaterial({
-            color: 0xa7edff,
-            emissive: 0x12799b,
-            emissiveIntensity: 1.2,
-            roughness: 0.28,
-            metalness: 0.64
-          }));
+      ? new THREE.MeshBasicMaterial({ color: 0x294650 })
+      : new THREE.MeshStandardMaterial({
+          color: this.ultraHigh ? 0x293a43 : 0x304650,
+          emissive: this.ultraHigh ? 0x082c36 : 0x0d4150,
+          emissiveIntensity: this.ultraHigh ? 0.30 : 0.48,
+          roughness: this.ultraHigh ? 0.67 : 0.58,
+          metalness: this.ultraHigh ? 0.46 : 0.42
+        });
 
     this.createGlassEnclosure(glassMaterial, frameMaterial);
-
     this.createGoal(1);
     this.createGoal(-1);
   }
@@ -368,8 +612,9 @@ export class Arena {
       { x: -halfWidth - WALL_T * 0.5, z: 0, length: straightZ * 2, yaw: Math.PI / 2, nx: -1, nz: 0, minY: RAMP_R }
     ];
 
-    const endSegmentLength = straightX - goalHalfWidth;
-    const endSegmentCenter = goalHalfWidth + endSegmentLength * 0.5;
+    const roundedOpeningHalfWidth = goalHalfWidth + GOAL_MOUTH_R;
+    const endSegmentLength = straightX - roundedOpeningHalfWidth;
+    const endSegmentCenter = roundedOpeningHalfWidth + endSegmentLength * 0.5;
     for (const signZ of [-1, 1]) {
       const z = signZ * (halfLength + WALL_T * 0.5);
       panels.push(
@@ -378,7 +623,7 @@ export class Arena {
         {
           x: 0,
           z,
-          length: GOAL_W,
+          length: GOAL_W + GOAL_MOUTH_R * 2,
           minY: GOAL_H,
           yaw: 0,
           nx: 0,
@@ -396,7 +641,7 @@ export class Arena {
     ];
     const delta = Math.PI * 0.5 / CORNER_SEGMENTS;
     const panelRadius = CORNER_R + WALL_T * 0.5;
-    const cornerLength = 2 * panelRadius * Math.sin(delta * 0.5) * 1.035;
+    const cornerLength = 2 * panelRadius * Math.sin(delta * 0.5) * 1.025;
     for (const corner of corners) {
       const centerX = corner.sx * straightX;
       const centerZ = corner.sz * straightZ;
@@ -424,30 +669,62 @@ export class Arena {
     const signZ = sign >= 0 ? 1 : -1;
     const panels = [];
 
-    // Open tunnel: two side walls, one rounded back wall, no front wall.
+    // Straight tunnel walls begin only after the horizontal mouth fillet.
+    const sideLength = Math.max(0.2, straightDepth - GOAL_MOUTH_R);
     for (const signX of [-1, 1]) {
       panels.push({
         x: signX * (halfWidth + WALL_T * 0.5),
-        z: signZ * (halfLength + straightDepth * 0.5),
-        length: straightDepth,
+        z: signZ * (halfLength + GOAL_MOUTH_R + sideLength * 0.5),
+        length: sideLength,
         yaw: signX > 0 ? Math.PI / 2 : -Math.PI / 2,
         nx: signX,
-        nz: 0
+        nz: 0,
+        goalSide: true
       });
     }
+
     panels.push({
       x: 0,
       z: signZ * (halfLength + GOAL_D + WALL_T * 0.5),
       length: straightX * 2,
       yaw: signZ > 0 ? 0 : Math.PI,
       nx: 0,
-      nz: signZ
+      nz: signZ,
+      goalBack: true
     });
 
-    const cornerSegments = Math.max(6, Math.round(RAMP_SEGMENTS * 0.6));
+    // Quarter-circle fillets join the arena end wall to each goal side wall.
+    const mouthSegments = Math.max(8, Math.round(RAMP_SEGMENTS * 0.6));
+    const mouthDelta = Math.PI * 0.5 / mouthSegments;
+    const mouthCentrelineRadius = Math.max(0.2, GOAL_MOUTH_R - WALL_T * 0.5);
+    const mouthPanelLength = 2 * mouthCentrelineRadius * Math.sin(mouthDelta * 0.5) * 1.035;
+    for (const signX of [-1, 1]) {
+      for (let index = 0; index < mouthSegments; index++) {
+        const angle = (index + 0.5) * mouthDelta;
+        const sine = Math.sin(angle);
+        const cosine = Math.cos(angle);
+        const u = GOAL_MOUTH_R - GOAL_MOUTH_R * sine;
+        const v = GOAL_MOUTH_R - GOAL_MOUTH_R * cosine;
+        const nx = signX * sine;
+        const nz = signZ * cosine;
+        const innerX = signX * (halfWidth + u);
+        const innerZ = signZ * (halfLength + v);
+        panels.push({
+          x: innerX + nx * WALL_T * 0.5,
+          z: innerZ + nz * WALL_T * 0.5,
+          length: mouthPanelLength,
+          yaw: Math.atan2(nx, nz),
+          nx,
+          nz,
+          goalMouth: true
+        });
+      }
+    }
+
+    const cornerSegments = Math.max(8, Math.round(RAMP_SEGMENTS * 0.65));
     const delta = Math.PI * 0.5 / cornerSegments;
     const panelRadius = GOAL_R + WALL_T * 0.5;
-    const cornerLength = 2 * panelRadius * Math.sin(delta * 0.5) * 1.04;
+    const cornerLength = 2 * panelRadius * Math.sin(delta * 0.5) * 1.03;
     for (const signX of [-1, 1]) {
       const centerX = signX * straightX;
       const centerZ = signZ * (halfLength + straightDepth);
@@ -461,60 +738,328 @@ export class Arena {
           length: cornerLength,
           yaw: Math.atan2(nx, nz),
           nx,
-          nz
+          nz,
+          goalBackCorner: true
         });
       }
     }
     return panels;
   }
 
+  panelGlassMinY(panel) {
+    const minY = panel.minY ?? 0;
+    return panel.ramp === false ? minY : Math.max(minY, GLASS_START_Y);
+  }
+
+  createPanelSurfaceMesh(panels, material, options = {}) {
+    const positions = [];
+    const normals = [];
+    const uvs = [];
+    const indices = [];
+    const tileWidth = Math.max(0.2, Number(options.tileWidth) || 3.0);
+    const tileHeight = Math.max(0.2, Number(options.tileHeight) || 1.25);
+    const surfaceOffset = Number(options.surfaceOffset) || 0.004;
+    const minYFor = typeof options.minY === 'function'
+      ? options.minY
+      : (panel) => options.minY ?? panel.minY ?? 0;
+    const maxYFor = typeof options.maxY === 'function'
+      ? options.maxY
+      : (panel) => options.maxY ?? panel.maxY ?? WALL_H;
+
+    for (const panel of panels) {
+      const minY = minYFor(panel);
+      const maxY = maxYFor(panel);
+      const height = Math.max(0.01, maxY - minY);
+      const length = Math.max(0.01, panel.length * (options.lengthScale ?? 1.0));
+      const tangentX = Math.cos(panel.yaw);
+      const tangentZ = -Math.sin(panel.yaw);
+      const inwardX = -panel.nx;
+      const inwardZ = -panel.nz;
+      const surfaceX = panel.x - panel.nx * (WALL_T * 0.5 + surfaceOffset);
+      const surfaceZ = panel.z - panel.nz * (WALL_T * 0.5 + surfaceOffset);
+      const halfLength = length * 0.5;
+      const leftX = surfaceX - tangentX * halfLength;
+      const leftZ = surfaceZ - tangentZ * halfLength;
+      const rightX = surfaceX + tangentX * halfLength;
+      const rightZ = surfaceZ + tangentZ * halfLength;
+      const base = positions.length / 3;
+
+      positions.push(
+        leftX, minY, leftZ,
+        rightX, minY, rightZ,
+        rightX, maxY, rightZ,
+        leftX, maxY, leftZ
+      );
+      for (let vertex = 0; vertex < 4; vertex++) normals.push(inwardX, 0, inwardZ);
+      const u = length / tileWidth;
+      const v = height / tileHeight;
+      uvs.push(0, 0, u, 0, u, v, 0, v);
+      indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geometry.setIndex(indices);
+    geometry.computeBoundingBox();
+    geometry.computeBoundingSphere();
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = options.name || 'arena-panel-surface';
+    mesh.renderOrder = options.renderOrder || 0;
+    if (options.shadowRole) mesh.userData.shadowRole = options.shadowRole;
+    this.group.add(mesh);
+    return mesh;
+  }
+
+  createRoundedRampSurfaceMesh(panels, radius, ceilingY, upper, material, options = {}) {
+    const positions = [];
+    const normals = [];
+    const uvs = [];
+    const indices = [];
+    const delta = Math.PI * 0.5 / RAMP_SEGMENTS;
+    const tileWidth = Math.max(0.2, Number(options.tileWidth) || 3.0);
+    const tileHeight = Math.max(0.2, Number(options.tileHeight) || 0.95);
+    const surfaceOffset = Number(options.surfaceOffset) || 0.006;
+
+    for (const panel of panels) {
+      const boundaryX = panel.x - panel.nx * WALL_T * 0.5;
+      const boundaryZ = panel.z - panel.nz * WALL_T * 0.5;
+      const tangentX = panel.nz;
+      const tangentZ = -panel.nx;
+      const length = panel.length * (options.lengthScale ?? 1.025);
+      const halfLength = length * 0.5;
+      const firstVertex = positions.length / 3;
+
+      for (let step = 0; step <= RAMP_SEGMENTS; step++) {
+        const angle = step * delta;
+        const sine = Math.sin(angle);
+        const cosine = Math.cos(angle);
+        let normalX;
+        let normalY;
+        let normalZ;
+        let centerX;
+        let centerY;
+        let centerZ;
+        if (upper) {
+          normalX = -panel.nx * cosine;
+          normalY = -sine;
+          normalZ = -panel.nz * cosine;
+          centerX = boundaryX - panel.nx * (radius - radius * cosine);
+          centerY = ceilingY - radius + radius * sine;
+          centerZ = boundaryZ - panel.nz * (radius - radius * cosine);
+        } else {
+          normalX = -panel.nx * sine;
+          normalY = cosine;
+          normalZ = -panel.nz * sine;
+          centerX = boundaryX - panel.nx * (radius - radius * sine);
+          centerY = radius - radius * cosine;
+          centerZ = boundaryZ - panel.nz * (radius - radius * sine);
+        }
+        centerX += normalX * surfaceOffset;
+        centerY += normalY * surfaceOffset;
+        centerZ += normalZ * surfaceOffset;
+
+        positions.push(
+          centerX - tangentX * halfLength, centerY, centerZ - tangentZ * halfLength,
+          centerX + tangentX * halfLength, centerY, centerZ + tangentZ * halfLength
+        );
+        normals.push(normalX, normalY, normalZ, normalX, normalY, normalZ);
+        const v = radius * angle / tileHeight;
+        const u = length / tileWidth;
+        uvs.push(0, v, u, v);
+      }
+
+      for (let step = 0; step < RAMP_SEGMENTS; step++) {
+        const row = firstVertex + step * 2;
+        const next = row + 2;
+        indices.push(row, next + 1, row + 1, row, next, next + 1);
+      }
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geometry.setIndex(indices);
+    geometry.computeBoundingBox();
+    geometry.computeBoundingSphere();
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = options.name || (upper ? 'arena-upper-ramp-surface' : 'arena-lower-ramp-surface');
+    mesh.renderOrder = options.renderOrder || 0;
+    if (options.shadowRole) mesh.userData.shadowRole = options.shadowRole;
+    this.group.add(mesh);
+    return mesh;
+  }
+
+  createLowerWallPanels(panels) {
+    const lowerPanels = panels.filter(
+      (panel) => panel.ramp !== false
+        && this.panelGlassMinY(panel) > (panel.minY ?? 0) + 0.05
+    );
+    if (lowerPanels.length === 0) return;
+
+    const wallTexture = this.lowDetail
+      ? null
+      : (this.wallTileTexture ??= this.createWallTileTexture(this.ultraHigh));
+    const wallBump = this.ultraHigh
+      ? (this.wallBumpTexture ??= this.createWallBumpTexture(true))
+      : null;
+    const material = this.lowDetail
+      ? new THREE.MeshBasicMaterial({ color: 0x253f43, side: THREE.DoubleSide })
+      : new THREE.MeshStandardMaterial({
+          color: this.ultraHigh ? 0xc8d2ce : 0xbdcbc7,
+          map: wallTexture,
+          bumpMap: wallBump,
+          bumpScale: this.ultraHigh ? 0.075 : 0,
+          roughness: 0.98,
+          metalness: 0.01,
+          side: THREE.DoubleSide
+        });
+
+    this.createPanelSurfaceMesh(lowerPanels, material, {
+      minY: (panel) => panel.minY ?? 0,
+      maxY: (panel) => this.panelGlassMinY(panel),
+      lengthScale: 1.018,
+      tileWidth: 2.8,
+      tileHeight: 0.72,
+      name: 'arena-tiled-kick-wall',
+      shadowRole: 'arena-surface'
+    });
+  }
+
+  createWallFrameGrid(panels, frameMaterial) {
+    if (this.lowDetail) return;
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    let frameCount = 0;
+    for (const panel of panels) {
+      const minY = this.panelGlassMinY(panel);
+      const maxY = panel.upperRamp === false ? WALL_H : WALL_H - CEILING_R;
+      const height = panel.height ?? Math.max(0.2, maxY - minY);
+      if (height < 0.8) continue;
+      frameCount += Math.max(0, Math.floor(panel.length / 7.0));
+      frameCount += Math.max(0, Math.floor(height / 4.25));
+    }
+
+    const gridMaterial = frameMaterial.clone();
+    gridMaterial.transparent = false;
+    gridMaterial.opacity = 1;
+    if ('emissiveIntensity' in gridMaterial) gridMaterial.emissiveIntensity *= 0.24;
+    const frames = new THREE.InstancedMesh(geometry, gridMaterial, frameCount);
+    frames.name = 'arena-glass-grid';
+    frames.userData.shadowRole = 'arena-frame';
+    const dummy = new THREE.Object3D();
+    let index = 0;
+    for (const panel of panels) {
+      const minY = this.panelGlassMinY(panel);
+      const maxY = panel.upperRamp === false ? WALL_H : WALL_H - CEILING_R;
+      const height = panel.height ?? Math.max(0.2, maxY - minY);
+      if (height < 0.8) continue;
+      const tx = Math.cos(panel.yaw);
+      const tz = -Math.sin(panel.yaw);
+      const surfaceX = panel.x - panel.nx * (WALL_T * 0.5 + 0.012);
+      const surfaceZ = panel.z - panel.nz * (WALL_T * 0.5 + 0.012);
+      const verticalCount = Math.max(0, Math.floor(panel.length / 7.0));
+      for (let column = 1; column <= verticalCount; column++) {
+        const offset = -panel.length * 0.5 + panel.length * column / (verticalCount + 1);
+        dummy.position.set(surfaceX + tx * offset, minY + height * 0.5, surfaceZ + tz * offset);
+        dummy.rotation.set(0, panel.yaw, 0);
+        dummy.scale.set(0.11, height, 0.14);
+        dummy.updateMatrix();
+        frames.setMatrixAt(index++, dummy.matrix);
+      }
+      const rowCount = Math.max(0, Math.floor(height / 4.25));
+      for (let row = 1; row <= rowCount; row++) {
+        dummy.position.set(surfaceX, minY + height * row / (rowCount + 1), surfaceZ);
+        dummy.rotation.set(0, panel.yaw, 0);
+        dummy.scale.set(panel.length * 1.014, 0.10, 0.14);
+        dummy.updateMatrix();
+        frames.setMatrixAt(index++, dummy.matrix);
+      }
+    }
+    frames.count = index;
+    frames.instanceMatrix.needsUpdate = true;
+    this.group.add(frames);
+
+    const accentMaterial = new THREE.MeshStandardMaterial({
+      color: 0x4fb3c9,
+      emissive: 0x124e60,
+      emissiveIntensity: this.ultraHigh ? 0.42 : 0.70,
+      roughness: 0.64,
+      metalness: 0.24
+    });
+    const accents = new THREE.InstancedMesh(geometry, accentMaterial, panels.length);
+    accents.name = 'arena-lower-accent';
+    accents.userData.shadowRole = 'arena-frame';
+    for (let panelIndex = 0; panelIndex < panels.length; panelIndex++) {
+      const panel = panels[panelIndex];
+      const minY = this.panelGlassMinY(panel);
+      const surfaceX = panel.x - panel.nx * (WALL_T * 0.5 + 0.014);
+      const surfaceZ = panel.z - panel.nz * (WALL_T * 0.5 + 0.014);
+      dummy.position.set(surfaceX, minY + 0.14, surfaceZ);
+      dummy.rotation.set(0, panel.yaw, 0);
+      dummy.scale.set(panel.length * 1.018, 0.065, 0.18);
+      dummy.updateMatrix();
+      accents.setMatrixAt(panelIndex, dummy.matrix);
+    }
+    accents.instanceMatrix.needsUpdate = true;
+    this.group.add(accents);
+  }
+
   createGlassEnclosure(glassMaterial, frameMaterial) {
     const panels = this.buildBoundarySegments();
     this.createWallRamps(panels);
+    this.createLowerWallPanels(panels);
     this.createCeilingRamps(panels, glassMaterial);
-    const panelGeometry = new THREE.BoxGeometry(1, 1, 1);
-    const glass = new THREE.InstancedMesh(panelGeometry, glassMaterial, panels.length);
-    const dummy = new THREE.Object3D();
-    for (let index = 0; index < panels.length; index++) {
-      const panel = panels[index];
-      const minY = panel.minY ?? 0;
-      const maxY = panel.upperRamp === false ? WALL_H : WALL_H - CEILING_R;
-      const height = panel.height ?? Math.max(0.2, maxY - minY);
-      dummy.position.set(panel.x, minY + height * 0.5, panel.z);
-      dummy.rotation.set(0, panel.yaw, 0);
-      dummy.scale.set(panel.length, height, WALL_T);
-      dummy.updateMatrix();
-      glass.setMatrixAt(index, dummy.matrix);
-    }
-    glass.instanceMatrix.needsUpdate = true;
-    glass.renderOrder = 2;
-    this.group.add(glass);
 
-    // Bottom and top metal rails make the transparent collision boundary easy
-    // to read without filling the screen with opaque wall geometry.
+    // Only the playable glass face is rendered. This cuts transparent overdraw
+    // by roughly six times compared with one scaled cube per panel.
+    this.createPanelSurfaceMesh(panels, glassMaterial, {
+      minY: (panel) => this.panelGlassMinY(panel),
+      maxY: (panel) => {
+        const minY = this.panelGlassMinY(panel);
+        const naturalMaxY = panel.upperRamp === false ? WALL_H : WALL_H - CEILING_R;
+        return panel.height ? minY + panel.height : Math.max(minY + 0.2, naturalMaxY);
+      },
+      lengthScale: 1.006,
+      name: 'arena-glass-panels',
+      renderOrder: 2,
+      shadowRole: 'glass'
+    });
+
+    const panelGeometry = new THREE.BoxGeometry(1, 1, 1);
+    const dummy = new THREE.Object3D();
     const rails = new THREE.InstancedMesh(panelGeometry, frameMaterial, panels.length * 2);
     let railIndex = 0;
     for (const panel of panels) {
-      const minY = panel.minY ?? 0;
+      const minY = this.panelGlassMinY(panel);
       const maxY = panel.upperRamp === false ? WALL_H : WALL_H - CEILING_R;
       const height = panel.height ?? Math.max(0.2, maxY - minY);
       const centerY = minY + height * 0.5;
+      const surfaceX = panel.x - panel.nx * (WALL_T * 0.5 + 0.01);
+      const surfaceZ = panel.z - panel.nz * (WALL_T * 0.5 + 0.01);
       for (const y of [minY + 0.13, centerY + height * 0.5 - 0.13]) {
-        dummy.position.set(panel.x, y, panel.z);
+        dummy.position.set(surfaceX, y, surfaceZ);
         dummy.rotation.set(0, panel.yaw, 0);
-        dummy.scale.set(panel.length, 0.22, 0.24);
+        dummy.scale.set(panel.length * 1.008, 0.21, 0.14);
         dummy.updateMatrix();
         rails.setMatrixAt(railIndex++, dummy.matrix);
       }
     }
     rails.instanceMatrix.needsUpdate = true;
+    rails.name = 'arena-boundary-rails';
+    rails.userData.shadowRole = 'arena-frame';
     this.group.add(rails);
+
+    this.createWallFrameGrid(panels, frameMaterial);
 
     const straightX = FIELD_W * 0.5 - CORNER_R;
     const straightZ = FIELD_L * 0.5 - CORNER_R;
     const halfWidth = FIELD_W * 0.5;
     const halfLength = FIELD_L * 0.5;
-    const goalHalf = GOAL_W * 0.5;
+    const goalHalf = GOAL_W * 0.5 + GOAL_MOUTH_R;
     const supportPositions = [
       [-halfWidth, -straightZ], [-halfWidth, straightZ], [halfWidth, -straightZ], [halfWidth, straightZ],
       [-straightX, -halfLength], [straightX, -halfLength], [-straightX, halfLength], [straightX, halfLength],
@@ -526,221 +1071,323 @@ export class Arena {
       const supportHeight = WALL_H - CEILING_R;
       dummy.position.set(x, supportHeight * 0.5, z);
       dummy.rotation.set(0, 0, 0);
-      dummy.scale.set(0.26, supportHeight, 0.26);
+      dummy.scale.set(0.25, supportHeight, 0.25);
       dummy.updateMatrix();
       supports.setMatrixAt(index, dummy.matrix);
     }
     supports.instanceMatrix.needsUpdate = true;
+    supports.name = 'arena-main-supports';
+    supports.userData.shadowRole = 'arena-frame';
     this.group.add(supports);
 
     const roofMaterial = glassMaterial.clone();
-    roofMaterial.opacity = this.lowDetail ? 0.045 : 0.075;
+    roofMaterial.opacity = this.lowDetail ? 0.04 : 0.065;
     roofMaterial.depthWrite = false;
     const roof = new THREE.Mesh(
       roundedRectGeometry(
         FIELD_W - CEILING_R * 2,
         FIELD_L - CEILING_R * 2,
         Math.max(1, CORNER_R - CEILING_R),
-        this.lowDetail ? 4 : 10
+        this.lowDetail ? 4 : 12
       ),
       roofMaterial
     );
     roof.position.y = ARENA_TUNING.ceiling;
     roof.renderOrder = 1;
+    roof.name = 'arena-glass-roof';
+    roof.userData.shadowRole = 'glass';
     this.group.add(roof);
   }
 
   createWallRamps(panels) {
     const rampPanels = panels.filter((panel) => panel.ramp !== false);
-    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const wallTexture = this.lowDetail
+      ? null
+      : (this.wallTileTexture ??= this.createWallTileTexture(this.ultraHigh));
+    const wallBump = this.ultraHigh
+      ? (this.wallBumpTexture ??= this.createWallBumpTexture(true))
+      : null;
     const material = this.lowDetail
-      ? new THREE.MeshBasicMaterial({ color: 0x356b68 })
-      : (this.ultraHigh
-        ? new THREE.MeshStandardMaterial({ color: 0x326f63, roughness: 0.88, metalness: 0.02 })
-        : new THREE.MeshStandardMaterial({ color: 0x3a706c, roughness: 0.78, metalness: 0.08 }));
-    const ramps = new THREE.InstancedMesh(geometry, material, rampPanels.length * RAMP_SEGMENTS);
-    const matrix = new THREE.Matrix4();
-    const basis = new THREE.Matrix4();
-    const quaternion = new THREE.Quaternion();
-    const position = new THREE.Vector3();
-    const scale = new THREE.Vector3();
-    const tangent = new THREE.Vector3();
-    const normal = new THREE.Vector3();
-    const slope = new THREE.Vector3();
-    const delta = Math.PI * 0.5 / RAMP_SEGMENTS;
-    const arcLength = RAMP_R * delta * 1.055;
-    let instance = 0;
+      ? new THREE.MeshBasicMaterial({ color: 0x31575a, side: THREE.DoubleSide })
+      : new THREE.MeshStandardMaterial({
+          color: this.ultraHigh ? 0xd9e0dd : 0xd2dcda,
+          map: wallTexture,
+          bumpMap: wallBump,
+          bumpScale: this.ultraHigh ? 0.075 : 0,
+          roughness: 0.98,
+          metalness: 0.01,
+          side: THREE.DoubleSide
+        });
 
-    for (const panel of rampPanels) {
-      const boundaryX = panel.x - panel.nx * WALL_T * 0.5;
-      const boundaryZ = panel.z - panel.nz * WALL_T * 0.5;
-      tangent.set(panel.nz, 0, -panel.nx).normalize();
-      for (let index = 0; index < RAMP_SEGMENTS; index++) {
-        const angle = (index + 0.5) * delta;
-        const sine = Math.sin(angle);
-        const cosine = Math.cos(angle);
-        normal.set(-panel.nx * sine, cosine, -panel.nz * sine).normalize();
-        slope.crossVectors(tangent, normal).normalize();
-        basis.makeBasis(tangent, normal, slope);
-        quaternion.setFromRotationMatrix(basis);
-        position.set(
-          boundaryX - panel.nx * (RAMP_R - RAMP_R * sine),
-          RAMP_R - RAMP_R * cosine,
-          boundaryZ - panel.nz * (RAMP_R - RAMP_R * sine)
-        ).addScaledVector(normal, -0.10);
-        scale.set(panel.length * 1.035, 0.20, arcLength);
-        matrix.compose(position, quaternion, scale);
-        ramps.setMatrixAt(instance++, matrix);
-      }
-    }
-    ramps.instanceMatrix.needsUpdate = true;
-    this.group.add(ramps);
+    this.createRoundedRampSurfaceMesh(rampPanels, RAMP_R, RAMP_R, false, material, {
+      tileWidth: 2.8,
+      tileHeight: 0.72,
+      lengthScale: 1.028,
+      name: 'arena-lower-quarter-pipe',
+      shadowRole: 'arena-surface'
+    });
   }
 
   createCeilingRamps(panels, glassMaterial) {
     const upperPanels = panels.filter((panel) => panel.upperRamp !== false);
-    const geometry = new THREE.BoxGeometry(1, 1, 1);
     const material = glassMaterial.clone();
-    material.opacity = this.lowDetail ? 0.07 : 0.12;
+    material.opacity = this.lowDetail ? 0.06 : 0.09;
     material.depthWrite = false;
-    const ramps = new THREE.InstancedMesh(geometry, material, upperPanels.length * RAMP_SEGMENTS);
-    const matrix = new THREE.Matrix4();
-    const basis = new THREE.Matrix4();
-    const quaternion = new THREE.Quaternion();
-    const position = new THREE.Vector3();
-    const scale = new THREE.Vector3();
-    const tangent = new THREE.Vector3();
-    const normal = new THREE.Vector3();
-    const slope = new THREE.Vector3();
-    const delta = Math.PI * 0.5 / RAMP_SEGMENTS;
-    const arcLength = CEILING_R * delta * 1.055;
-    let instance = 0;
-
-    for (const panel of upperPanels) {
-      const boundaryX = panel.x - panel.nx * WALL_T * 0.5;
-      const boundaryZ = panel.z - panel.nz * WALL_T * 0.5;
-      tangent.set(panel.nz, 0, -panel.nx).normalize();
-      for (let index = 0; index < RAMP_SEGMENTS; index++) {
-        const angle = (index + 0.5) * delta;
-        const sine = Math.sin(angle);
-        const cosine = Math.cos(angle);
-        normal.set(-panel.nx * cosine, -sine, -panel.nz * cosine).normalize();
-        slope.crossVectors(tangent, normal).normalize();
-        basis.makeBasis(tangent, normal, slope);
-        quaternion.setFromRotationMatrix(basis);
-        position.set(
-          boundaryX - panel.nx * (CEILING_R - CEILING_R * cosine),
-          ARENA_TUNING.ceiling - CEILING_R + CEILING_R * sine,
-          boundaryZ - panel.nz * (CEILING_R - CEILING_R * cosine)
-        ).addScaledVector(normal, -0.10);
-        scale.set(panel.length * 1.035, 0.20, arcLength);
-        matrix.compose(position, quaternion, scale);
-        ramps.setMatrixAt(instance++, matrix);
+    material.side = THREE.DoubleSide;
+    this.createRoundedRampSurfaceMesh(
+      upperPanels,
+      CEILING_R,
+      ARENA_TUNING.ceiling,
+      true,
+      material,
+      {
+        lengthScale: 1.028,
+        name: 'arena-upper-glass-ramp',
+        renderOrder: 1,
+        shadowRole: 'glass'
       }
-    }
-    ramps.instanceMatrix.needsUpdate = true;
-    ramps.renderOrder = 1;
-    this.group.add(ramps);
+    );
   }
 
   createRoundedTunnelRampVisual(panels, radius, ceilingY, upper, material) {
-    const geometry = new THREE.BoxGeometry(1, 1, 1);
-    const ramps = new THREE.InstancedMesh(geometry, material, panels.length * RAMP_SEGMENTS);
-    const matrix = new THREE.Matrix4();
-    const basis = new THREE.Matrix4();
-    const quaternion = new THREE.Quaternion();
-    const position = new THREE.Vector3();
-    const scale = new THREE.Vector3();
-    const tangent = new THREE.Vector3();
-    const normal = new THREE.Vector3();
-    const slope = new THREE.Vector3();
-    const delta = Math.PI * 0.5 / RAMP_SEGMENTS;
-    const arcLength = radius * delta * 1.055;
-    let instance = 0;
-
-    for (const panel of panels) {
-      const boundaryX = panel.x - panel.nx * WALL_T * 0.5;
-      const boundaryZ = panel.z - panel.nz * WALL_T * 0.5;
-      tangent.set(panel.nz, 0, -panel.nx).normalize();
-      for (let index = 0; index < RAMP_SEGMENTS; index++) {
-        const angle = (index + 0.5) * delta;
-        const sine = Math.sin(angle);
-        const cosine = Math.cos(angle);
-        if (upper) {
-          normal.set(-panel.nx * cosine, -sine, -panel.nz * cosine).normalize();
-          position.set(
-            boundaryX - panel.nx * (radius - radius * cosine),
-            ceilingY - radius + radius * sine,
-            boundaryZ - panel.nz * (radius - radius * cosine)
-          );
-        } else {
-          normal.set(-panel.nx * sine, cosine, -panel.nz * sine).normalize();
-          position.set(
-            boundaryX - panel.nx * (radius - radius * sine),
-            radius - radius * cosine,
-            boundaryZ - panel.nz * (radius - radius * sine)
-          );
-        }
-        slope.crossVectors(tangent, normal).normalize();
-        basis.makeBasis(tangent, normal, slope);
-        quaternion.setFromRotationMatrix(basis);
-        position.addScaledVector(normal, -0.10);
-        scale.set(panel.length * 1.04, 0.20, arcLength);
-        matrix.compose(position, quaternion, scale);
-        ramps.setMatrixAt(instance++, matrix);
-      }
-    }
-    ramps.instanceMatrix.needsUpdate = true;
-    ramps.renderOrder = 1;
-    this.group.add(ramps);
-    return ramps;
+    material.side = THREE.DoubleSide;
+    return this.createRoundedRampSurfaceMesh(panels, radius, ceilingY, upper, material, {
+      tileWidth: 2.8,
+      tileHeight: 0.72,
+      lengthScale: 1.032,
+      name: upper ? 'goal-upper-rounded-surface' : 'goal-lower-rounded-surface',
+      renderOrder: upper ? 1 : 0,
+      shadowRole: 'arena-surface'
+    });
   }
 
-  createGoalTunnel(sign, wallMaterial, floorMaterial) {
-    const panels = this.buildGoalBoundarySegments(sign);
-    const panelGeometry = new THREE.BoxGeometry(1, 1, 1);
+  createGoalWallGrid(panels, teamColor) {
+    if (this.lowDetail) return;
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
     const wallHeight = Math.max(0.4, GOAL_H - GOAL_R * 2);
-    const walls = new THREE.InstancedMesh(panelGeometry, wallMaterial, panels.length);
-    const dummy = new THREE.Object3D();
-    for (let index = 0; index < panels.length; index++) {
-      const panel = panels[index];
-      dummy.position.set(panel.x, GOAL_R + wallHeight * 0.5, panel.z);
-      dummy.rotation.set(0, panel.yaw, 0);
-      dummy.scale.set(panel.length * 1.02, wallHeight, WALL_T);
-      dummy.updateMatrix();
-      walls.setMatrixAt(index, dummy.matrix);
-    }
-    walls.instanceMatrix.needsUpdate = true;
-    this.group.add(walls);
+    let count = panels.length;
+    for (const panel of panels) count += Math.max(0, Math.floor(panel.length / 4.0));
 
-    const lowerMaterial = this.lowDetail
-      ? wallMaterial
-      : wallMaterial.clone();
-    const upperMaterial = this.lowDetail
-      ? wallMaterial
-      : wallMaterial.clone();
-    if (!this.lowDetail) {
-      lowerMaterial.opacity = Math.min(0.9, wallMaterial.opacity ?? 1);
-      upperMaterial.opacity = Math.min(0.82, wallMaterial.opacity ?? 1);
+    const frameMaterial = new THREE.MeshStandardMaterial({
+      color: 0x263238,
+      emissive: teamColor,
+      emissiveIntensity: this.ultraHigh ? 0.09 : 0.13,
+      roughness: 0.70,
+      metalness: 0.38
+    });
+    const frames = new THREE.InstancedMesh(geometry, frameMaterial, count);
+    frames.name = 'goal-tunnel-grid';
+    frames.userData.shadowRole = 'arena-frame';
+    const dummy = new THREE.Object3D();
+    let instance = 0;
+    for (const panel of panels) {
+      const tx = Math.cos(panel.yaw);
+      const tz = -Math.sin(panel.yaw);
+      const surfaceX = panel.x - panel.nx * (WALL_T * 0.5 + 0.014);
+      const surfaceZ = panel.z - panel.nz * (WALL_T * 0.5 + 0.014);
+      const columns = Math.max(0, Math.floor(panel.length / 4.0));
+      for (let column = 1; column <= columns; column++) {
+        const offset = -panel.length * 0.5 + panel.length * column / (columns + 1);
+        dummy.position.set(surfaceX + tx * offset, GOAL_R + wallHeight * 0.5, surfaceZ + tz * offset);
+        dummy.rotation.set(0, panel.yaw, 0);
+        dummy.scale.set(0.095, wallHeight, 0.13);
+        dummy.updateMatrix();
+        frames.setMatrixAt(instance++, dummy.matrix);
+      }
+      dummy.position.set(surfaceX, GOAL_R + wallHeight * 0.54, surfaceZ);
+      dummy.rotation.set(0, panel.yaw, 0);
+      dummy.scale.set(panel.length * 1.014, 0.085, 0.13);
+      dummy.updateMatrix();
+      frames.setMatrixAt(instance++, dummy.matrix);
     }
+    frames.count = instance;
+    frames.instanceMatrix.needsUpdate = true;
+    this.group.add(frames);
+
+    const accentMaterial = new THREE.MeshStandardMaterial({
+      color: teamColor,
+      emissive: teamColor,
+      emissiveIntensity: this.ultraHigh ? 0.72 : 1.05,
+      roughness: 0.60,
+      metalness: 0.24
+    });
+    const accents = new THREE.InstancedMesh(geometry, accentMaterial, panels.length * 2);
+    accents.name = 'goal-tunnel-accents';
+    accents.userData.shadowRole = 'arena-frame';
+    instance = 0;
+    for (const panel of panels) {
+      const surfaceX = panel.x - panel.nx * (WALL_T * 0.5 + 0.018);
+      const surfaceZ = panel.z - panel.nz * (WALL_T * 0.5 + 0.018);
+      for (const y of [Math.min(GOAL_H - GOAL_R - 0.35, GLASS_START_Y + 0.14), GOAL_H - GOAL_R - 0.10]) {
+        dummy.position.set(surfaceX, y, surfaceZ);
+        dummy.rotation.set(0, panel.yaw, 0);
+        dummy.scale.set(panel.length * 1.018, 0.065, 0.15);
+        dummy.updateMatrix();
+        accents.setMatrixAt(instance++, dummy.matrix);
+      }
+    }
+    accents.instanceMatrix.needsUpdate = true;
+    this.group.add(accents);
+  }
+
+  createRoundedGoalFrame(sign, color) {
+    if (this.lowDetail) return;
+    const halfLength = FIELD_L * 0.5;
+    const z = sign * (halfLength + GOAL_MOUTH_R + 0.025);
+    const halfWidth = GOAL_W * 0.5;
+    const radius = Math.min(GOAL_R, halfWidth - 0.2, GOAL_H * 0.5 - 0.2);
+    const straightX = halfWidth - radius;
+    const topY = GOAL_H;
+    const upperStraightY = topY - radius;
+    const path = new THREE.CurvePath();
+
+    // The goal rim follows the same floor/side/ceiling radii as the physical
+    // tunnel. Unlike the old rectangular posts it never cuts through the
+    // rounded driving surface at the four corners.
+    path.add(new THREE.LineCurve3(
+      new THREE.Vector3(-straightX, 0.10, z),
+      new THREE.Vector3(straightX, 0.10, z)
+    ));
+    path.add(new THREE.QuadraticBezierCurve3(
+      new THREE.Vector3(straightX, 0.10, z),
+      new THREE.Vector3(halfWidth, 0.10, z),
+      new THREE.Vector3(halfWidth, radius, z)
+    ));
+    path.add(new THREE.LineCurve3(
+      new THREE.Vector3(halfWidth, radius, z),
+      new THREE.Vector3(halfWidth, upperStraightY, z)
+    ));
+    path.add(new THREE.QuadraticBezierCurve3(
+      new THREE.Vector3(halfWidth, upperStraightY, z),
+      new THREE.Vector3(halfWidth, topY, z),
+      new THREE.Vector3(straightX, topY, z)
+    ));
+    path.add(new THREE.LineCurve3(
+      new THREE.Vector3(straightX, topY, z),
+      new THREE.Vector3(-straightX, topY, z)
+    ));
+    path.add(new THREE.QuadraticBezierCurve3(
+      new THREE.Vector3(-straightX, topY, z),
+      new THREE.Vector3(-halfWidth, topY, z),
+      new THREE.Vector3(-halfWidth, upperStraightY, z)
+    ));
+    path.add(new THREE.LineCurve3(
+      new THREE.Vector3(-halfWidth, upperStraightY, z),
+      new THREE.Vector3(-halfWidth, radius, z)
+    ));
+    path.add(new THREE.QuadraticBezierCurve3(
+      new THREE.Vector3(-halfWidth, radius, z),
+      new THREE.Vector3(-halfWidth, 0.10, z),
+      new THREE.Vector3(-straightX, 0.10, z)
+    ));
+
+    const material = new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: this.ultraHigh ? 0.58 : 0.82,
+      roughness: 0.72,
+      metalness: 0.22
+    });
+    const frame = new THREE.Mesh(
+      new THREE.TubeGeometry(path, this.ultraHigh ? 82 : 58, 0.18, this.ultraHigh ? 8 : 6, true),
+      material
+    );
+    frame.name = 'rounded-goal-mouth-frame';
+    frame.userData.shadowRole = 'arena-frame';
+    this.group.add(frame);
+  }
+
+  createGoalMouthFloorAccents(sign, color) {
+    if (this.lowDetail) return;
+    const signZ = sign >= 0 ? 1 : -1;
+    const halfLength = FIELD_L * 0.5;
+    const halfWidth = GOAL_W * 0.5;
+    const material = new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: this.ultraHigh ? 0.36 : 0.58,
+      roughness: 0.74,
+      metalness: 0.16
+    });
+
+    // A restrained team-coloured strip follows the exact horizontal mouth
+    // fillet. Besides matching the Rocket-League-like visual language, it
+    // makes the field-wall/goal-tunnel hand-off read as one intentional curve.
+    for (const signX of [-1, 1]) {
+      const points = [];
+      const segments = this.ultraHigh ? 18 : 12;
+      for (let index = 0; index <= segments; index++) {
+        const angle = index / segments * Math.PI * 0.5;
+        const u = GOAL_MOUTH_R - GOAL_MOUTH_R * Math.sin(angle);
+        const v = GOAL_MOUTH_R - GOAL_MOUTH_R * Math.cos(angle);
+        points.push(new THREE.Vector3(
+          signX * (halfWidth + u),
+          0.052,
+          signZ * (halfLength + v)
+        ));
+      }
+      const curve = new THREE.CatmullRomCurve3(points, false, 'centripetal');
+      const accent = new THREE.Mesh(
+        new THREE.TubeGeometry(curve, segments * 2, 0.055, this.ultraHigh ? 7 : 5, false),
+        material
+      );
+      accent.name = 'goal-mouth-floor-accent';
+      accent.userData.shadowRole = 'arena-frame';
+      this.group.add(accent);
+    }
+  }
+
+
+  createGoalTunnel(sign, wallMaterial, floorMaterial, teamColor) {
+    const panels = this.buildGoalBoundarySegments(sign);
+    const wallHeight = Math.max(0.4, GOAL_H - GOAL_R * 2);
+
+    // A single continuous inner face replaces the old row of scaled cubes.
+    // Its UVs follow every mouth/back fillet so the tile pattern and silhouette
+    // remain visually connected from the field wall into the tunnel.
+    this.createPanelSurfaceMesh(panels, wallMaterial, {
+      minY: GOAL_R,
+      maxY: GOAL_R + wallHeight,
+      lengthScale: 1.035,
+      tileWidth: 2.8,
+      tileHeight: 0.72,
+      name: 'goal-tunnel-tiled-walls',
+      shadowRole: 'arena-surface'
+    });
+
+    const lowerMaterial = wallMaterial.clone();
+    const upperMaterial = wallMaterial.clone();
+    lowerMaterial.side = THREE.DoubleSide;
+    upperMaterial.side = THREE.DoubleSide;
     this.createRoundedTunnelRampVisual(panels, GOAL_R, GOAL_H, false, lowerMaterial);
     this.createRoundedTunnelRampVisual(panels, GOAL_R, GOAL_H, true, upperMaterial);
+    this.createGoalWallGrid(panels, teamColor);
 
     const halfLength = FIELD_L * 0.5;
     const signZ = sign >= 0 ? 1 : -1;
-    const goalCenterZ = signZ * (halfLength + GOAL_D * 0.5);
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(GOAL_W, GOAL_D), floorMaterial);
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.set(0, 0.004, goalCenterZ);
+    const goalFloorMaterial = floorMaterial.clone();
+    goalFloorMaterial.side = THREE.DoubleSide;
+    const floor = new THREE.Mesh(goalPlanGeometry(signZ, this.ultraHigh ? 18 : 12), goalFloorMaterial);
+    floor.position.set(0, 0.006, signZ * halfLength);
+    floor.name = 'rounded-goal-floor';
+    floor.userData.shadowRole = 'arena-surface';
     this.group.add(floor);
 
+    // Keep the flat roof away from the side/back quarter-pipes. This leaves the
+    // rounded surfaces as the only visible and physical transition normals.
     const roofWidth = Math.max(1, GOAL_W - GOAL_R * 2);
-    const roofDepth = Math.max(1, GOAL_D - GOAL_R);
-    const roofMaterial = wallMaterial.clone();
-    roofMaterial.opacity = this.lowDetail ? 0.72 : 0.52;
+    const roofDepth = Math.max(0.8, GOAL_D - GOAL_MOUTH_R - GOAL_R);
+    const roofMaterial = floorMaterial.clone();
+    roofMaterial.side = THREE.DoubleSide;
     const roof = new THREE.Mesh(new THREE.PlaneGeometry(roofWidth, roofDepth), roofMaterial);
     roof.rotation.x = Math.PI / 2;
-    roof.position.set(0, GOAL_H, signZ * (halfLength + roofDepth * 0.5));
+    roof.position.set(
+      0,
+      GOAL_H,
+      signZ * (halfLength + GOAL_MOUTH_R + roofDepth * 0.5)
+    );
+    roof.name = 'rounded-goal-roof';
+    roof.userData.shadowRole = 'arena-surface';
     this.group.add(roof);
   }
 
@@ -752,83 +1399,76 @@ export class Arena {
   }
 
   createGoal(sign) {
-    const zFront = sign * (FIELD_L / 2 - 0.4);
-    const zCenter = sign * (FIELD_L / 2 + GOAL_D / 2);
-    const zBack = sign * (FIELD_L / 2 + GOAL_D);
-
-    const isOrange = sign > 0;
+    const signZ = sign >= 0 ? 1 : -1;
+    const zThroat = signZ * (FIELD_L * 0.5 + GOAL_MOUTH_R);
+    const isOrange = signZ > 0;
     const color = isOrange ? 0xff7a18 : 0x238cff;
-    const darkColor = isOrange ? 0x532109 : 0x0b2d67;
+    const darkColor = isOrange ? 0x352b25 : 0x26323d;
     const teamName = isOrange ? 'ORANGE' : 'BLAU';
+    const wallTexture = this.lowDetail
+      ? null
+      : (this.wallTileTexture ??= this.createWallTileTexture(this.ultraHigh));
+    const wallBump = this.ultraHigh
+      ? (this.wallBumpTexture ??= this.createWallBumpTexture(true))
+      : null;
     const wallMaterial = this.lowDetail
-      ? new THREE.MeshBasicMaterial({ color: darkColor, transparent: true, opacity: 0.72 })
+      ? new THREE.MeshBasicMaterial({ color: darkColor, side: THREE.DoubleSide })
       : new THREE.MeshStandardMaterial({
-          color: darkColor,
+          color: this.ultraHigh ? 0xcbd3cf : 0xbfcac6,
+          map: wallTexture,
+          bumpMap: wallBump,
+          bumpScale: this.ultraHigh ? 0.075 : 0,
           emissive: color,
-          emissiveIntensity: 0.16,
-          transparent: true,
-          opacity: 0.76,
-          roughness: 0.42,
-          metalness: 0.14,
-          depthWrite: false
+          emissiveIntensity: this.ultraHigh ? 0.025 : 0.045,
+          roughness: 0.98,
+          metalness: 0.01,
+          side: THREE.DoubleSide
         });
 
     if (this.lowDetail) {
       const half = GOAL_W / 2;
       const points = [
-        -half, 0, zFront, -half, GOAL_H, zFront,
-         half, 0, zFront,  half, GOAL_H, zFront,
-        -half, GOAL_H, zFront, half, GOAL_H, zFront
+        -half, 0, zThroat, -half, GOAL_H, zThroat,
+         half, 0, zThroat,  half, GOAL_H, zThroat,
+        -half, GOAL_H, zThroat, half, GOAL_H, zThroat
       ];
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
       const goalLine = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color }));
       this.group.add(goalLine);
     } else {
-      const goal = new THREE.Group();
-      goal.position.set(0, 0, zFront);
-      goal.rotation.y = sign > 0 ? Math.PI : 0;
-      const frameMat = this.ultraHigh
-        ? new THREE.MeshPhysicalMaterial({
-            color,
-            emissive: color,
-            emissiveIntensity: 1.65,
-            roughness: 0.42,
-            metalness: 0.48,
-            clearcoat: 0.14,
-            clearcoatRoughness: 0.52,
-            envMapIntensity: 0.5
-          })
-        : new THREE.MeshStandardMaterial({
-            color,
-            emissive: color,
-            emissiveIntensity: 1.7,
-            roughness: 0.32,
-            metalness: 0.44
-          });
-      const postGeo = new THREE.BoxGeometry(0.55, GOAL_H, 0.55);
-      const barGeo = new THREE.BoxGeometry(GOAL_W, 0.55, 0.55);
-      for (const px of [-GOAL_W / 2 + 0.275, GOAL_W / 2 - 0.275]) {
-        const post = new THREE.Mesh(postGeo, frameMat);
-        post.position.set(px, GOAL_H / 2, 0);
-        goal.add(post);
-      }
-      const bar = new THREE.Mesh(barGeo, frameMat);
-      bar.position.set(0, GOAL_H - 0.275, 0);
-      goal.add(bar);
-      this.group.add(goal);
+      this.createRoundedGoalFrame(signZ, color);
+      this.createGoalMouthFloorAccents(signZ, color);
     }
 
+    const floorTexture = wallTexture?.clone() ?? null;
+    if (floorTexture) {
+      floorTexture.wrapS = THREE.RepeatWrapping;
+      floorTexture.wrapT = THREE.RepeatWrapping;
+      floorTexture.repeat.set(5.4, 4.2);
+      floorTexture.needsUpdate = true;
+    }
+    const floorBump = wallBump?.clone() ?? null;
+    if (floorBump) {
+      floorBump.wrapS = THREE.RepeatWrapping;
+      floorBump.wrapT = THREE.RepeatWrapping;
+      floorBump.repeat.set(5.4, 4.2);
+      floorBump.needsUpdate = true;
+    }
     const goalFloorMat = this.lowDetail
-      ? new THREE.MeshBasicMaterial({ color: darkColor })
+      ? new THREE.MeshBasicMaterial({ color: darkColor, side: THREE.DoubleSide })
       : new THREE.MeshStandardMaterial({
-          color: darkColor,
+          color: isOrange ? 0x99a59c : 0x929fa7,
+          map: floorTexture,
+          bumpMap: floorBump,
+          bumpScale: this.ultraHigh ? 0.052 : 0,
           emissive: color,
-          emissiveIntensity: this.ultraHigh ? 0.075 : 0.12,
-          roughness: 0.94,
-          metalness: 0
+          emissiveIntensity: this.ultraHigh ? 0.018 : 0.032,
+          roughness: 0.99,
+          metalness: 0.0,
+          side: THREE.DoubleSide
         });
-    this.createGoalTunnel(sign, wallMaterial, goalFloorMat);
+    this.createGoalTunnel(signZ, wallMaterial, goalFloorMat, color);
 
     if (!this.lowDetail) {
       const labelCanvas = document.createElement('canvas');
@@ -846,8 +1486,8 @@ export class Arena {
         new THREE.PlaneGeometry(10, 2.5),
         new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide, depthWrite: false })
       );
-      label.position.set(0, GOAL_H + 1.7, zFront - sign * 0.06);
-      label.rotation.y = sign > 0 ? Math.PI : 0;
+      label.position.set(0, GOAL_H + 1.7, zThroat - signZ * 0.08);
+      label.rotation.y = signZ > 0 ? Math.PI : 0;
       this.group.add(label);
     }
   }
@@ -908,13 +1548,27 @@ export class Arena {
       const zCenter = signZ * (halfLength + GOAL_D * 0.5);
       this.addFixedCollider(0, -0.2, zCenter, GOAL_W * 0.5, 0.2, GOAL_D * 0.5, 0.72, 0);
 
-      // The flat ceiling is inset from the side/back walls so only the rounded
-      // quarter-pipes own the transition normals near the tunnel perimeter.
-      const roofDepth = GOAL_D - GOAL_R;
+      // Cover the widened, rounded mouth as well as the rectangular tunnel.
+      // The collider overlaps the field floor slightly, removing the narrow
+      // seam that could let the ball dip below the surface at oblique angles.
+      this.addFixedCollider(
+        0,
+        -0.2,
+        signZ * (halfLength + GOAL_MOUTH_R * 0.5),
+        GOAL_W * 0.5 + GOAL_MOUTH_R + 0.12,
+        0.2,
+        GOAL_MOUTH_R * 0.5 + 0.12,
+        0.72,
+        0
+      );
+
+      // The flat ceiling starts behind the mouth fillet and ends before the
+      // back-wall radius, so all perimeter transitions remain rounded.
+      const roofDepth = Math.max(0.8, GOAL_D - GOAL_MOUTH_R - GOAL_R);
       this.addFixedCollider(
         0,
         GOAL_H + 0.2,
-        signZ * (halfLength + roofDepth * 0.5),
+        signZ * (halfLength + GOAL_MOUTH_R + roofDepth * 0.5),
         GOAL_W * 0.5 - GOAL_R,
         0.2,
         roofDepth * 0.5,
@@ -1175,13 +1829,10 @@ export class Arena {
 
   createUltraHighStadiumDetails() {
     const box = new THREE.BoxGeometry(1, 1, 1);
-    const steel = new THREE.MeshPhysicalMaterial({
-      color: 0x354b59,
-      roughness: 0.52,
-      metalness: 0.72,
-      clearcoat: 0.08,
-      clearcoatRoughness: 0.65,
-      envMapIntensity: 0.42
+    const steel = new THREE.MeshStandardMaterial({
+      color: 0x354850,
+      roughness: 0.76,
+      metalness: 0.38
     });
     const beamData = [];
     for (const sign of [-1, 1]) {
@@ -1203,9 +1854,9 @@ export class Arena {
     const lampMaterial = new THREE.MeshStandardMaterial({
       color: 0xe7f5ff,
       emissive: 0xcfeeff,
-      emissiveIntensity: 3.2,
-      roughness: 0.18,
-      metalness: 0.22,
+      emissiveIntensity: 1.75,
+      roughness: 0.48,
+      metalness: 0.14,
       toneMapped: false
     });
     const lampPositions = [
@@ -1227,40 +1878,61 @@ export class Arena {
     this.group.add(lamps);
   }
 
+  updateVisuals(camera) {
+    if (!camera || this.grassChunks.length === 0) return;
+    const cameraX = camera.position.x;
+    const cameraZ = camera.position.z;
+    for (const chunk of this.grassChunks) {
+      const center = chunk.userData.grassCenter;
+      const maxDistance = chunk.userData.grassCullDistance || 116;
+      const dx = center.x - cameraX;
+      const dz = center.z - cameraZ;
+      chunk.visible = dx * dx + dz * dz <= maxDistance * maxDistance;
+    }
+  }
+
   createLights() {
     const hemi = new THREE.HemisphereLight(
-      this.ultraHigh ? 0xcfe3ea : 0xd6efff,
-      this.ultraHigh ? 0x4f6250 : 0x5e765c,
-      this.lowDetail ? 1.85 : (this.ultraHigh ? 1.20 : 2.15)
+      this.ultraHigh ? 0xcbdfe6 : 0xd6efff,
+      this.ultraHigh ? 0x526152 : 0x5e765c,
+      this.lowDetail ? 1.85 : (this.ultraHigh ? 0.98 : 2.15)
     );
     this.scene.add(hemi);
 
-    const sun = new THREE.DirectionalLight(0xfff2d0, this.lowDetail ? 1.65 : (this.ultraHigh ? 2.25 : 2.35));
+    const sun = new THREE.DirectionalLight(
+      this.ultraHigh ? 0xffefd2 : 0xfff2d0,
+      this.lowDetail ? 1.65 : (this.ultraHigh ? 1.36 : 2.35)
+    );
     if (this.ultraHigh) sun.position.set(-42, 76, -36);
     else sun.position.set(-34, 62, -28);
     sun.castShadow = this.ultraHigh;
     if (this.ultraHigh) {
-      const shadowSize = this.mobile ? 2048 : 4096;
+      // 2048/1024 plus staggered updates provides a much larger performance
+      // win than supersampling, while still keeping car/ball silhouettes crisp.
+      const shadowSize = this.mobile ? 1024 : 2048;
       sun.shadow.mapSize.set(shadowSize, shadowSize);
-      sun.shadow.camera.left = -92;
-      sun.shadow.camera.right = 92;
-      sun.shadow.camera.top = 118;
-      sun.shadow.camera.bottom = -118;
+      sun.shadow.camera.left = -88;
+      sun.shadow.camera.right = 88;
+      sun.shadow.camera.top = 112;
+      sun.shadow.camera.bottom = -112;
       sun.shadow.camera.near = 10;
-      sun.shadow.camera.far = 210;
-      sun.shadow.bias = -0.00018;
-      sun.shadow.normalBias = 0.035;
-      sun.shadow.radius = 2.2;
+      sun.shadow.camera.far = 205;
+      sun.shadow.bias = -0.00016;
+      sun.shadow.normalBias = 0.042;
+      sun.shadow.radius = this.mobile ? 1.4 : 1.8;
     }
     this.scene.add(sun);
 
-    const fill = new THREE.DirectionalLight(0xaedcff, this.lowDetail ? 0.34 : (this.ultraHigh ? 0.30 : 0.52));
+    const fill = new THREE.DirectionalLight(
+      0xaedcff,
+      this.lowDetail ? 0.34 : (this.ultraHigh ? 0.16 : 0.52)
+    );
     fill.position.set(32, 24, 38);
     fill.castShadow = false;
     this.scene.add(fill);
 
     if (this.ultraHigh) {
-      const warmRim = new THREE.DirectionalLight(0xffc98e, 0.12);
+      const warmRim = new THREE.DirectionalLight(0xffc98e, 0.045);
       warmRim.position.set(26, 18, -50);
       warmRim.castShadow = false;
       this.scene.add(warmRim);

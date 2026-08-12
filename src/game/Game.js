@@ -52,6 +52,7 @@ export class Game {
     this.perfElapsed = 0;
     this.perfFrames = 0;
     this.measuredFps = 60;
+    this.shadowFrameCounter = 0;
     this.renderPixelRatio = this.profile.ultraHigh
       ? this.profile.initialPixelRatio
       : Math.min(window.devicePixelRatio || 1, this.profile.initialPixelRatio);
@@ -59,10 +60,10 @@ export class Game {
     this.scene = new THREE.Scene();
     // Bright daylight is intentionally cheap: a flat background + light fog do
     // most of the work, while the sky dome below is a single unlit draw call.
-    const daylightSky = this.profile.ultraHigh ? 0x78b5d5 : 0x9fd3ed;
+    const daylightSky = this.profile.ultraHigh ? 0x69a8ce : 0x9fd3ed;
     this.scene.background = new THREE.Color(daylightSky);
     this.scene.fog = this.profile.useFog
-      ? new THREE.Fog(this.profile.ultraHigh ? 0x91b8c4 : 0xb8d7e3, 150, 345)
+      ? new THREE.Fog(this.profile.ultraHigh ? 0x809fa9 : 0xb8d7e3, 150, 345)
       : null;
 
     this.camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, this.profile.ultraLow ? 230 : (this.profile.ultraHigh ? 520 : 390));
@@ -81,13 +82,14 @@ export class Game {
     this.renderer.setSize(window.innerWidth, window.innerHeight, false);
     this.renderer.shadowMap.enabled = this.profile.useShadows;
     if (this.profile.useShadows) {
-      this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-      this.renderer.shadowMap.autoUpdate = true;
+      this.renderer.shadowMap.type = THREE.PCFShadowMap;
+      this.renderer.shadowMap.autoUpdate = false;
+      this.renderer.shadowMap.needsUpdate = true;
     }
     this.renderer.sortObjects = !this.profile.ultraLow;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = this.profile.useToneMapping ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
-    this.renderer.toneMappingExposure = this.profile.ultraHigh ? 0.94 : 1.08;
+    this.renderer.toneMappingExposure = this.profile.ultraHigh ? 0.88 : 1.08;
     this.root.appendChild(this.renderer.domElement);
     this.root.classList.toggle('perf-ultra', this.profile.ultraLow);
     this.root.classList.toggle('perf-ultra-low', this.profile.ultraLow);
@@ -364,23 +366,42 @@ export class Game {
   }
 
   enableUltraHighShadows() {
-    const markShadowObject = (object, { cast = true, receive = true } = {}) => {
+    // Keep the expensive dynamic shadow pass focused on gameplay silhouettes.
+    // Static scenery and glass never render into the shadow map; only the turf
+    // and solid arena surfaces receive it.
+    this.arena.group.traverse((object) => {
       if (!object?.isMesh && !object?.isInstancedMesh) return;
       const materials = Array.isArray(object.material) ? object.material : [object.material];
       const transparent = materials.some((material) => material?.transparent && material.opacity < 0.72);
-      if (object.userData?.grassBlades) {
+      const role = object.userData?.shadowRole;
+      object.castShadow = false;
+      object.receiveShadow = !transparent && (role === 'field' || role === 'arena-surface');
+    });
+
+    for (const car of this.cars) {
+      car.group.traverse((object) => {
+        if (!object?.isMesh && !object?.isInstancedMesh) return;
+        object.castShadow = false;
+        object.receiveShadow = true;
+      });
+      const parts = car.visualParts || {};
+      if (parts.lower) parts.lower.castShadow = true;
+      if (parts.cabin) parts.cabin.castShadow = true;
+      if (parts.body) parts.body.castShadow = true;
+    }
+
+    this.ball.mesh.traverse((object) => {
+      if (!object?.isMesh && !object?.isInstancedMesh) return;
+      object.castShadow = true;
+      object.receiveShadow = true;
+    });
+    for (const pad of this.boostPads.pads) {
+      pad.group.traverse((object) => {
+        if (!object?.isMesh && !object?.isInstancedMesh) return;
         object.castShadow = false;
         object.receiveShadow = false;
-        return;
-      }
-      object.castShadow = cast && !transparent;
-      object.receiveShadow = receive && !transparent;
-    };
-
-    this.arena.group.traverse((object) => markShadowObject(object, { cast: true, receive: true }));
-    for (const car of this.cars) car.group.traverse((object) => markShadowObject(object));
-    this.ball.mesh.traverse((object) => markShadowObject(object));
-    for (const pad of this.boostPads.pads) pad.group.traverse((object) => markShadowObject(object));
+      });
+    }
   }
 
   async setupUltraHighRendering() {
@@ -486,6 +507,7 @@ export class Game {
       }
       this.boostPads.update(renderDt);
       this.chaseCamera.update(renderDt);
+      this.arena.updateVisuals?.(this.camera);
 
       this.hudAccumulator += renderDt;
       if (this.hudAccumulator >= 1 / this.profile.hudHz) {
@@ -495,6 +517,14 @@ export class Game {
 
       this.chaseCamera.prepareRender();
       try {
+        if (this.profile.useShadows) {
+          this.shadowFrameCounter += 1;
+          const interval = Math.max(1, this.profile.shadowUpdateInterval || 1);
+          if (this.shadowFrameCounter >= interval) {
+            this.renderer.shadowMap.needsUpdate = true;
+            this.shadowFrameCounter = 0;
+          }
+        }
         if (this.composer) this.composer.render();
         else this.renderer.render(this.scene, this.camera);
       } finally {
@@ -515,8 +545,8 @@ export class Game {
 
     if (this.profile.adaptiveResolution) {
       let next = this.renderPixelRatio;
-      const lowThreshold = this.profile.ultraHigh ? 47 : (this.profile.mobile ? 46 : 52);
-      const highThreshold = this.profile.ultraHigh ? 58 : (this.profile.mobile ? 57 : 59);
+      const lowThreshold = this.profile.ultraHigh ? (this.profile.mobile ? 47 : 52) : (this.profile.mobile ? 46 : 52);
+      const highThreshold = this.profile.ultraHigh ? (this.profile.mobile ? 56 : 59) : (this.profile.mobile ? 57 : 59);
       const downStep = this.profile.ultraHigh ? 0.08 : (this.profile.mobile ? 0.05 : 0.06);
       const upStep = this.profile.ultraHigh ? 0.035 : (this.profile.mobile ? 0.03 : 0.02);
       if (this.measuredFps < lowThreshold) next -= downStep;

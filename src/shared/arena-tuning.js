@@ -4,14 +4,15 @@ export const ARENA_TUNING = Object.freeze({
   ceiling: 25,
   wallHeight: 25,
   cornerRadius: 16,
-  rampRadius: 7,
+  rampRadius: 3.4,
   rampSegments: 16,
   ceilingRampRadius: 6,
   wallThickness: 0.8,
   goalWidth: 34,
   goalHeight: 12,
   goalDepth: 14,
-  goalRampRadius: 4
+  goalRampRadius: 3.4,
+  goalMouthRadius: 2.8
 });
 
 export const CAR_HITBOX = Object.freeze({

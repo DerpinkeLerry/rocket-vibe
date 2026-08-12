@@ -12,12 +12,9 @@ func resolveCarArena(car *Car, config Config) {
 	extentX, extentY, extentZ := projectedExtents(car.Rotation, half)
 
 	halfLength := config.Arena.Length * 0.5
-	absX := math.Abs(car.Position.X)
-	goalHalfWidth := config.Arena.GoalWidth * 0.5
-	goalFits := absX+extentX <= goalHalfWidth &&
-		car.Position.Y+extentY <= config.Arena.GoalHeight
+	goalOpeningHeight := car.Position.Y+extentY <= config.Arena.GoalHeight
 	inGoal := goalTunnelContains(car.Position, config.Arena, extentX, extentY, extentZ)
-	boundary, hasBoundary := nearestArenaBoundary(car.Position, config.Arena, goalFits)
+	boundary, hasBoundary := nearestArenaBoundary(car.Position, config.Arena, goalOpeningHeight)
 
 	if !inGoal {
 		resolveCarFloorAndCeiling(car, config, extentY, boundary, hasBoundary)
@@ -26,7 +23,7 @@ func resolveCarArena(car *Car, config Config) {
 		resolveCarBoundary(car, config, boundary)
 	}
 
-	if inGoal || math.Abs(car.Position.Z) > halfLength-0.02 {
+	if inGoal || math.Abs(car.Position.Z)+extentZ > halfLength-surfaceContactSlop {
 		resolveGoalCar(car, config, extentX, extentY, extentZ)
 	}
 }
@@ -73,7 +70,7 @@ type arenaBoundary struct {
 	Outward  Vec3
 }
 
-func nearestArenaBoundary(position Vec3, arena ArenaConfig, goalOpening bool) (arenaBoundary, bool) {
+func nearestArenaBoundary(position Vec3, arena ArenaConfig, goalOpeningHeight bool) (arenaBoundary, bool) {
 	halfWidth := arena.Width * 0.5
 	halfLength := arena.Length * 0.5
 	straightX := halfWidth - arena.CornerRadius
@@ -95,7 +92,7 @@ func nearestArenaBoundary(position Vec3, arena ArenaConfig, goalOpening bool) (a
 		}, true
 	}
 
-	best := arenaBoundary{Distance: math.MaxFloat64}
+	best := arenaBoundary{}
 	found := false
 	if absZ <= straightZ {
 		best = arenaBoundary{
@@ -104,15 +101,86 @@ func nearestArenaBoundary(position Vec3, arena ArenaConfig, goalOpening bool) (a
 		}
 		found = true
 	}
-	if absX <= straightX && !goalOpening {
+	if absX <= straightX && !goalOpeningHeight {
 		end := arenaBoundary{
 			Distance: halfLength - absZ,
 			Outward:  Vec3{Z: nonZeroSign(position.Z)},
 		}
-		if !found || end.Distance < best.Distance {
-			best = end
+		best, found = considerBoundary(best, found, end)
+	}
+	if goalOpeningHeight {
+		if mouth, ok := nearestGoalMouthBoundary(position, arena); ok {
+			best, found = considerBoundary(best, found, mouth)
 		}
-		found = true
+	}
+	return best, found
+}
+
+func considerBoundary(best arenaBoundary, found bool, candidate arenaBoundary) (arenaBoundary, bool) {
+	replace := !found
+	if found {
+		switch {
+		case best.Distance >= 0 && candidate.Distance >= 0:
+			replace = candidate.Distance < best.Distance
+		case best.Distance < 0 && candidate.Distance < 0:
+			replace = candidate.Distance > best.Distance
+		default:
+			replace = candidate.Distance < 0
+		}
+	}
+	if replace {
+		best = candidate
+	}
+	return best, true
+}
+
+func goalMouthRadius(arena ArenaConfig) float64 {
+	halfWidth := arena.GoalWidth * 0.5
+	requested := arena.GoalMouthRadius
+	if requested <= 0 {
+		requested = math.Min(arena.GoalRampRadius, 3)
+	}
+	return math.Max(0.2, math.Min(requested, math.Min(halfWidth-0.1, arena.GoalDepth-0.1)))
+}
+
+func nearestGoalMouthBoundary(position Vec3, arena ArenaConfig) (arenaBoundary, bool) {
+	halfLength := arena.Length * 0.5
+	halfWidth := arena.GoalWidth * 0.5
+	radius := goalMouthRadius(arena)
+	depth := math.Abs(position.Z) - halfLength
+	outsideOpening := math.Abs(position.X) - halfWidth
+	// Keep the end-wall distance field active farther into the pitch than the
+	// mouth radius. The lower quarter-pipe starts at RampRadius, which is
+	// intentionally a little larger than GoalMouthRadius in this layout.
+	signX := nonZeroSign(position.X)
+	signZ := nonZeroSign(position.Z)
+	best := arenaBoundary{}
+	found := false
+	if outsideOpening < radius && depth < radius {
+		dx := outsideOpening - radius
+		dz := depth - radius
+		distanceToCenter := math.Hypot(dx, dz)
+		if distanceToCenter > 1e-9 {
+			best, found = considerBoundary(best, found, arenaBoundary{
+				Distance: distanceToCenter - radius,
+				Outward: Vec3{
+					X: signX * (-dx / distanceToCenter),
+					Z: signZ * (-dz / distanceToCenter),
+				},
+			})
+		}
+	}
+	if outsideOpening >= radius {
+		best, found = considerBoundary(best, found, arenaBoundary{
+			Distance: -depth,
+			Outward:  Vec3{Z: signZ},
+		})
+	}
+	if depth >= radius {
+		best, found = considerBoundary(best, found, arenaBoundary{
+			Distance: -outsideOpening,
+			Outward:  Vec3{X: signX},
+		})
 	}
 	return best, found
 }
@@ -120,17 +188,36 @@ func nearestArenaBoundary(position Vec3, arena ArenaConfig, goalOpening bool) (a
 func goalTunnelContains(position Vec3, arena ArenaConfig, extentX, extentY, extentZ float64) bool {
 	halfLength := arena.Length * 0.5
 	depth := math.Abs(position.Z) - halfLength
-	if depth < -surfaceContactSlop || depth > arena.GoalDepth+extentZ+surfaceContactSlop {
+	if depth < -extentZ-surfaceContactSlop || depth > arena.GoalDepth+extentZ+surfaceContactSlop {
 		return false
 	}
-	return math.Abs(position.X) <= arena.GoalWidth*0.5+extentX+surfaceContactSlop &&
+	return math.Abs(position.X) <= goalOpeningHalfWidthAtDepth(depth, arena)+extentX+surfaceContactSlop &&
 		position.Y <= arena.GoalHeight+extentY+surfaceContactSlop
+}
+
+// goalOpeningHalfWidthAtDepth describes the flared quarter-circle entrance
+// that blends the arena end wall into the goal side wall. At the goal line the
+// opening is wider by GoalMouthRadius, then narrows smoothly to GoalWidth.
+func goalOpeningHalfWidthAtDepth(depth float64, arena ArenaConfig) float64 {
+	halfWidth := arena.GoalWidth * 0.5
+	radius := goalMouthRadius(arena)
+	if radius <= 1e-9 {
+		return halfWidth
+	}
+	if depth <= 0 {
+		return halfWidth + radius
+	}
+	if depth >= radius {
+		return halfWidth
+	}
+	vertical := depth - radius
+	return halfWidth + radius - math.Sqrt(math.Max(0, radius*radius-vertical*vertical))
 }
 
 func nearestGoalBoundary(position Vec3, arena ArenaConfig) (arenaBoundary, bool) {
 	halfLength := arena.Length * 0.5
 	depth := math.Abs(position.Z) - halfLength
-	if depth < -surfaceContactSlop {
+	if depth < -goalMouthRadius(arena)-surfaceContactSlop {
 		return arenaBoundary{}, false
 	}
 
@@ -140,10 +227,11 @@ func nearestGoalBoundary(position Vec3, arena ArenaConfig) (arenaBoundary, bool)
 	straightX := halfWidth - radius
 	straightDepth := arena.GoalDepth - radius
 	absX := math.Abs(position.X)
+	signX := nonZeroSign(position.X)
 	signZ := nonZeroSign(position.Z)
 
 	if absX > straightX && depth > straightDepth {
-		centerX := nonZeroSign(position.X) * straightX
+		centerX := signX * straightX
 		dx := position.X - centerX
 		dd := depth - straightDepth
 		distance := math.Hypot(dx, dd)
@@ -155,20 +243,15 @@ func nearestGoalBoundary(position Vec3, arena ArenaConfig) (arenaBoundary, bool)
 		}
 	}
 
-	best := arenaBoundary{
-		Distance: halfWidth - absX,
-		Outward:  Vec3{X: nonZeroSign(position.X)},
-	}
+	best, found := nearestGoalMouthBoundary(position, arena)
 	if depth >= 0 {
 		back := arenaBoundary{
 			Distance: arena.GoalDepth - depth,
 			Outward:  Vec3{Z: signZ},
 		}
-		if back.Distance < best.Distance {
-			best = back
-		}
+		best, found = considerBoundary(best, found, back)
 	}
-	return best, true
+	return best, found
 }
 
 func resolveCarBoundary(car *Car, config Config, boundary arenaBoundary) {
@@ -259,7 +342,7 @@ func markCarSurfaceContact(car *Car, normal Vec3) {
 
 func resolveGoalCar(car *Car, config Config, extentX, extentY, extentZ float64) {
 	halfLength := config.Arena.Length * 0.5
-	if math.Abs(car.Position.Z) < halfLength-surfaceContactSlop {
+	if math.Abs(car.Position.Z)+extentZ < halfLength-surfaceContactSlop {
 		return
 	}
 	if !goalTunnelContains(car.Position, config.Arena, extentX, extentY, extentZ) {
@@ -363,12 +446,9 @@ func resolveGoalCarBoundary(car *Car, config Config, boundary arenaBoundary) {
 
 func resolveBallArena(ball *Ball, config Config) {
 	radius := config.Ball.Radius
-	absX := math.Abs(ball.Position.X)
-	goalHalfWidth := config.Arena.GoalWidth * 0.5
-	goalFits := absX+radius <= goalHalfWidth &&
-		ball.Position.Y+radius <= config.Arena.GoalHeight
+	goalOpeningHeight := ball.Position.Y+radius <= config.Arena.GoalHeight
 	inGoal := goalTunnelContains(ball.Position, config.Arena, radius, radius, radius)
-	boundary, hasBoundary := nearestArenaBoundary(ball.Position, config.Arena, goalFits)
+	boundary, hasBoundary := nearestArenaBoundary(ball.Position, config.Arena, goalOpeningHeight)
 
 	if inGoal {
 		resolveGoalBall(ball, config)
@@ -483,8 +563,15 @@ func floorExistsAt(position Vec3, arena ArenaConfig) bool {
 	if math.Abs(position.Z) <= halfLength {
 		return math.Abs(position.X) <= arena.Width*0.5+2
 	}
-	return math.Abs(position.Z) <= halfLength+arena.GoalDepth+1 &&
-		math.Abs(position.X) <= arena.GoalWidth*0.5+1
+	depth := math.Abs(position.Z) - halfLength
+	if depth > arena.GoalDepth+1 {
+		return false
+	}
+	maximumX := arena.GoalWidth*0.5 + 1
+	if depth <= goalMouthRadius(arena)+surfaceContactSlop {
+		maximumX = arena.GoalWidth*0.5 + goalMouthRadius(arena) + 0.25
+	}
+	return math.Abs(position.X) <= maximumX
 }
 
 func orientedBoxSupport(rotation Quat, half Vec3, normal Vec3) float64 {

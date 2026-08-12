@@ -1,4 +1,4 @@
-# Rocket Vibe 1.9.1 – Go Multiplayer / Railway
+# Rocket Vibe 1.10.0 – Go Multiplayer / Railway
 
 Browser-Spiel fuer bis zu vier Spieler mit Three.js-Rendering, lokaler Client-Prediction und einem autoritativen Go-Server. Frontend und Server werden auf Railway als **ein Service** betrieben. Dadurch verwendet der Browser dieselbe HTTPS-Domain fuer Seite und WebSocket (`/lan`); eine separate Backend-URL oder CORS-Konfiguration ist nicht erforderlich.
 
@@ -13,7 +13,7 @@ Browser-Spiel fuer bis zu vier Spieler mit Three.js-Rendering, lokaler Client-Pr
 - Online wird im Browser kein Rapier/WASM geladen; das spart CPU und RAM auf schwachen Geraeten.
 - `npm run dev` bleibt als lokaler Einspieler-/Rapier-Modus erhalten.
 
-Die Arena besitzt eine geschlossene, transparente Einfassung mit abgerundeten Ecken und Glasdecke. Eine sieben Meter breite Viertelrundung verbindet den Boden ohne 90-Grad-Kante mit der Glaswand; Autos koennen darueber bis auf die senkrechte Flaeche fahren. Die Kamera darf auch hinter bzw. ausserhalb der Arena stehen; Geometrie zwischen Kamera und Auto wird fuer den Render-Frame ausgeblendet. Client-Prediction, Go-Server und der lokale Rapier-Modus verwenden dieselbe Grundform, damit Wand- und Bodenkontakte nicht durch spaete Netzwerkkorrekturen zurueckspringen.
+Die Arena besitzt eine geschlossene, transparente Einfassung mit abgerundeten Ecken und Glasdecke. Eine kompakte 3,4-Meter-Viertelrundung verbindet den Boden ohne 90-Grad-Kante mit der Wand; das Glas beginnt bereits kurz oberhalb der Rundung. Der Tormund besitzt eine eigene horizontale 2,8-Meter-Rundung, die Endwand, Torseitenwand und Torboden sichtbar wie physikalisch ohne offene Naht verbindet. Die Kamera darf auch hinter bzw. ausserhalb der Arena stehen; Geometrie zwischen Kamera und Auto wird fuer den Render-Frame ausgeblendet. Client-Prediction, Go-Server und der lokale Rapier-Modus verwenden dieselbe Grundform, damit Wand-, Tor- und Bodenkontakte nicht durch spaete Netzwerkkorrekturen zurueckspringen.
 
 Beim Start werden Spielername und eine von vier rein optischen, Rocket-League-inspirierten Karosserien mit Vorschau ausgewaehlt. Alle vier Varianten verwenden dieselbe Hitbox und dieselben Fahrwerte. Der Server bereinigt und begrenzt ihn, verteilt feste Orange-/Blau-Teams und sendet die Spielerliste an alle Browser. Namensschilder erscheinen ueber den Autos. Das orange Tor liegt auf +Z, das blaue auf -Z; ein Treffer zaehlt fuer das gegnerische Team, aktualisiert den zentralen Spielstand und startet alle Fahrzeuge sowie den Ball neu.
 
@@ -119,7 +119,7 @@ Direkt auf dem Startbildschirm kann die Grafikqualitaet gewaehlt werden. Die Aus
 
 - **NORMAL**: bisherige volle Standarddarstellung; auf Smartphone/Tablet automatisch der empfohlene Modus.
 - **ULTRA LOW**: stark reduzierte Renderauflosung und Details fuer schwache PCs/VMs. Weiterhin kompatibel mit `?perf=ultra` bzw. `?perf=ultra-low`.
-- **ULTRA HIGH**: nur auf Desktop-PCs freigeschaltet. Startet bei 128 % Render-Skalierung und geht adaptiv bis maximal 150 %. Dazu kommen 4K-PCF-Schatten, bewusst matte/realistischere Materialien, reduzierte Reflexionen, detaillierte Felgen mit Speichen/Bremsscheiben, prozedurales Gras mit Bump-Struktur, dichteres Stadion, mehr Vegetation/Publikum, 4x-Multisampling und sehr dezentes Bloom. Bei Last kann die Render-Skalierung bis 95 % sinken.
+- **ULTRA HIGH**: auf Desktop und leistungsstarken Smartphones waehlbar. Desktop startet bei 95 % Render-Skalierung und regelt adaptiv zwischen 68 und 108 %; Mobile startet bei 80 % und regelt zwischen 55 und 92 %. Der Modus verwendet dichte alpha-getestete 3D-Grasbueschel, prozedurale hochaufgeloeste Turf-/Wandtexturen, Relief fuer die Wandplatten, detaillierte Felgen, matte Materialien sowie gestaffelt aktualisierte 2048-/1024-Schatten. Bloom, PMREM-Reflexionen und eine zweite Fullscreen-Renderpass-Kette bleiben bewusst deaktiviert.
 
 Direktlinks fuer Tests:
 
@@ -128,7 +128,17 @@ Direktlinks fuer Tests:
 ?perf=ultra-high
 ```
 
-Auf Smartphones wird `ultra-high` absichtlich auf **NORMAL** zurueckgestuft und die Ultra-High-Auswahl im Startscreen deaktiviert.
+Auf Smartphones bleibt **NORMAL** die empfohlene Einstellung. **ULTRA HIGH** ist aber ebenfalls auswählbar und verwendet dort konservativere Aufloesungs-, Schatten- und Graswerte.
+
+### Finale Arena-/Performance-Abstimmung
+
+- Tribuen und Publikum sind entfernt; Skyline, Haeuser, Baeume und Tageshimmel bleiben erhalten.
+- Die Boden-Wand-Rundung ist deutlich kuerzer, waehrend die Glasflaeche frueher beginnt.
+- Feldwand und Tortunnel werden ueber einen echten gerundeten Tormund verbunden. Ein schmaler Team-Akzent folgt genau dieser Kurve und kaschiert keine Luecke, sondern markiert die gemeinsame Geometrie.
+- Der Torinnenraum besitzt abgerundete Boden-, Seiten-, Rueckwand- und Deckenuebergaenge. Die gleichen Radien gelten fuer Rendering, Rapier, Client-Prediction und Go-Server.
+- Ultra High erzeugt Gras ueber wenige gekreuzte Alpha-Karten mit vielen gemalten Halmen pro Karte. Zwölf sichtbarkeitsgepruefte Instanz-Chunks liefern deutlich mehr Gras bei weit weniger Geometrie als einzelne modellierte Halme.
+- Die dunklen Arena- und Torwaende besitzen im Ultra-High-Modus eine prozedurale Platten-/Steinstruktur plus Bump-Relief, waehrend das Glas neutraler und weniger milchig bleibt.
+- Supersampling, Lichtstaerke und Reflexionen wurden reduziert. Die gewonnene GPU-Zeit fliesst in sichtbare Oberflaechendetails statt in ueberhelles Post-Processing.
 
 ## Qualitaetschecks
 

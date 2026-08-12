@@ -336,7 +336,28 @@ export class LocalCarPredictor {
     }
   }
 
-  findNearestBoundary(goalOpening) {
+  goalMouthRadius() {
+    const arena = ARENA_TUNING;
+    const halfWidth = arena.goalWidth * 0.5;
+    const requested = Number(arena.goalMouthRadius) > 0
+      ? Number(arena.goalMouthRadius)
+      : Math.min(arena.goalRampRadius, 3);
+    return Math.max(0.2, Math.min(requested, halfWidth - 0.1, arena.goalDepth - 0.1));
+  }
+
+  goalOpeningHalfWidthAtDepth(depth) {
+    const arena = ARENA_TUNING;
+    const halfWidth = arena.goalWidth * 0.5;
+    const radius = this.goalMouthRadius();
+    if (radius <= 0.000001) return halfWidth;
+    if (depth <= 0) return halfWidth + radius;
+    if (depth >= radius) return halfWidth;
+
+    const vertical = depth - radius;
+    return halfWidth + radius - Math.sqrt(Math.max(0, radius * radius - vertical * vertical));
+  }
+
+  findNearestBoundary(goalOpeningHeight) {
     const arena = ARENA_TUNING;
     const halfWidth = arena.width * 0.5;
     const halfLength = arena.length * 0.5;
@@ -359,23 +380,60 @@ export class LocalCarPredictor {
     }
 
     let found = false;
-    let distance = Number.POSITIVE_INFINITY;
-    if (absZ <= straightZ) {
-      found = true;
-      distance = halfWidth - absX;
-      this.boundaryNX = Math.sign(this.pos.x || 1);
-      this.boundaryNZ = 0;
-    }
-    if (absX <= straightX && !goalOpening) {
-      const endDistance = halfLength - absZ;
-      if (!found || endDistance < distance) {
-        distance = endDistance;
-        this.boundaryNX = 0;
-        this.boundaryNZ = Math.sign(this.pos.z || 1);
+    let bestDistance = 0;
+    let bestNX = 0;
+    let bestNZ = 0;
+    const consider = (distance, nx, nz) => {
+      const replace = !found
+        || (bestDistance >= 0 && distance >= 0 && distance < bestDistance)
+        || (bestDistance < 0 && distance < 0 && distance > bestDistance)
+        || (bestDistance >= 0 && distance < 0);
+      if (replace) {
+        bestDistance = distance;
+        bestNX = nx;
+        bestNZ = nz;
       }
       found = true;
+    };
+
+    if (absZ <= straightZ) {
+      consider(halfWidth - absX, Math.sign(this.pos.x || 1), 0);
     }
-    this.boundaryDistance = distance;
+    if (absX <= straightX && !goalOpeningHeight) {
+      consider(halfLength - absZ, 0, Math.sign(this.pos.z || 1));
+    }
+
+    if (goalOpeningHeight) {
+      const radius = this.goalMouthRadius();
+      const halfGoal = arena.goalWidth * 0.5;
+      const depth = absZ - halfLength;
+      const outsideOpening = absX - halfGoal;
+      const signX = Math.sign(this.pos.x || 1);
+      const signZ = Math.sign(this.pos.z || 1);
+      // The compact wall ramp begins slightly before the horizontal goal-mouth
+      // fillet. Keep the end-wall distance field active far enough into the
+      // pitch so prediction does not leave a narrow ramp/contact gap.
+      if (outsideOpening < radius && depth < radius) {
+        const dx = outsideOpening - radius;
+        const dz = depth - radius;
+        const distanceToCenter = Math.hypot(dx, dz);
+        if (distanceToCenter > 0.000001) {
+          consider(
+            distanceToCenter - radius,
+            signX * (-dx / distanceToCenter),
+            signZ * (-dz / distanceToCenter)
+          );
+        }
+      }
+      if (outsideOpening >= radius) consider(-depth, 0, signZ);
+      if (depth >= radius) consider(-outsideOpening, signX, 0);
+    }
+
+    if (found) {
+      this.boundaryDistance = bestDistance;
+      this.boundaryNX = bestNX;
+      this.boundaryNZ = bestNZ;
+    }
     return found;
   }
 
@@ -383,8 +441,10 @@ export class LocalCarPredictor {
     const arena = ARENA_TUNING;
     const halfLength = arena.length * 0.5;
     const depth = Math.abs(this.pos.z) - halfLength;
-    if (depth < -SURFACE_CONTACT_SLOP || depth > arena.goalDepth + extentZ + SURFACE_CONTACT_SLOP) return false;
-    return Math.abs(this.pos.x) <= arena.goalWidth * 0.5 + extentX + SURFACE_CONTACT_SLOP
+    if (depth < -extentZ - SURFACE_CONTACT_SLOP
+      || depth > arena.goalDepth + extentZ + SURFACE_CONTACT_SLOP) return false;
+
+    return Math.abs(this.pos.x) <= this.goalOpeningHalfWidthAtDepth(depth) + extentX + SURFACE_CONTACT_SLOP
       && this.pos.y <= arena.goalHeight + extentY + SURFACE_CONTACT_SLOP;
   }
 
@@ -392,17 +452,19 @@ export class LocalCarPredictor {
     const arena = ARENA_TUNING;
     const halfLength = arena.length * 0.5;
     const depth = Math.abs(this.pos.z) - halfLength;
-    if (depth < -SURFACE_CONTACT_SLOP) return false;
+    const mouthRadius = this.goalMouthRadius();
+    if (depth < -mouthRadius - SURFACE_CONTACT_SLOP) return false;
 
     const halfWidth = arena.goalWidth * 0.5;
     const radius = Math.max(0.2, Math.min(arena.goalRampRadius, halfWidth - 0.1, arena.goalDepth - 0.1));
     const straightX = halfWidth - radius;
     const straightDepth = arena.goalDepth - radius;
     const absX = Math.abs(this.pos.x);
+    const signX = Math.sign(this.pos.x || 1);
     const signZ = Math.sign(this.pos.z || 1);
 
     if (absX > straightX && depth > straightDepth) {
-      const centerX = Math.sign(this.pos.x || 1) * straightX;
+      const centerX = signX * straightX;
       const dx = this.pos.x - centerX;
       const dd = depth - straightDepth;
       const distance = Math.hypot(dx, dd);
@@ -414,18 +476,46 @@ export class LocalCarPredictor {
       }
     }
 
-    this.boundaryDistance = halfWidth - absX;
-    this.boundaryNX = Math.sign(this.pos.x || 1);
-    this.boundaryNZ = 0;
-    if (depth >= 0) {
-      const backDistance = arena.goalDepth - depth;
-      if (backDistance < this.boundaryDistance) {
-        this.boundaryDistance = backDistance;
-        this.boundaryNX = 0;
-        this.boundaryNZ = signZ;
+    let found = false;
+    let bestDistance = 0;
+    let bestNX = 0;
+    let bestNZ = 0;
+    const consider = (distance, nx, nz) => {
+      const replace = !found
+        || (bestDistance >= 0 && distance >= 0 && distance < bestDistance)
+        || (bestDistance < 0 && distance < 0 && distance > bestDistance)
+        || (bestDistance >= 0 && distance < 0);
+      if (replace) {
+        bestDistance = distance;
+        bestNX = nx;
+        bestNZ = nz;
+      }
+      found = true;
+    };
+
+    const outsideOpening = absX - halfWidth;
+    if (outsideOpening < mouthRadius && depth < mouthRadius) {
+      const dx = outsideOpening - mouthRadius;
+      const dz = depth - mouthRadius;
+      const distanceToCenter = Math.hypot(dx, dz);
+      if (distanceToCenter > 0.000001) {
+        consider(
+          distanceToCenter - mouthRadius,
+          signX * (-dx / distanceToCenter),
+          signZ * (-dz / distanceToCenter)
+        );
       }
     }
-    return true;
+    if (outsideOpening >= mouthRadius) consider(-depth, 0, signZ);
+    if (depth >= mouthRadius) consider(-outsideOpening, signX, 0);
+    if (depth >= 0) consider(arena.goalDepth - depth, 0, signZ);
+
+    if (found) {
+      this.boundaryDistance = bestDistance;
+      this.boundaryNX = bestNX;
+      this.boundaryNZ = bestNZ;
+    }
+    return found;
   }
 
   resolveGoalTunnelCollision(extentX, extentY, extentZ) {
@@ -551,10 +641,8 @@ export class LocalCarPredictor {
     const extentX = this.supportAlong(1, 0, 0);
     const extentZ = this.supportAlong(0, 0, 1);
     const inGoal = this.isInGoalTunnel(extentX, extentY, extentZ);
-    const absX = Math.abs(this.pos.x);
-    const goalFits = absX + extentX <= arena.goalWidth * 0.5
-      && this.pos.y + extentY <= arena.goalHeight;
-    const hasBoundary = this.findNearestBoundary(goalFits);
+    const goalOpeningHeight = this.pos.y + extentY <= arena.goalHeight;
+    const hasBoundary = this.findNearestBoundary(goalOpeningHeight);
 
     const lowerRampZone = hasBoundary
       && this.boundaryDistance < arena.rampRadius + SURFACE_CONTACT_SLOP
@@ -639,7 +727,7 @@ export class LocalCarPredictor {
       }
     }
 
-    if (inGoal || Math.abs(this.pos.z) > halfLength - 0.02) {
+    if (inGoal || Math.abs(this.pos.z) + extentZ > halfLength - SURFACE_CONTACT_SLOP) {
       this.resolveGoalTunnelCollision(extentX, extentY, extentZ);
     }
 

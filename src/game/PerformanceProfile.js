@@ -74,9 +74,12 @@ export function getPerformanceProfile(networked, explicitMode = null) {
     mobile,
     lowDetail: ultraLow,
     createClientPhysics: !networked,
-    initialPixelRatio: ultraLow ? 0.48 : (ultraHigh ? (mobile ? 1.16 : 1.28) : (mobile ? 1.25 : (networked ? 0.75 : 0.9))),
-    minPixelRatio: ultraLow ? 0.30 : (ultraHigh ? (mobile ? 0.82 : 0.95) : (mobile ? 0.90 : (networked ? 0.58 : 0.72))),
-    maxPixelRatio: ultraLow ? 0.56 : (ultraHigh ? (mobile ? 1.32 : 1.5) : (mobile ? 1.60 : (networked ? 0.82 : 1.0))),
+    // Ultra High now starts close to native resolution instead of spending a
+    // disproportionate amount of GPU time on supersampling. The visual budget
+    // goes into grass, wall geometry, materials and shadows instead.
+    initialPixelRatio: ultraLow ? 0.48 : (ultraHigh ? (mobile ? 0.80 : 0.95) : (mobile ? 1.25 : (networked ? 0.75 : 0.9))),
+    minPixelRatio: ultraLow ? 0.30 : (ultraHigh ? (mobile ? 0.55 : 0.68) : (mobile ? 0.90 : (networked ? 0.58 : 0.72))),
+    maxPixelRatio: ultraLow ? 0.56 : (ultraHigh ? (mobile ? 0.92 : 1.08) : (mobile ? 1.60 : (networked ? 0.82 : 1.0))),
     adaptiveResolution: ultraLow || ultraHigh || mobile,
     predictionHz: ultraLow ? 60 : (mobile ? 90 : 120),
     hudHz: ultraLow ? 6 : (mobile ? 12 : 15),
@@ -85,8 +88,12 @@ export function getPerformanceProfile(networked, explicitMode = null) {
     useToneMapping: !ultraLow,
     antialias: ultraHigh || mobile,
     useShadows: ultraHigh,
-    usePostProcessing: ultraHigh,
-    useEnvironmentReflections: ultraHigh,
+    shadowUpdateInterval: ultraHigh ? (mobile ? 5 : 3) : 0,
+    // Full-scene bloom/composer and PMREM reflections rendered the scene more
+    // than once while making daylight look washed out. Ultra High now spends
+    // that budget on geometry, textures and restrained dynamic shadows.
+    usePostProcessing: false,
+    useEnvironmentReflections: false,
     highQualityMaterials: ultraHigh,
     highDetailEnvironment: ultraHigh
   };

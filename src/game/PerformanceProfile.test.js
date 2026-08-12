@@ -19,7 +19,10 @@ test('allows ultra-high in mobile mode', () => {
 
 test('desktop ultra-high uses a restrained supersampling range', () => {
   const profile = getPerformanceProfile(false, 'ultra-high');
-  assert.equal(profile.initialPixelRatio, 1.28);
-  assert.equal(profile.minPixelRatio, 0.95);
-  assert.equal(profile.maxPixelRatio, 1.5);
+  assert.equal(profile.initialPixelRatio, 0.95);
+  assert.equal(profile.minPixelRatio, 0.68);
+  assert.equal(profile.maxPixelRatio, 1.08);
+  assert.equal(profile.shadowUpdateInterval, 3);
+  assert.equal(profile.usePostProcessing, false);
+  assert.equal(profile.useEnvironmentReflections, false);
 });
