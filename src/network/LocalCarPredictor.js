@@ -63,6 +63,28 @@ export class LocalCarPredictor {
     this.flags = (Number(packet?.flags) || 0) & 0x01;
   }
 
+  resetForKickoff() {
+    this.car.reset();
+    this.mask = 0;
+    this.edges = 0;
+    this.flags = 0;
+    this.grounded = false;
+    this.jumpCount = 0;
+    this.jumpHoldTime = 0;
+    this.jumpHoldActive = false;
+    this.airTime = 0;
+    this.groundLockout = 0;
+    this.dodgeTime = 0;
+    this.dodgeAngleRemaining = 0;
+    this.dodgeAxis.set(0, 0, 0);
+    this.dodgePitchLock = 0;
+    this.dodgeYawLock = 0;
+    this.groundNormal.set(0, 1, 0);
+    this.boost = CAR_TUNING.boostCapacity;
+    this.car.boost = this.boost;
+    this.car.boosting = false;
+  }
+
   consumeEdge(bit) {
     const had = Boolean(this.edges & bit);
     this.edges &= ~bit;

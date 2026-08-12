@@ -19,6 +19,15 @@ var (
 	ErrServerStopped = errors.New("match server stopped")
 )
 
+const (
+	kickoffCountdownSeconds  = 3
+	kickoffCountdownDuration = time.Duration(kickoffCountdownSeconds) * time.Second
+)
+
+func shouldStartKickoff(playerCount int) bool {
+	return playerCount == 2 || playerCount == 4
+}
+
 type joinRequest struct {
 	client *client
 	result chan joinResult
@@ -153,6 +162,9 @@ func (match *Match) run() {
 	defer ticker.Stop()
 	snapshotEvery := uint64(match.config.PhysicsHz / match.config.SnapshotHz)
 	dt := 1 / float64(match.config.PhysicsHz)
+	var loopTick uint64
+	var kickoffEndsAt time.Time
+	kickoffLastAnnounced := 0
 
 	for {
 		select {
@@ -184,6 +196,29 @@ func (match *Match) run() {
 			})
 			request.client.offerJSON(welcome)
 			match.broadcastRoster(clients)
+
+			// A fair team format exists at 2 players (1v1) and 4 players (2v2).
+			// Those joins restart the match and lock everybody on kickoff spawns for
+			// three seconds. Player three deliberately does not interrupt a running
+			// match; they can join the existing 2v1 immediately.
+			if shouldStartKickoff(len(clients)) {
+				match.world.ResetMatch()
+				kickoffEndsAt = time.Now().Add(kickoffCountdownDuration)
+				kickoffLastAnnounced = kickoffCountdownSeconds
+				match.latestState.Store(match.world.Snapshot())
+				match.broadcastKickoff(clients, "countdown", kickoffCountdownSeconds)
+				match.broadcastSnapshot(clients, match.world.Snapshot())
+			} else if !kickoffEndsAt.IsZero() {
+				// Player three never restarts a match, but if they happen to arrive
+				// during the 1v1 countdown they still need to see the existing lock.
+				remaining := int(math.Ceil(time.Until(kickoffEndsAt).Seconds()))
+				if remaining > 0 {
+					message, _ := json.Marshal(map[string]any{
+						"type": "kickoff", "phase": "countdown", "count": remaining,
+					})
+					request.client.offerJSON(message)
+				}
+			}
 			request.result <- joinResult{slot: slot}
 
 		case clientID := <-match.leaves:
@@ -202,7 +237,16 @@ func (match *Match) run() {
 
 		case event := <-match.inputs:
 			connected, exists := clients[event.clientID]
-			if !exists || !match.world.SetInput(connected.slot, event.input) {
+			if !exists {
+				continue
+			}
+			// Held throttle/steer/boost may be queued during the countdown so players
+			// can launch on GO. One-shot actions (jump/reset) are discarded instead
+			// of being buffered and firing unexpectedly when the lock opens.
+			if !kickoffEndsAt.IsZero() {
+				event.input.Edges = 0
+			}
+			if !match.world.SetInput(connected.slot, event.input) {
 				continue
 			}
 			active := event.input.Mask != 0 || event.input.Edges != 0 || event.input.Flags != 0
@@ -220,16 +264,39 @@ func (match *Match) run() {
 
 		case <-ticker.C:
 			started := time.Now()
+			loopTick++
+
+			if !kickoffEndsAt.IsZero() {
+				remaining := int(math.Ceil(time.Until(kickoffEndsAt).Seconds()))
+				if remaining > 0 {
+					if remaining != kickoffLastAnnounced {
+						kickoffLastAnnounced = remaining
+						match.broadcastKickoff(clients, "countdown", remaining)
+					}
+					// World.Step is intentionally skipped while locked. Cars, ball and
+					// boost pads stay exactly on their reset state for every client.
+					state := match.world.Snapshot()
+					match.latestState.Store(state)
+					match.lastTick.Store(state.Tick)
+					if loopTick%snapshotEvery == 0 && len(clients) > 0 {
+						match.broadcastSnapshot(clients, state)
+					}
+					match.lastTickMicros.Store(time.Since(started).Microseconds())
+					continue
+				}
+
+				kickoffEndsAt = time.Time{}
+				kickoffLastAnnounced = 0
+				match.broadcastKickoff(clients, "go", 0)
+			}
+
 			match.world.Step(dt)
 			state := match.world.Snapshot()
 			match.latestState.Store(state)
 			match.lastTick.Store(state.Tick)
 			match.confirmMotion(clients)
-			if state.Tick%snapshotEvery == 0 && len(clients) > 0 {
-				packet := protocol.EncodeState(state)
-				for _, connected := range clients {
-					connected.offerSnapshot(packet)
-				}
+			if loopTick%snapshotEvery == 0 && len(clients) > 0 {
+				match.broadcastSnapshot(clients, state)
 			}
 			match.lastTickMicros.Store(time.Since(started).Microseconds())
 		}
@@ -264,6 +331,22 @@ func (match *Match) broadcastRoster(clients map[string]*client) {
 	})
 	for _, connected := range clients {
 		connected.offerJSON(message)
+	}
+}
+
+func (match *Match) broadcastKickoff(clients map[string]*client, phase string, count int) {
+	message, _ := json.Marshal(map[string]any{
+		"type": "kickoff", "phase": phase, "count": count,
+	})
+	for _, connected := range clients {
+		connected.offerJSON(message)
+	}
+}
+
+func (match *Match) broadcastSnapshot(clients map[string]*client, state game.Snapshot) {
+	packet := protocol.EncodeState(state)
+	for _, connected := range clients {
+		connected.offerSnapshot(packet)
 	}
 }
 

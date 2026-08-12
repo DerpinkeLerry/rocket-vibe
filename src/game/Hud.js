@@ -12,11 +12,15 @@ export class Hud {
     this.el = document.createElement('div');
     this.el.className = 'hud';
     this.el.innerHTML = `
-      <div class="hud__title">ROCKET VIBE // ONLINE 1.9 <span class="hud__perf" data-perf>${profile}</span></div>
+      <div class="hud__title">ROCKET VIBE // ONLINE 1.10.6 <span class="hud__perf" data-perf>${profile}</span></div>
       <div class="hud__scoreboard" aria-label="Spielstand Orange gegen Blau">
         <div class="hud__score-team hud__score-team--orange"><span>ORANGE</span><strong data-orange-score>0</strong></div>
         <div class="hud__score-separator">:</div>
         <div class="hud__score-team hud__score-team--blue"><strong data-blue-score>0</strong><span>BLAU</span></div>
+      </div>
+      <div class="hud__kickoff" data-kickoff hidden aria-live="polite" aria-atomic="true">
+        <strong data-kickoff-value>3</strong>
+        <span data-kickoff-caption>KICKOFF</span>
       </div>
       <div class="hud__network">
         <strong class="hud__identity hud__identity--${team}" data-identity></strong>
@@ -62,6 +66,10 @@ export class Hud {
     this.identity.textContent = playerName;
     this.orangeScore = this.el.querySelector('[data-orange-score]');
     this.blueScore = this.el.querySelector('[data-blue-score]');
+    this.kickoff = this.el.querySelector('[data-kickoff]');
+    this.kickoffValue = this.el.querySelector('[data-kickoff-value]');
+    this.kickoffCaption = this.el.querySelector('[data-kickoff-caption]');
+    this.kickoffHideTimer = null;
   }
 
   setNetworkStatus(text) {
@@ -91,6 +99,48 @@ export class Hud {
   setScore(orange, blue) {
     this.orangeScore.textContent = String(Math.max(0, Number(orange) || 0));
     this.blueScore.textContent = String(Math.max(0, Number(blue) || 0));
+  }
+
+  setKickoff(phase, count = 0) {
+    if (!this.kickoff) return;
+    if (this.kickoffHideTimer) {
+      clearTimeout(this.kickoffHideTimer);
+      this.kickoffHideTimer = null;
+    }
+
+    if (phase === 'countdown') {
+      const value = Math.max(1, Math.min(3, Math.round(Number(count) || 1)));
+      this.kickoff.hidden = false;
+      this.kickoff.classList.remove('hud__kickoff--go');
+      this.kickoffValue.textContent = String(value);
+      this.kickoffCaption.textContent = value === 3 ? 'MATCH STARTET' : 'KICKOFF';
+      this.pulseKickoff();
+      return;
+    }
+
+    if (phase === 'go') {
+      this.kickoff.hidden = false;
+      this.kickoff.classList.add('hud__kickoff--go');
+      this.kickoffValue.textContent = 'LOS!';
+      this.kickoffCaption.textContent = 'SPIELEN';
+      this.pulseKickoff();
+      this.kickoffHideTimer = setTimeout(() => {
+        this.kickoff.hidden = true;
+        this.kickoff.classList.remove('hud__kickoff--go');
+      }, 700);
+      return;
+    }
+
+    this.kickoff.hidden = true;
+    this.kickoff.classList.remove('hud__kickoff--go');
+  }
+
+  pulseKickoff() {
+    this.kickoff?.animate?.([
+      { transform: 'translate(-50%, -50%) scale(0.72)', opacity: 0.2 },
+      { transform: 'translate(-50%, -50%) scale(1.08)', opacity: 1, offset: 0.55 },
+      { transform: 'translate(-50%, -50%) scale(1)', opacity: 1 }
+    ], { duration: 300, easing: 'cubic-bezier(.2,.8,.2,1)' });
   }
 
   update(car) {

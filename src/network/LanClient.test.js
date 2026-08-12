@@ -60,3 +60,28 @@ test('client remembers the selected cosmetic car style', () => {
   const invalid = new LanClient('Fallback Pilot', 'octane');
   assert.equal(invalid.carStyle, 'vortex');
 });
+
+test('kickoff control messages persist and notify the game layer', () => {
+  const client = new LanClient('Kickoff Pilot');
+  const received = [];
+  client.onKickoff = (kickoff) => received.push(kickoff);
+
+  client.applyKickoffMessage({ type: 'kickoff', phase: 'countdown', count: 3 });
+  client.applyKickoffMessage({ type: 'kickoff', phase: 'countdown', count: 2 });
+  client.applyKickoffMessage({ type: 'kickoff', phase: 'go', count: 0 });
+
+  assert.deepEqual(received, [
+    { phase: 'countdown', count: 3 },
+    { phase: 'countdown', count: 2 },
+    { phase: 'go', count: 0 }
+  ]);
+  assert.deepEqual(client.kickoff, { phase: 'go', count: 0 });
+});
+
+test('kickoff countdown values are clamped to the three-second format', () => {
+  const client = new LanClient('Clamp Pilot');
+  client.applyKickoffMessage({ type: 'kickoff', phase: 'countdown', count: 99 });
+  assert.deepEqual(client.kickoff, { phase: 'countdown', count: 3 });
+  client.applyKickoffMessage({ type: 'kickoff', phase: 'countdown', count: -4 });
+  assert.deepEqual(client.kickoff, { phase: 'countdown', count: 1 });
+});

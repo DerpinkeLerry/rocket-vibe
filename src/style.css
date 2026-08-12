@@ -132,6 +132,53 @@ canvas { display: block; width: 100%; height: 100%; }
 .hud__score-team--blue { color: #b7d9ff; background: linear-gradient(90deg, rgba(35,140,255,0.08), rgba(35,140,255,0.3)); }
 .hud__score-separator { align-self: center; padding: 0 2px; font: 900 21px/1 ui-monospace, monospace; }
 
+.hud__kickoff {
+  position: absolute;
+  left: 50%;
+  top: 43%;
+  display: grid;
+  place-items: center;
+  min-width: 180px;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  filter: drop-shadow(0 10px 26px rgba(0,0,0,0.35));
+}
+
+.hud__kickoff[hidden] { display: none; }
+
+.hud__kickoff strong {
+  display: block;
+  color: #fff3d9;
+  font: 950 clamp(74px, 10vw, 132px)/0.82 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: -0.08em;
+  text-shadow:
+    0 3px 0 rgba(255, 122, 24, 0.95),
+    0 0 24px rgba(255, 156, 66, 0.35),
+    0 8px 30px rgba(0,0,0,0.48);
+}
+
+.hud__kickoff span {
+  margin-top: 14px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  color: rgba(255,255,255,0.92);
+  background: rgba(5, 12, 24, 0.72);
+  border: 1px solid rgba(255,255,255,0.14);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.19em;
+}
+
+.hud__kickoff--go strong {
+  color: #f3fff6;
+  font-size: clamp(62px, 8vw, 108px);
+  letter-spacing: -0.06em;
+  text-shadow:
+    0 3px 0 rgba(55, 196, 104, 0.95),
+    0 0 28px rgba(91, 255, 148, 0.36),
+    0 8px 30px rgba(0,0,0,0.48);
+}
+
 .hud__perf {
   margin-left: 8px;
   padding: 3px 7px;
@@ -236,6 +283,8 @@ canvas { display: block; width: 100%; height: 100%; }
 }
 
 @media (max-width: 700px) {
+  .hud__kickoff { top: 41%; min-width: 130px; }
+  .hud__kickoff span { margin-top: 10px; font-size: 9px; }
   .hud__scoreboard { top: 10px; }
   .hud__score-team { min-width: 76px; gap: 6px; padding: 8px; }
   .hud__score-team span { font-size: 8px; }

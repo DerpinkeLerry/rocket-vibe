@@ -1,4 +1,4 @@
-# Rocket Vibe 1.10.5 – Go Multiplayer / Railway
+# Rocket Vibe 1.10.6 – Go Multiplayer / Railway
 
 Browser-Spiel fuer bis zu vier Spieler mit Three.js-Rendering, lokaler Client-Prediction und einem autoritativen Go-Server. Frontend und Server werden auf Railway als **ein Service** betrieben. Dadurch verwendet der Browser dieselbe HTTPS-Domain fuer Seite und WebSocket (`/lan`); eine separate Backend-URL oder CORS-Konfiguration ist nicht erforderlich.
 
@@ -203,3 +203,13 @@ Die Tests decken Fahrbewegung, 70/100-km/h-Speed-Caps und erhaltenes Boost-Momen
 - Der Drift ist ein eigener gehaltener Multiplayer-Input und wird zwischen Browser, Prediction und Go-Server synchronisiert. Das neue 8-Byte-Inputpaket bleibt serverseitig kompatibel zu alten 7-Byte-Paketen.
 - Auf Smartphone/Tablet gibt es einen eigenen `DRIFT`-Button neben den Air-Roll-Tasten.
 - Neue Regressionstests pruefen drei klar getrennte First-Jump-Hoehen, das irreversible Ende des Hold-Lifts nach dem Loslassen sowie engere Drift-Kurven mit erhoehtem Seitenschlupf.
+
+## Fair Kickoff Countdown v1.10.6
+
+- Spieler 2 startet automatisch ein neues faires 1v1.
+- Spieler 4 startet automatisch ein neues faires 2v2.
+- Bei beiden Ereignissen werden Spielstand, Autos, Ball und Boost-Pads zurückgesetzt.
+- Danach bleiben alle fuer einen sichtbaren 3-2-1-Countdown auf den Kickoff-Spawns gesperrt.
+- Auf `LOS!` wird die Physik gleichzeitig fuer alle freigegeben.
+- Gehaltenes Gas/Boost darf waehrend des Countdowns vorbereitet werden; Jump-/Reset-Klicks werden nicht gepuffert.
+- Spieler 3 startet keinen Reset und kann direkt in das laufende Match einsteigen.

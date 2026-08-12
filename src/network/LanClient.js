@@ -69,6 +69,8 @@ export class LanClient {
     this.onStatus = null;
     this.onRoster = null;
     this.onLatency = null;
+    this.onKickoff = null;
+    this.kickoff = null;
   }
 
   async connect() {
@@ -124,6 +126,11 @@ export class LanClient {
             settled = true;
             resolve(this);
           }
+          return;
+        }
+
+        if (message.type === 'kickoff') {
+          this.applyKickoffMessage(message);
           return;
         }
 
@@ -185,6 +192,15 @@ export class LanClient {
         if (!settled) fail('WebSocket zum Spielserver konnte nicht geöffnet werden.');
       });
     });
+  }
+
+  applyKickoffMessage(message) {
+    const phase = message?.phase === 'go' ? 'go' : 'countdown';
+    const count = phase === 'countdown'
+      ? Math.max(1, Math.min(3, Math.round(Number(message?.count) || 1)))
+      : 0;
+    this.kickoff = { phase, count };
+    this.onKickoff?.(this.kickoff);
   }
 
   readBinaryMessage(buffer) {

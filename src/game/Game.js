@@ -48,6 +48,7 @@ export class Game {
     this.connectedPlayers = new Set(network?.connectedPlayers ?? (this.networked ? [this.playerId] : [0]));
     this.orangeScore = 0;
     this.blueScore = 0;
+    this.kickoffActive = false;
 
     this.perfElapsed = 0;
     this.perfFrames = 0;
@@ -182,6 +183,8 @@ export class Game {
       };
       this.network.onRoster = (players, maxPlayers) => this.setRoster(players, maxPlayers);
       this.network.onLatency = (rttMs) => this.hud.setPing(rttMs);
+      this.network.onKickoff = (kickoff) => this.handleKickoff(kickoff);
+      if (this.network.kickoff) this.handleKickoff(this.network.kickoff);
 
       // Key transitions bypass requestAnimationFrame and go to Railway immediately.
       this.input.setNetworkChangeHandler(() => this.sendNetworkInput());
@@ -482,7 +485,7 @@ export class Game {
       }
 
       this.applyNetworkState(frameDt, now);
-      this.localPredictor?.step(frameDt);
+      if (!this.kickoffActive) this.localPredictor?.step(frameDt);
     } else {
       this.accumulator += frameDt;
       let steps = 0;
@@ -572,8 +575,41 @@ export class Game {
   sendNetworkInput() {
     if (!this.networked) return;
     const packet = this.input.takeNetworkPacket();
-    this.localPredictor?.setInput(packet);
+    // Keep held controls warm during kickoff so W/Boost can launch on LOS, but
+    // never buffer a jump/reset edge inside local prediction. The server applies
+    // the same rule, so prediction and authority unlock from the same state.
+    const predictorPacket = this.kickoffActive ? { ...packet, edges: 0 } : packet;
+    this.localPredictor?.setInput(predictorPacket);
     this.network.sendInput(packet);
+  }
+
+  handleKickoff(kickoff) {
+    if (!this.networked || !kickoff) return;
+    if (kickoff.phase === 'countdown') {
+      const count = Math.max(1, Math.min(3, Math.round(Number(kickoff.count) || 1)));
+      const startingFreshCountdown = count === 3 || !this.kickoffActive;
+      this.kickoffActive = true;
+      if (startingFreshCountdown) this.resetForNetworkKickoff();
+      this.hud.setKickoff('countdown', count);
+      return;
+    }
+
+    if (kickoff.phase === 'go') {
+      this.kickoffActive = false;
+      this.hud.setKickoff('go');
+    }
+  }
+
+  resetForNetworkKickoff() {
+    for (let i = 0; i < this.cars.length; i++) {
+      if (i === this.playerId) continue;
+      this.cars[i]?.reset();
+    }
+    this.localPredictor?.resetForKickoff();
+    this.ball.reset();
+    this.boostPads.resetAll();
+    this.hud.setScore(0, 0);
+    this.lastReconciledTick = -1;
   }
 
   stepOffline(dt) {
