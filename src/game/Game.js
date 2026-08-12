@@ -111,6 +111,7 @@ export class Game {
     this.arena = new Arena(this.scene, this.world, RAPIER, {
       lowDetail: this.profile.lowDetail,
       ultraHigh: this.profile.ultraHigh,
+      mobile: this.profile.mobile,
       maxAnisotropy: this.renderer.capabilities.getMaxAnisotropy?.() || 1,
       createPhysics: !this.networked
     });
@@ -195,8 +196,8 @@ export class Game {
 
     if (this.profile.useSky) this.addSkyDecoration();
     if (this.profile.ultraHigh) {
-      this.enableUltraHighShadows();
-      this.setupUltraHighRendering();
+      if (this.profile.useShadows) this.enableUltraHighShadows();
+      if (this.profile.usePostProcessing) this.setupUltraHighRendering();
     }
 
     this.onResize = this.onResize.bind(this);
@@ -367,6 +368,11 @@ export class Game {
       if (!object?.isMesh && !object?.isInstancedMesh) return;
       const materials = Array.isArray(object.material) ? object.material : [object.material];
       const transparent = materials.some((material) => material?.transparent && material.opacity < 0.72);
+      if (object.userData?.grassBlades) {
+        object.castShadow = false;
+        object.receiveShadow = false;
+        return;
+      }
       object.castShadow = cast && !transparent;
       object.receiveShadow = receive && !transparent;
     };
@@ -407,17 +413,17 @@ export class Game {
       const renderTarget = new THREE.WebGLRenderTarget(width, height, {
         depthBuffer: true,
         stencilBuffer: false,
-        samples: 4
+        samples: this.profile.mobile ? 0 : 4
       });
       const composer = new EffectComposer(this.renderer, renderTarget);
       composer.setPixelRatio(this.renderPixelRatio);
       composer.setSize(width, height);
       composer.addPass(new RenderPass(this.scene, this.camera));
 
-      const bloom = new UnrealBloomPass(new THREE.Vector2(width, height), 0.16, 0.28, 1.05);
-      bloom.threshold = 1.05;
-      bloom.strength = 0.16;
-      bloom.radius = 0.24;
+      const bloom = new UnrealBloomPass(new THREE.Vector2(width, height), this.profile.mobile ? 0.08 : 0.16, 0.28, 1.05);
+      bloom.threshold = this.profile.mobile ? 1.12 : 1.05;
+      bloom.strength = this.profile.mobile ? 0.08 : 0.16;
+      bloom.radius = this.profile.mobile ? 0.18 : 0.24;
       composer.addPass(bloom);
       composer.addPass(new OutputPass());
 

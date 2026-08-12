@@ -12,13 +12,12 @@ test('allows ultra-high on desktop mode', () => {
   assert.equal(normalizePerformanceMode('high', false), 'ultra-high');
 });
 
-test('blocks ultra-high in mobile mode', () => {
-  assert.equal(normalizePerformanceMode('ultra-high', true), 'normal');
-  assert.equal(normalizePerformanceMode('high', true), 'normal');
+test('allows ultra-high in mobile mode', () => {
+  assert.equal(normalizePerformanceMode('ultra-high', true), 'ultra-high');
+  assert.equal(normalizePerformanceMode('high', true), 'ultra-high');
 });
 
-
-test('ultra-high uses a restrained supersampling range', () => {
+test('desktop ultra-high uses a restrained supersampling range', () => {
   const profile = getPerformanceProfile(false, 'ultra-high');
   assert.equal(profile.initialPixelRatio, 1.28);
   assert.equal(profile.minPixelRatio, 0.95);

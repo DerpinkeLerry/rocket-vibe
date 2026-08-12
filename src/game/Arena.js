@@ -42,6 +42,7 @@ export class Arena {
     this.RAPIER = RAPIER;
     this.lowDetail = Boolean(options.lowDetail);
     this.ultraHigh = Boolean(options.ultraHigh) && !this.lowDetail;
+    this.mobile = Boolean(options.mobile);
     this.maxAnisotropy = Math.max(1, Number(options.maxAnisotropy) || 1);
     this.enablePhysics = options.createPhysics !== false;
     this.group = new THREE.Group();
@@ -52,7 +53,8 @@ export class Arena {
     if (this.enablePhysics) this.createPhysics();
     // All decoration below is static and mostly instanced/unlit. Keeping it in
     // low-detail mode makes the arena feel alive without adding shadow cost.
-    this.createStands();
+    // Grandstands/crowd were intentionally removed. Keep only the exterior
+    // skyline, buildings and trees so the stadium stays open and uncluttered.
     this.createExteriorDecoration();
     if (this.ultraHigh) this.createUltraHighStadiumDetails();
     this.createLights();
@@ -164,6 +166,99 @@ export class Arena {
     return texture;
   }
 
+  createUltraGrass() {
+    // Actual 3D grass geometry. Every instance is a tiny cluster of three
+    // crossed triangular blades, so tens of thousands of stems stay a single
+    // draw call. Smartphone Ultra High uses a lighter density.
+    const vertices = [];
+    const bladeWidth = 0.022;
+    for (let blade = 0; blade < 3; blade++) {
+      const angle = blade * Math.PI / 3;
+      const dx = Math.cos(angle) * bladeWidth;
+      const dz = Math.sin(angle) * bladeWidth;
+      vertices.push(
+        -dx, 0, -dz,
+         dx, 0,  dz,
+         0,  1,  0
+      );
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geometry.computeVertexNormals();
+
+    const material = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      roughness: 1.0,
+      metalness: 0.0,
+      side: THREE.DoubleSide
+    });
+
+    const clusterCount = this.mobile ? 9000 : 26000;
+    const grass = new THREE.InstancedMesh(geometry, material, clusterCount);
+    grass.name = 'ultra-high-3d-grass';
+    grass.userData.grassBlades = true;
+    grass.userData.cameraOcclusionIgnore = true;
+    grass.castShadow = false;
+    grass.receiveShadow = false;
+
+    const dummy = new THREE.Object3D();
+    const palette = [
+      new THREE.Color(0x2f8a60),
+      new THREE.Color(0x277b55),
+      new THREE.Color(0x3c9366),
+      new THREE.Color(0x246f4e),
+      new THREE.Color(0x4b9b6c)
+    ];
+    let seed = 0x52a4f19d;
+    const random = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    const halfW = FIELD_W * 0.5 - 0.7;
+    const halfL = FIELD_L * 0.5 - 0.7;
+    const corner = Math.max(0.1, CORNER_R - 0.7);
+    const insideField = (x, z) => {
+      const ax = Math.abs(x);
+      const az = Math.abs(z);
+      if (ax > halfW || az > halfL) return false;
+      if (ax <= halfW - corner || az <= halfL - corner) return true;
+      const dx = ax - (halfW - corner);
+      const dz = az - (halfL - corner);
+      return dx * dx + dz * dz <= corner * corner;
+    };
+
+    let placed = 0;
+    let attempts = 0;
+    while (placed < clusterCount && attempts < clusterCount * 4) {
+      attempts += 1;
+      const x = (random() * 2 - 1) * halfW;
+      const z = (random() * 2 - 1) * halfL;
+      if (!insideField(x, z)) continue;
+
+      // Keep the painted midfield markings readable instead of covering them
+      // with green geometry.
+      const centerRadius = Math.hypot(x, z);
+      if (Math.abs(z) < 0.13 || centerRadius < 0.52 || (centerRadius > 10.3 && centerRadius < 10.9)) continue;
+
+      const height = 0.045 + random() * (this.mobile ? 0.045 : 0.065);
+      const widthScale = 0.72 + random() * 0.62;
+      dummy.position.set(x, 0.002, z);
+      dummy.rotation.set((random() - 0.5) * 0.08, random() * Math.PI, (random() - 0.5) * 0.08);
+      dummy.scale.set(widthScale, height, widthScale);
+      dummy.updateMatrix();
+      grass.setMatrixAt(placed, dummy.matrix);
+      grass.setColorAt(placed, palette[Math.floor(random() * palette.length)]);
+      placed += 1;
+    }
+
+    grass.count = placed;
+    grass.instanceMatrix.needsUpdate = true;
+    if (grass.instanceColor) grass.instanceColor.needsUpdate = true;
+    grass.computeBoundingBox?.();
+    grass.computeBoundingSphere?.();
+    this.group.add(grass);
+  }
+
   createField() {
     const turfTexture = this.ultraHigh ? this.createUltraTurfTexture() : null;
     const turfBump = this.ultraHigh ? this.createUltraTurfBumpTexture() : null;
@@ -184,6 +279,7 @@ export class Arena {
       turfMat
     );
     this.group.add(turf);
+    if (this.ultraHigh) this.createUltraGrass();
 
     const lineMaterial = new THREE.MeshBasicMaterial({ color: 0xd7fbff, transparent: true, opacity: 0.68 });
     const centerLine = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_W - 2, 0.14), lineMaterial);
@@ -1011,152 +1107,6 @@ export class Arena {
     );
   }
 
-  createStands() {
-    const concreteMat = this.lowDetail
-      ? new THREE.MeshBasicMaterial({ color: 0x748795 })
-      : new THREE.MeshStandardMaterial({ color: 0x788b98, roughness: 0.93, metalness: 0.02 });
-    const darkMat = this.lowDetail
-      ? new THREE.MeshBasicMaterial({ color: 0x405866 })
-      : new THREE.MeshStandardMaterial({ color: 0x465d69, roughness: 0.88, metalness: 0.04 });
-
-    // Tiered stand blocks are one instanced draw call instead of many meshes.
-    const blockGeometry = new THREE.BoxGeometry(1, 1, 1);
-    const tierMatrices = [];
-    const dummy = new THREE.Object3D();
-    for (const sign of [-1, 1]) {
-      for (let tier = 0; tier < 3; tier++) {
-        const totalWidth = FIELD_W + 31 - tier * 2.0;
-        const goalClearance = GOAL_W + 10 + tier * 1.4;
-        const sectionWidth = Math.max(4, (totalWidth - goalClearance) * 0.5);
-        const centerX = goalClearance * 0.5 + sectionWidth * 0.5;
-        for (const sideX of [-1, 1]) {
-          dummy.position.set(sideX * centerX, 1.75 + tier * 1.65, sign * (FIELD_L * 0.5 + 8.5 + tier * 3.0));
-          dummy.rotation.set(0, 0, 0);
-          dummy.scale.set(sectionWidth, 3.5 + tier * 0.55, 4.2);
-          dummy.updateMatrix();
-          tierMatrices.push(dummy.matrix.clone());
-        }
-      }
-    }
-    for (const sign of [-1, 1]) {
-      for (let tier = 0; tier < 3; tier++) {
-        dummy.position.set(sign * (FIELD_W * 0.5 + 8.5 + tier * 3.0), 1.75 + tier * 1.65, 0);
-        dummy.rotation.set(0, 0, 0);
-        dummy.scale.set(4.2, 3.5 + tier * 0.55, FIELD_L + 14 - tier * 2.0);
-        dummy.updateMatrix();
-        tierMatrices.push(dummy.matrix.clone());
-      }
-    }
-    const tiers = new THREE.InstancedMesh(blockGeometry, concreteMat, tierMatrices.length);
-    tierMatrices.forEach((matrix, index) => tiers.setMatrixAt(index, matrix));
-    tiers.instanceMatrix.needsUpdate = true;
-    this.group.add(tiers);
-
-    // Dark fascia underneath the first row. End fascias are split around the
-    // goal mouth so no stand geometry clips through the playable goal tunnel.
-    const fasciaData = [];
-    const fasciaTotalWidth = FIELD_W + 27;
-    const fasciaGap = GOAL_W + 9;
-    const fasciaSection = (fasciaTotalWidth - fasciaGap) * 0.5;
-    const fasciaCenterX = fasciaGap * 0.5 + fasciaSection * 0.5;
-    for (const signZ of [-1, 1]) {
-      for (const signX of [-1, 1]) {
-        fasciaData.push([signX * fasciaCenterX, 2.5, signZ * (FIELD_L * 0.5 + 6.1), fasciaSection, 5.0, 1.15]);
-      }
-    }
-    fasciaData.push(
-      [FIELD_W * 0.5 + 6.1, 2.5, 0, 1.15, 5.0, FIELD_L + 11],
-      [-FIELD_W * 0.5 - 6.1, 2.5, 0, 1.15, 5.0, FIELD_L + 11]
-    );
-    const fascia = new THREE.InstancedMesh(blockGeometry, darkMat, fasciaData.length);
-    fasciaData.forEach(([x, y, z, w, h, d], index) => {
-      dummy.position.set(x, y, z);
-      dummy.rotation.set(0, 0, 0);
-      dummy.scale.set(w, h, d);
-      dummy.updateMatrix();
-      fascia.setMatrixAt(index, dummy.matrix);
-    });
-    fascia.instanceMatrix.needsUpdate = true;
-    this.group.add(fascia);
-
-    this.createCrowd();
-    this.createStandBanners();
-  }
-
-  createCrowd() {
-    // Each block represents a small cluster of spectators. Hundreds of visible
-    // "people" still cost a single draw call thanks to InstancedMesh.
-    const positions = [];
-    const rowCount = this.lowDetail ? 1 : (this.ultraHigh ? 4 : 2);
-    const longStep = this.lowDetail ? 8.0 : (this.ultraHigh ? 2.75 : 4.6);
-    const endStep = this.lowDetail ? 7.0 : (this.ultraHigh ? 2.55 : 4.1);
-
-    for (const side of [-1, 1]) {
-      for (let row = 0; row < rowCount; row++) {
-        for (let z = -FIELD_L * 0.5 + 4; z <= FIELD_L * 0.5 - 4; z += longStep) {
-          positions.push([side * (FIELD_W * 0.5 + 7.3 + row * 2.2), 4.1 + row * 1.65, z, Math.PI / 2]);
-        }
-        for (let x = -FIELD_W * 0.5 + 4; x <= FIELD_W * 0.5 - 4; x += endStep) {
-          if (Math.abs(x) < GOAL_W * 0.5 + 5.0 + row * 0.7) continue;
-          positions.push([x, 4.1 + row * 1.65, side * (FIELD_L * 0.5 + 7.3 + row * 2.2), 0]);
-        }
-      }
-    }
-
-    const crowdGeometry = new THREE.BoxGeometry(0.82, 0.68, 0.72);
-    const crowdMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const crowd = new THREE.InstancedMesh(crowdGeometry, crowdMaterial, positions.length);
-    const dummy = new THREE.Object3D();
-    const palette = [
-      new THREE.Color(0xff8a3c), new THREE.Color(0x3f91e8), new THREE.Color(0xf0d066),
-      new THREE.Color(0xe7edf2), new THREE.Color(0x365767), new THREE.Color(0x6fc58c)
-    ];
-    positions.forEach(([x, y, z, yaw], index) => {
-      const wobble = Math.sin(index * 12.9898) * 0.16;
-      dummy.position.set(x, y + wobble, z);
-      dummy.rotation.set(0, yaw, 0);
-      dummy.scale.set(1, 0.86 + Math.abs(wobble), 1);
-      dummy.updateMatrix();
-      crowd.setMatrixAt(index, dummy.matrix);
-      crowd.setColorAt(index, palette[index % palette.length]);
-    });
-    crowd.instanceMatrix.needsUpdate = true;
-    if (crowd.instanceColor) crowd.instanceColor.needsUpdate = true;
-    this.group.add(crowd);
-  }
-
-  createStandBanners() {
-    const geometry = new THREE.BoxGeometry(1, 1, 1);
-    const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const banners = [];
-    const spacing = this.lowDetail ? 22 : 13;
-    for (let x = -FIELD_W * 0.5; x <= FIELD_W * 0.5; x += spacing) {
-      if (Math.abs(x) < GOAL_W * 0.5 + 5.5) continue;
-      banners.push([x, 7.9, FIELD_L * 0.5 + 5.45, 5.2, 1.0, 0.15, 0]);
-      banners.push([x, 7.9, -FIELD_L * 0.5 - 5.45, 5.2, 1.0, 0.15, 0]);
-    }
-    for (let z = -FIELD_L * 0.5 + 10; z <= FIELD_L * 0.5 - 10; z += spacing) {
-      banners.push([FIELD_W * 0.5 + 5.45, 7.9, z, 0.15, 1.0, 5.2, Math.PI / 2]);
-      banners.push([-FIELD_W * 0.5 - 5.45, 7.9, z, 0.15, 1.0, 5.2, Math.PI / 2]);
-    }
-
-    const mesh = new THREE.InstancedMesh(geometry, material, banners.length);
-    const dummy = new THREE.Object3D();
-    const orange = new THREE.Color(0xff7a18);
-    const blue = new THREE.Color(0x238cff);
-    banners.forEach(([x, y, z, w, h, d, yaw], index) => {
-      dummy.position.set(x, y, z);
-      dummy.rotation.set(0, yaw, 0);
-      dummy.scale.set(w, h, d);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(index, dummy.matrix);
-      mesh.setColorAt(index, index % 2 === 0 ? orange : blue);
-    });
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    this.group.add(mesh);
-  }
-
   createExteriorDecoration() {
     this.createTrees();
     if (!this.lowDetail) this.createSkyline();
@@ -1290,7 +1240,8 @@ export class Arena {
     else sun.position.set(-34, 62, -28);
     sun.castShadow = this.ultraHigh;
     if (this.ultraHigh) {
-      sun.shadow.mapSize.set(4096, 4096);
+      const shadowSize = this.mobile ? 2048 : 4096;
+      sun.shadow.mapSize.set(shadowSize, shadowSize);
       sun.shadow.camera.left = -92;
       sun.shadow.camera.right = 92;
       sun.shadow.camera.top = 118;

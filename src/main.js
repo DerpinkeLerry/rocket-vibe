@@ -88,6 +88,7 @@ function requestPlayerIdentity(root) {
     const selectedStyle = rememberedCarStyle();
     const selectedGraphics = getRememberedPerformanceMode();
     const ultraHighAvailable = canUseUltraHigh();
+    const mobileGraphics = prefersMobileControls();
     const overlay = document.createElement('div');
     overlay.className = 'join-screen';
     overlay.innerHTML = `
@@ -123,17 +124,17 @@ function requestPlayerIdentity(root) {
             <label class="graphics-choice${selectedGraphics === 'ultra-low' ? ' is-selected' : ''}" data-graphics-choice="ultra-low">
               <input type="radio" name="graphicsMode" value="ultra-low" ${selectedGraphics === 'ultra-low' ? 'checked' : ''} />
               <span class="graphics-choice__title">ULTRA LOW</span>
-              <span class="graphics-choice__desc">Maximale FPS · schwache PCs / VM</span>
+              <span class="graphics-choice__desc">Maximale FPS · schwache Geräte / VM</span>
             </label>
             <label class="graphics-choice${selectedGraphics === 'normal' ? ' is-selected' : ''}" data-graphics-choice="normal">
               <input type="radio" name="graphicsMode" value="normal" ${selectedGraphics === 'normal' ? 'checked' : ''} />
               <span class="graphics-choice__title">NORMAL</span>
-              <span class="graphics-choice__desc">Ausgewogen · Standard auf Smartphone</span>
+              <span class="graphics-choice__desc">Ausgewogen · empfohlen für Smartphone</span>
             </label>
             <label class="graphics-choice graphics-choice--high${selectedGraphics === 'ultra-high' ? ' is-selected' : ''}${ultraHighAvailable ? '' : ' is-disabled'}" data-graphics-choice="ultra-high">
               <input type="radio" name="graphicsMode" value="ultra-high" ${selectedGraphics === 'ultra-high' ? 'checked' : ''} ${ultraHighAvailable ? '' : 'disabled'} />
               <span class="graphics-choice__title">ULTRA HIGH</span>
-              <span class="graphics-choice__desc">${ultraHighAvailable ? 'PC only · Schatten, Detailgras, bessere Felgen, dezentes Bloom' : 'Nur am PC verfügbar'}</span>
+              <span class="graphics-choice__desc">${ultraHighAvailable ? (mobileGraphics ? 'Mobile High · 3D-Gras, Schatten, bessere Materialien · hoher Akkuverbrauch' : '3D-Gras, Schatten, bessere Felgen und Materialien') : 'Nicht verfügbar'}</span>
             </label>
           </div>
         </fieldset>

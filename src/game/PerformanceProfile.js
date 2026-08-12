@@ -29,7 +29,6 @@ export function normalizePerformanceMode(value, mobile = isMobileDevice()) {
   let mode = MODE_NORMAL;
   if (['ultra', '1', 'vm', 'low', 'ultra-low', 'ultralow'].includes(requested)) mode = MODE_ULTRA_LOW;
   if (['high', 'ultra-high', 'ultrahigh', 'cinematic', 'max'].includes(requested)) mode = MODE_ULTRA_HIGH;
-  if ((mobile || isLikelyHandheldHardware()) && mode === MODE_ULTRA_HIGH) return MODE_NORMAL;
   return mode;
 }
 
@@ -55,14 +54,15 @@ export function setPerformancePreference(mode) {
 }
 
 export function canUseUltraHigh() {
-  return !isLikelyHandheldHardware();
+  return true;
 }
 
 export function getPerformanceProfile(networked, explicitMode = null) {
   const mobile = isMobileDevice();
   const mode = normalizePerformanceMode(explicitMode || getRememberedPerformanceMode(), mobile);
   const ultraLow = mode === MODE_ULTRA_LOW;
-  const ultraHigh = mode === MODE_ULTRA_HIGH && !mobile && canUseUltraHigh();
+  const ultraHigh = mode === MODE_ULTRA_HIGH && canUseUltraHigh();
+  const mobileUltraHigh = ultraHigh && mobile;
 
   return {
     mode,
@@ -70,12 +70,13 @@ export function getPerformanceProfile(networked, explicitMode = null) {
     ultra: ultraLow,
     ultraLow,
     ultraHigh,
+    mobileUltraHigh,
     mobile,
     lowDetail: ultraLow,
     createClientPhysics: !networked,
-    initialPixelRatio: ultraLow ? 0.48 : (ultraHigh ? 1.28 : (mobile ? 1.25 : (networked ? 0.75 : 0.9))),
-    minPixelRatio: ultraLow ? 0.30 : (ultraHigh ? 0.95 : (mobile ? 0.90 : (networked ? 0.58 : 0.72))),
-    maxPixelRatio: ultraLow ? 0.56 : (ultraHigh ? 1.5 : (mobile ? 1.60 : (networked ? 0.82 : 1.0))),
+    initialPixelRatio: ultraLow ? 0.48 : (ultraHigh ? (mobile ? 1.16 : 1.28) : (mobile ? 1.25 : (networked ? 0.75 : 0.9))),
+    minPixelRatio: ultraLow ? 0.30 : (ultraHigh ? (mobile ? 0.82 : 0.95) : (mobile ? 0.90 : (networked ? 0.58 : 0.72))),
+    maxPixelRatio: ultraLow ? 0.56 : (ultraHigh ? (mobile ? 1.32 : 1.5) : (mobile ? 1.60 : (networked ? 0.82 : 1.0))),
     adaptiveResolution: ultraLow || ultraHigh || mobile,
     predictionHz: ultraLow ? 60 : (mobile ? 90 : 120),
     hudHz: ultraLow ? 6 : (mobile ? 12 : 15),
@@ -95,9 +96,7 @@ export function togglePerformanceProfile() {
   if (typeof window === 'undefined') return;
   const mobile = isMobileDevice();
   const current = normalizePerformanceMode(getRememberedPerformanceMode(), mobile);
-  const order = mobile
-    ? [MODE_NORMAL, MODE_ULTRA_LOW]
-    : [MODE_NORMAL, MODE_ULTRA_HIGH, MODE_ULTRA_LOW];
+  const order = [MODE_NORMAL, MODE_ULTRA_HIGH, MODE_ULTRA_LOW];
   const next = order[(order.indexOf(current) + 1) % order.length];
   setPerformancePreference(next);
 
