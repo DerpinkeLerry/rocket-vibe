@@ -95,7 +95,7 @@ Ein Deployment beendet laufende Matches beim Containerwechsel. Fuer spaetere Mat
 - Space: Sprung (halten = mehr Lift) / Doppelsprung; mit W/A/S/D beim zweiten Sprung = Flip/Dodge
 - R: eigenes Auto resetten
 - B: Ball resetten (Entwicklungsfunktion)
-- F2: Normal / Ultra-VM umschalten und Seite neu laden
+- F2: auf PC zwischen Normal / Ultra High / Ultra Low wechseln und Seite neu laden
 - Kamera: `C` schaltet zwischen Ball Cam und Car Cam; das Auto bleibt in beiden Modi zentriert. Hindernisse zwischen Kamera und Auto werden beim Rendern ausgeblendet, und die Kamera darf hinter/außerhalb der Arena stehen.
 
 ### Smartphone / Tablet
@@ -111,15 +111,24 @@ Auf Touch-Geraeten wird die Mobile-Steuerung automatisch aktiviert. Fuer die bes
 - `⛶`: Vollbild im Match; kompatible Browser versuchen dabei Querformat zu sperren
 - Bereits auf dem Start-/Namensbildschirm gibt es `VOLLBILD STARTEN`, damit das Spiel vor dem Match per echtem User-Tap in den Browser-Fullscreen wechseln kann
 
-Das HUD beruecksichtigt Notch/Home-Bar per Safe-Area und verhindert Pull-to-Refresh/Browser-Gesten im Match. Mobilgeraete verwenden standardmaessig das Profil **MOBILE HQ** mit Antialiasing, voller Arena-/Umgebungsqualitaet und 125–160 % Render-Skalierung; nur bei deutlich zu niedriger Framerate reduziert die adaptive Aufloesung bis minimal 90 %. Browser ohne normale Fullscreen-API erhalten einen Hinweis auf den bereits vorbereiteten Home-Screen/Standalone-Modus. Mit `?mobile=1` kann die Touch-Steuerung zum Testen erzwungen, mit `?mobile=0` deaktiviert werden.
+Das HUD beruecksichtigt Notch/Home-Bar per Safe-Area und verhindert Pull-to-Refresh/Browser-Gesten im Match. Mobilgeraete verwenden standardmaessig das Profil **NORMAL** mit Antialiasing, voller Arena-/Umgebungsqualitaet und 125–160 % Render-Skalierung; nur bei deutlich zu niedriger Framerate reduziert die adaptive Aufloesung bis minimal 90 %. Browser ohne normale Fullscreen-API erhalten einen Hinweis auf den bereits vorbereiteten Home-Screen/Standalone-Modus. Mit `?mobile=1` kann die Touch-Steuerung zum Testen erzwungen, mit `?mobile=0` deaktiviert werden.
 
-## Schwache Rechner / VM
+## Grafikprofile
+
+Direkt auf dem Startbildschirm kann die Grafikqualitaet gewaehlt werden. Die Auswahl wird lokal gespeichert und betrifft nur den jeweiligen Browser:
+
+- **NORMAL**: bisherige volle Standarddarstellung; auf Smartphone/Tablet automatisch der empfohlene Modus.
+- **ULTRA LOW**: stark reduzierte Renderauflosung und Details fuer schwache PCs/VMs. Weiterhin kompatibel mit `?perf=ultra` bzw. `?perf=ultra-low`.
+- **ULTRA HIGH**: nur auf Desktop-PCs freigeschaltet. Aktiviert bis zu 200 % Render-Skalierung, 4K-PCF-Schatten, Clearcoat-/Transmission-Materialien, PMREM-Reflexionen, dichteres Stadion, mehr Vegetation/Publikum, hochwertigeres Gras, 4x-Multisampling im Post-Processing und dezentes Bloom fuer Boost, Lampen und Tore. Bei zu niedriger Framerate reduziert nur dieser Browser seine Render-Skalierung vorsichtig bis minimal 115 %.
+
+Direktlinks fuer Tests:
 
 ```text
-https://DEINE-DOMAIN.up.railway.app/?perf=ultra
+?perf=ultra-low
+?perf=ultra-high
 ```
 
-Der Ultra-Modus reduziert nur die Grafik und lokale Prediction dieses Browsers. Andere Spieler koennen gleichzeitig den normalen Modus nutzen.
+Auf Smartphones wird `ultra-high` absichtlich auf **NORMAL** zurueckgestuft und die Ultra-High-Auswahl im Startscreen deaktiviert.
 
 ## Qualitaetschecks
 

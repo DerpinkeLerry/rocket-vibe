@@ -12,7 +12,7 @@
     "server": "go run ./cmd/server",
     "lan": "npm run build && npm run server",
     "start": "npm run server",
-    "test:js": "node --test src/game/Input.test.js src/game/MobileControls.test.js src/game/Fullscreen.test.js src/network/LocalCarPredictor.test.js src/network/LanClient.test.js",
+    "test:js": "node --test src/game/Input.test.js src/game/MobileControls.test.js src/game/Fullscreen.test.js src/game/PerformanceProfile.test.js src/network/LocalCarPredictor.test.js src/network/LanClient.test.js",
     "test:go": "go test ./...",
     "smoke": "node scripts/smoke-websocket.mjs",
     "check": "npm run build && npm run test:js && npm run test:go"

@@ -32,7 +32,7 @@ export class Game {
     this.playerName = network?.playerName || options.playerName || 'Spieler';
     this.playerCarStyle = normalizeCarStyle(network?.carStyle || options.carStyle || DEFAULT_CAR_STYLE);
     this.playerTeam = network?.team === 'blue' ? 'blue' : 'orange';
-    this.profile = getPerformanceProfile(this.networked);
+    this.profile = getPerformanceProfile(this.networked, options.graphicsMode);
 
     this.fixedDt = 1 / 60;
     this.accumulator = 0;
@@ -52,7 +52,9 @@ export class Game {
     this.perfElapsed = 0;
     this.perfFrames = 0;
     this.measuredFps = 60;
-    this.renderPixelRatio = Math.min(window.devicePixelRatio || 1, this.profile.initialPixelRatio);
+    this.renderPixelRatio = this.profile.ultraHigh
+      ? this.profile.initialPixelRatio
+      : Math.min(window.devicePixelRatio || 1, this.profile.initialPixelRatio);
 
     this.scene = new THREE.Scene();
     // Bright daylight is intentionally cheap: a flat background + light fog do
@@ -61,27 +63,35 @@ export class Game {
     this.scene.background = new THREE.Color(daylightSky);
     this.scene.fog = this.profile.useFog ? new THREE.Fog(0xb8d7e3, 150, 345) : null;
 
-    this.camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, this.profile.ultra ? 230 : 390);
+    this.camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, this.profile.ultraLow ? 230 : (this.profile.ultraHigh ? 520 : 390));
     this.camera.position.set(0, 5, 10);
 
     this.renderer = new THREE.WebGLRenderer({
-      antialias: this.profile.mobile && !this.profile.ultra,
+      antialias: this.profile.antialias,
       alpha: false,
       powerPreference: 'high-performance',
-      precision: this.profile.ultra ? 'mediump' : 'highp',
+      precision: this.profile.ultraLow ? 'mediump' : 'highp',
       stencil: false,
       depth: true,
       preserveDrawingBuffer: false
     });
     this.renderer.setPixelRatio(this.renderPixelRatio);
     this.renderer.setSize(window.innerWidth, window.innerHeight, false);
-    this.renderer.shadowMap.enabled = false;
-    this.renderer.sortObjects = !this.profile.ultra;
+    this.renderer.shadowMap.enabled = this.profile.useShadows;
+    if (this.profile.useShadows) {
+      this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      this.renderer.shadowMap.autoUpdate = true;
+    }
+    this.renderer.sortObjects = !this.profile.ultraLow;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = this.profile.useToneMapping ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
-    this.renderer.toneMappingExposure = 1.08;
+    this.renderer.toneMappingExposure = this.profile.ultraHigh ? 1.14 : 1.08;
     this.root.appendChild(this.renderer.domElement);
-    this.root.classList.toggle('perf-ultra', this.profile.ultra);
+    this.root.classList.toggle('perf-ultra', this.profile.ultraLow);
+    this.root.classList.toggle('perf-ultra-low', this.profile.ultraLow);
+    this.root.classList.toggle('perf-ultra-high', this.profile.ultraHigh);
+    this.composer = null;
+    this.ultraHighPipelineReady = false;
 
     // In online mode Railway owns all real physics. The browser uses tiny JS
     // transform stores instead of loading/stepping Rapier/WASM.
@@ -98,9 +108,11 @@ export class Game {
     this.passiveInput = new VirtualInput();
     this.arena = new Arena(this.scene, this.world, RAPIER, {
       lowDetail: this.profile.lowDetail,
+      ultraHigh: this.profile.ultraHigh,
+      maxAnisotropy: this.renderer.capabilities.getMaxAnisotropy?.() || 1,
       createPhysics: !this.networked
     });
-    this.boostPads = new BoostPads(this.scene, { lowDetail: this.profile.lowDetail });
+    this.boostPads = new BoostPads(this.scene, { lowDetail: this.profile.lowDetail, ultraHigh: this.profile.ultraHigh });
 
     const initialCarStyles = new Map((network?.players ?? []).map((player) => [
       Number(player?.playerId),
@@ -115,6 +127,7 @@ export class Game {
       {
         ...config,
         lowDetail: this.profile.lowDetail,
+        ultraHigh: this.profile.ultraHigh,
         clientOnly: this.networked,
         playerName: index === this.playerId ? this.playerName : `Spieler ${index + 1}`,
         carStyle: index === this.playerId ? this.playerCarStyle : (initialCarStyles.get(index) || DEFAULT_CAR_STYLE),
@@ -124,6 +137,7 @@ export class Game {
     [this.car0, this.car1, this.car2, this.car3] = this.cars;
     this.ball = new Ball(this.scene, this.world, RAPIER, this.passiveInput, {
       lowDetail: this.profile.lowDetail,
+      ultraHigh: this.profile.ultraHigh,
       clientOnly: this.networked
     });
 
@@ -139,7 +153,7 @@ export class Game {
     this.localPredictor = this.networked
       ? new LocalCarPredictor(this.car, {
           simulationHz: this.profile.predictionHz,
-          lowLatency: this.profile.ultra
+          lowLatency: this.profile.ultraLow
         })
       : null;
     this.chaseCamera = new ChaseCamera(this.camera, this.car, this.ball, this.scene);
@@ -178,6 +192,10 @@ export class Game {
     this.netDeltaQuat = new THREE.Quaternion();
 
     if (this.profile.useSky) this.addSkyDecoration();
+    if (this.profile.ultraHigh) {
+      this.enableUltraHighShadows();
+      this.setupUltraHighRendering();
+    }
 
     this.onResize = this.onResize.bind(this);
     this.loop = this.loop.bind(this);
@@ -233,17 +251,17 @@ export class Game {
   addSkyDecoration() {
     // One very low-poly vertex-coloured dome gives us a daylight gradient with
     // no texture lookup, post processing, shadow map, or dynamic update cost.
-    const radius = 260;
+    const radius = this.profile.ultraHigh ? 340 : 260;
     const domeGeometry = new THREE.SphereGeometry(
       radius,
-      this.profile.lowDetail ? 16 : 24,
-      this.profile.lowDetail ? 8 : 12
+      this.profile.lowDetail ? 16 : (this.profile.ultraHigh ? 40 : 24),
+      this.profile.lowDetail ? 8 : (this.profile.ultraHigh ? 20 : 12)
     );
     const positions = domeGeometry.getAttribute('position');
     const colors = new Float32Array(positions.count * 3);
-    const horizon = new THREE.Color(0xdce8e3);
-    const midSky = new THREE.Color(0x92cae8);
-    const zenith = new THREE.Color(0x5eafe0);
+    const horizon = new THREE.Color(this.profile.ultraHigh ? 0xeaf2ed : 0xdce8e3);
+    const midSky = new THREE.Color(this.profile.ultraHigh ? 0x9fd4ef : 0x92cae8);
+    const zenith = new THREE.Color(this.profile.ultraHigh ? 0x55a7df : 0x5eafe0);
     const color = new THREE.Color();
     for (let index = 0; index < positions.count; index++) {
       const h = THREE.MathUtils.clamp(positions.getY(index) / radius, -1, 1);
@@ -283,22 +301,38 @@ export class Game {
       fog: false
     }));
     sun.position.set(-118, 104, -156);
-    sun.scale.set(24, 24, 1);
+    sun.scale.set(this.profile.ultraHigh ? 28 : 24, this.profile.ultraHigh ? 28 : 24, 1);
     sun.userData.cameraOcclusionIgnore = true;
     this.scene.add(sun);
 
+    if (this.profile.ultraHigh) {
+      const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+        color: 0xffe4a1,
+        transparent: true,
+        opacity: 0.17,
+        depthWrite: false,
+        depthTest: true,
+        fog: false,
+        blending: THREE.AdditiveBlending
+      }));
+      halo.position.copy(sun.position);
+      halo.scale.set(52, 52, 1);
+      halo.userData.cameraOcclusionIgnore = true;
+      this.scene.add(halo);
+    }
+
     // A handful of flattened, instanced cloud blobs break up the empty sky.
     // Even in normal mode this remains one draw call.
-    const cloudGeometry = new THREE.SphereGeometry(1, this.profile.lowDetail ? 5 : 7, 4);
+    const cloudGeometry = new THREE.SphereGeometry(1, this.profile.lowDetail ? 5 : (this.profile.ultraHigh ? 10 : 7), this.profile.ultraHigh ? 6 : 4);
     const cloudMaterial = new THREE.MeshBasicMaterial({
       color: 0xf7fbff,
       transparent: true,
-      opacity: this.profile.lowDetail ? 0.34 : 0.46,
+      opacity: this.profile.lowDetail ? 0.34 : (this.profile.ultraHigh ? 0.52 : 0.46),
       depthWrite: false,
       fog: false
     });
-    const cloudGroups = this.profile.lowDetail ? 6 : 11;
-    const blobsPerCloud = 3;
+    const cloudGroups = this.profile.lowDetail ? 6 : (this.profile.ultraHigh ? 18 : 11);
+    const blobsPerCloud = this.profile.ultraHigh ? 4 : 3;
     const clouds = new THREE.InstancedMesh(cloudGeometry, cloudMaterial, cloudGroups * blobsPerCloud);
     const dummy = new THREE.Object3D();
     let instance = 0;
@@ -308,9 +342,15 @@ export class Game {
       const baseZ = Math.cos(angle) * 185;
       const baseY = 44 + (group % 3) * 7;
       for (let blob = 0; blob < blobsPerCloud; blob++) {
-        dummy.position.set(baseX + (blob - 1) * 5.2, baseY + (blob === 1 ? 1.4 : 0), baseZ);
+        if (this.profile.ultraHigh) {
+          const centeredBlob = blob - (blobsPerCloud - 1) * 0.5;
+          dummy.position.set(baseX + centeredBlob * 5.2, baseY + (Math.abs(centeredBlob) < 0.6 ? 1.4 : 0), baseZ);
+          dummy.scale.set(8.7 - Math.abs(centeredBlob) * 0.7, 1.8 + (Math.abs(centeredBlob) < 0.6 ? 0.55 : 0), 3.7 + (blob % 2) * 0.45);
+        } else {
+          dummy.position.set(baseX + (blob - 1) * 5.2, baseY + (blob === 1 ? 1.4 : 0), baseZ);
+          dummy.scale.set(8.5 - blob * 0.8, 1.8 + (blob === 1 ? 0.5 : 0), 3.6 + blob * 0.5);
+        }
         dummy.rotation.set(0, angle * 0.4, 0);
-        dummy.scale.set(8.5 - blob * 0.8, 1.8 + (blob === 1 ? 0.5 : 0), 3.6 + blob * 0.5);
         dummy.updateMatrix();
         clouds.setMatrixAt(instance++, dummy.matrix);
       }
@@ -318,6 +358,75 @@ export class Game {
     clouds.instanceMatrix.needsUpdate = true;
     clouds.userData.cameraOcclusionIgnore = true;
     this.scene.add(clouds);
+  }
+
+  enableUltraHighShadows() {
+    const markShadowObject = (object, { cast = true, receive = true } = {}) => {
+      if (!object?.isMesh && !object?.isInstancedMesh) return;
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      const transparent = materials.some((material) => material?.transparent && material.opacity < 0.72);
+      object.castShadow = cast && !transparent;
+      object.receiveShadow = receive && !transparent;
+    };
+
+    this.arena.group.traverse((object) => markShadowObject(object, { cast: true, receive: true }));
+    for (const car of this.cars) car.group.traverse((object) => markShadowObject(object));
+    this.ball.mesh.traverse((object) => markShadowObject(object));
+    for (const pad of this.boostPads.pads) pad.group.traverse((object) => markShadowObject(object));
+  }
+
+  async setupUltraHighRendering() {
+    try {
+      const [composerModule, renderPassModule, bloomModule, outputModule, roomModule] = await Promise.all([
+        import('three/addons/postprocessing/EffectComposer.js'),
+        import('three/addons/postprocessing/RenderPass.js'),
+        import('three/addons/postprocessing/UnrealBloomPass.js'),
+        import('three/addons/postprocessing/OutputPass.js'),
+        import('three/addons/environments/RoomEnvironment.js')
+      ]);
+      if (!this.profile.ultraHigh) return;
+
+      const { EffectComposer } = composerModule;
+      const { RenderPass } = renderPassModule;
+      const { UnrealBloomPass } = bloomModule;
+      const { OutputPass } = outputModule;
+      const { RoomEnvironment } = roomModule;
+
+      const pmrem = new THREE.PMREMGenerator(this.renderer);
+      const room = new RoomEnvironment();
+      const environment = pmrem.fromScene(room, 0.035).texture;
+      this.scene.environment = environment;
+      if ('environmentIntensity' in this.scene) this.scene.environmentIntensity = 0.78;
+      room.dispose?.();
+      pmrem.dispose();
+
+      const width = Math.max(1, this.root.clientWidth || window.innerWidth);
+      const height = Math.max(1, this.root.clientHeight || window.innerHeight);
+      const renderTarget = new THREE.WebGLRenderTarget(width, height, {
+        depthBuffer: true,
+        stencilBuffer: false,
+        samples: 4
+      });
+      const composer = new EffectComposer(this.renderer, renderTarget);
+      composer.setPixelRatio(this.renderPixelRatio);
+      composer.setSize(width, height);
+      composer.addPass(new RenderPass(this.scene, this.camera));
+
+      const bloom = new UnrealBloomPass(new THREE.Vector2(width, height), 0.34, 0.36, 0.92);
+      bloom.threshold = 0.88;
+      bloom.strength = 0.34;
+      bloom.radius = 0.32;
+      composer.addPass(bloom);
+      composer.addPass(new OutputPass());
+
+      this.composer = composer;
+      this.ultraHighPipelineReady = true;
+      this.onResize();
+    } catch (error) {
+      console.warn('Ultra High post-processing unavailable; using renderer fallback.', error);
+      this.composer = null;
+      this.ultraHighPipelineReady = false;
+    }
   }
 
   start() {
@@ -378,7 +487,8 @@ export class Game {
 
       this.chaseCamera.prepareRender();
       try {
-        this.renderer.render(this.scene, this.camera);
+        if (this.composer) this.composer.render();
+        else this.renderer.render(this.scene, this.camera);
       } finally {
         this.chaseCamera.restoreOccluders();
       }
@@ -397,15 +507,24 @@ export class Game {
 
     if (this.profile.adaptiveResolution) {
       let next = this.renderPixelRatio;
-      if (this.measuredFps < (this.profile.mobile ? 46 : 52)) next -= this.profile.mobile ? 0.05 : 0.06;
-      else if (this.measuredFps > (this.profile.mobile ? 57 : 59)) next += this.profile.mobile ? 0.03 : 0.02;
+      const lowThreshold = this.profile.ultraHigh ? 47 : (this.profile.mobile ? 46 : 52);
+      const highThreshold = this.profile.ultraHigh ? 58 : (this.profile.mobile ? 57 : 59);
+      const downStep = this.profile.ultraHigh ? 0.08 : (this.profile.mobile ? 0.05 : 0.06);
+      const upStep = this.profile.ultraHigh ? 0.035 : (this.profile.mobile ? 0.03 : 0.02);
+      if (this.measuredFps < lowThreshold) next -= downStep;
+      else if (this.measuredFps > highThreshold) next += upStep;
 
       const dpr = window.devicePixelRatio || 1;
-      next = THREE.MathUtils.clamp(next, this.profile.minPixelRatio, Math.min(this.profile.maxPixelRatio, dpr));
+      const maxRenderRatio = this.profile.ultraHigh
+        ? this.profile.maxPixelRatio
+        : Math.min(this.profile.maxPixelRatio, dpr);
+      next = THREE.MathUtils.clamp(next, this.profile.minPixelRatio, maxRenderRatio);
       if (Math.abs(next - this.renderPixelRatio) >= 0.015) {
         this.renderPixelRatio = next;
         this.renderer.setPixelRatio(this.renderPixelRatio);
         this.renderer.setSize(window.innerWidth, window.innerHeight, false);
+        this.composer?.setPixelRatio?.(this.renderPixelRatio);
+        this.composer?.setSize?.(window.innerWidth, window.innerHeight);
       }
     }
 
@@ -518,5 +637,7 @@ export class Game {
     this.camera.fov = this.mobileControls?.enabled && height > width ? 78 : 72;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height, false);
+    this.composer?.setPixelRatio?.(this.renderPixelRatio);
+    this.composer?.setSize?.(width, height);
   }
 }

@@ -3,6 +3,7 @@ import { LanClient } from './network/LanClient.js';
 import { CAR_STYLES, DEFAULT_CAR_STYLE, normalizeCarStyle } from './shared/car-styles.js';
 import { prefersMobileControls } from './game/MobileControls.js';
 import { canRequestFullscreen, isFullscreenActive, requestGameFullscreen } from './game/Fullscreen.js';
+import { canUseUltraHigh, getRememberedPerformanceMode, setPerformancePreference } from './game/PerformanceProfile.js';
 import './style.css';
 
 function installMobileBrowserGuards() {
@@ -85,6 +86,8 @@ function carPreviewSvg(styleId) {
 function requestPlayerIdentity(root) {
   return new Promise((resolve) => {
     const selectedStyle = rememberedCarStyle();
+    const selectedGraphics = getRememberedPerformanceMode();
+    const ultraHighAvailable = canUseUltraHigh();
     const overlay = document.createElement('div');
     overlay.className = 'join-screen';
     overlay.innerHTML = `
@@ -114,6 +117,27 @@ function requestPlayerIdentity(root) {
           </div>
         </fieldset>
 
+        <fieldset class="graphics-select">
+          <legend>Grafikqualität</legend>
+          <div class="graphics-select__grid">
+            <label class="graphics-choice${selectedGraphics === 'ultra-low' ? ' is-selected' : ''}" data-graphics-choice="ultra-low">
+              <input type="radio" name="graphicsMode" value="ultra-low" ${selectedGraphics === 'ultra-low' ? 'checked' : ''} />
+              <span class="graphics-choice__title">ULTRA LOW</span>
+              <span class="graphics-choice__desc">Maximale FPS · schwache PCs / VM</span>
+            </label>
+            <label class="graphics-choice${selectedGraphics === 'normal' ? ' is-selected' : ''}" data-graphics-choice="normal">
+              <input type="radio" name="graphicsMode" value="normal" ${selectedGraphics === 'normal' ? 'checked' : ''} />
+              <span class="graphics-choice__title">NORMAL</span>
+              <span class="graphics-choice__desc">Ausgewogen · Standard auf Smartphone</span>
+            </label>
+            <label class="graphics-choice graphics-choice--high${selectedGraphics === 'ultra-high' ? ' is-selected' : ''}${ultraHighAvailable ? '' : ' is-disabled'}" data-graphics-choice="ultra-high">
+              <input type="radio" name="graphicsMode" value="ultra-high" ${selectedGraphics === 'ultra-high' ? 'checked' : ''} ${ultraHighAvailable ? '' : 'disabled'} />
+              <span class="graphics-choice__title">ULTRA HIGH</span>
+              <span class="graphics-choice__desc">${ultraHighAvailable ? 'PC only · Schatten, Reflexionen, Bloom, maximale Details' : 'Nur am PC verfügbar'}</span>
+            </label>
+          </div>
+        </fieldset>
+
         <div class="join-card__error" aria-live="polite"></div>
         <button type="submit">MATCH BEITRETEN</button>
       </form>`;
@@ -123,6 +147,7 @@ function requestPlayerIdentity(root) {
     const input = overlay.querySelector('#player-name');
     const error = overlay.querySelector('.join-card__error');
     const choices = [...overlay.querySelectorAll('[data-car-choice]')];
+    const graphicsChoices = [...overlay.querySelectorAll('[data-graphics-choice]')];
     const fullscreenButton = overlay.querySelector('[data-start-fullscreen]');
     const fullscreenStatus = overlay.querySelector('[data-fullscreen-status]');
     const mobile = prefersMobileControls();
@@ -153,17 +178,26 @@ function requestPlayerIdentity(root) {
     if (!prefersMobileControls()) requestAnimationFrame(() => input.focus());
 
     form.addEventListener('change', (event) => {
-      if (event.target?.name !== 'carStyle') return;
-      for (const choice of choices) {
-        const radio = choice.querySelector('input[type="radio"]');
-        choice.classList.toggle('is-selected', Boolean(radio?.checked));
+      if (event.target?.name === 'carStyle') {
+        for (const choice of choices) {
+          const radio = choice.querySelector('input[type="radio"]');
+          choice.classList.toggle('is-selected', Boolean(radio?.checked));
+        }
+      }
+      if (event.target?.name === 'graphicsMode') {
+        for (const choice of graphicsChoices) {
+          const radio = choice.querySelector('input[type="radio"]');
+          choice.classList.toggle('is-selected', Boolean(radio?.checked));
+        }
       }
     });
 
     form.addEventListener('submit', (event) => {
       event.preventDefault();
       const name = input.value.trim().replace(/\s+/g, ' ');
-      const carStyle = normalizeCarStyle(new FormData(form).get('carStyle'));
+      const formData = new FormData(form);
+      const carStyle = normalizeCarStyle(formData.get('carStyle'));
+      const graphicsMode = setPerformancePreference(formData.get('graphicsMode') || 'normal');
       if (name.length < 2) {
         error.textContent = 'Bitte mindestens 2 Zeichen eingeben.';
         input.focus();
@@ -178,7 +212,7 @@ function requestPlayerIdentity(root) {
       document.removeEventListener('fullscreenchange', updateFullscreenUi);
       document.removeEventListener('webkitfullscreenchange', updateFullscreenUi);
       overlay.remove();
-      resolve({ playerName: name.slice(0, 16), carStyle });
+      resolve({ playerName: name.slice(0, 16), carStyle, graphicsMode });
     });
   });
 }

@@ -22,6 +22,7 @@ export class Car {
     this.RAPIER = RAPIER;
     this.input = input;
     this.lowDetail = Boolean(options.lowDetail);
+    this.ultraHigh = Boolean(options.ultraHigh) && !this.lowDetail;
     this.clientOnly = Boolean(options.clientOnly);
 
     const spawn = options.spawn ?? { x: 0, y: 0.52, z: 34 };
@@ -119,20 +120,45 @@ export class Car {
     this.group = new THREE.Group();
     this.scene.add(this.group);
 
-    const paint = new THREE.MeshStandardMaterial({
-      color: this.paintColor,
-      roughness: 0.34,
-      metalness: 0.34
-    });
-    const dark = new THREE.MeshStandardMaterial({ color: 0x111a22, roughness: 0.3, metalness: 0.55 });
-    const glass = new THREE.MeshStandardMaterial({
-      color: 0x182f43,
-      roughness: 0.24,
-      metalness: 0.18,
-      transparent: true,
-      opacity: 0.9
-    });
-    const lightMat = new THREE.MeshStandardMaterial({ color: 0xd7fbff, emissive: 0x5bd5ff, emissiveIntensity: 3.0 });
+    const paint = this.ultraHigh
+      ? new THREE.MeshPhysicalMaterial({
+          color: this.paintColor,
+          roughness: 0.24,
+          metalness: 0.38,
+          clearcoat: 1.0,
+          clearcoatRoughness: 0.10,
+          envMapIntensity: 1.55
+        })
+      : new THREE.MeshStandardMaterial({
+          color: this.paintColor,
+          roughness: 0.34,
+          metalness: 0.34
+        });
+    const dark = this.ultraHigh
+      ? new THREE.MeshPhysicalMaterial({ color: 0x111a22, roughness: 0.22, metalness: 0.72, clearcoat: 0.55, clearcoatRoughness: 0.16, envMapIntensity: 1.35 })
+      : new THREE.MeshStandardMaterial({ color: 0x111a22, roughness: 0.3, metalness: 0.55 });
+    const glass = this.ultraHigh
+      ? new THREE.MeshPhysicalMaterial({
+          color: 0x17364d,
+          roughness: 0.06,
+          metalness: 0.08,
+          transmission: 0.24,
+          thickness: 0.12,
+          ior: 1.46,
+          clearcoat: 1.0,
+          clearcoatRoughness: 0.05,
+          transparent: true,
+          opacity: 0.82,
+          envMapIntensity: 1.7
+        })
+      : new THREE.MeshStandardMaterial({
+          color: 0x182f43,
+          roughness: 0.24,
+          metalness: 0.18,
+          transparent: true,
+          opacity: 0.9
+        });
+    const lightMat = new THREE.MeshStandardMaterial({ color: this.ultraHigh ? 0xe8fbff : 0xd7fbff, emissive: this.ultraHigh ? 0x64dcff : 0x5bd5ff, emissiveIntensity: this.ultraHigh ? 5.2 : 3.0, toneMapped: !this.ultraHigh });
 
     const lower = new THREE.Mesh(new RoundedBoxGeometry(1.66, 0.62, 2.95, 5, 0.13), paint);
     lower.position.y = 0.02;
@@ -195,15 +221,19 @@ export class Car {
       this.wheelPivots.push(pivot);
 
       const tire = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.36, 0.36, 0.28, 18),
-        new THREE.MeshStandardMaterial({ color: 0x050607, roughness: 0.86, metalness: 0.06 })
+        new THREE.CylinderGeometry(0.36, 0.36, 0.28, this.ultraHigh ? 28 : 18),
+        this.ultraHigh
+          ? new THREE.MeshPhysicalMaterial({ color: 0x050607, roughness: 0.74, metalness: 0.04, clearcoat: 0.18, clearcoatRoughness: 0.4 })
+          : new THREE.MeshStandardMaterial({ color: 0x050607, roughness: 0.86, metalness: 0.06 })
       );
       tire.rotation.z = Math.PI / 2;
       pivot.add(tire);
 
       const rim = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.19, 0.19, 0.3, 12),
-        new THREE.MeshStandardMaterial({ color: 0xb8c5cf, roughness: 0.25, metalness: 0.82 })
+        new THREE.CylinderGeometry(0.19, 0.19, 0.3, this.ultraHigh ? 20 : 12),
+        this.ultraHigh
+          ? new THREE.MeshPhysicalMaterial({ color: 0xd0d9df, roughness: 0.16, metalness: 0.92, clearcoat: 0.34, clearcoatRoughness: 0.12, envMapIntensity: 1.5 })
+          : new THREE.MeshStandardMaterial({ color: 0xb8c5cf, roughness: 0.25, metalness: 0.82 })
       );
       rim.rotation.z = Math.PI / 2;
       pivot.add(rim);
@@ -212,10 +242,14 @@ export class Car {
       if (isFront) this.frontWheelPivots.push(pivot);
     }
 
-    // No dynamic point light: emissive exhaust gives the boost look much cheaper.
-    this.boostLight = null;
+    // Ultra High adds one short-range light per car, enabled only while boosting.
+    this.boostLight = this.ultraHigh ? new THREE.PointLight(0xff7b25, 0, 6.5, 2.0) : null;
+    if (this.boostLight) {
+      this.boostLight.position.set(0, 0.02, 1.78);
+      this.group.add(this.boostLight);
+    }
 
-    const exhaustMat = new THREE.MeshStandardMaterial({ color: 0xffa34d, emissive: 0xff4c00, emissiveIntensity: 4.0 });
+    const exhaustMat = new THREE.MeshStandardMaterial({ color: this.ultraHigh ? 0xffb15f : 0xffa34d, emissive: 0xff4c00, emissiveIntensity: this.ultraHigh ? 7.0 : 4.0, toneMapped: !this.ultraHigh });
     this.exhaust = [];
     for (const x of [-0.34, 0.34]) {
       const flame = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.72, 10), exhaustMat);
@@ -231,6 +265,11 @@ export class Car {
       lowDetail: false
     };
     this.applyCarStyleVisual();
+
+    if (this.ultraHigh) {
+      this.shadow = null;
+      return;
+    }
 
     const shadowMat = new THREE.MeshBasicMaterial({
       color: 0x000000,

@@ -3,7 +3,7 @@ import { TransformBody } from '../network/TransformBody.js';
 import { BALL_TUNING } from '../shared/game-tuning.js';
 import { CAR_HITBOX } from '../shared/arena-tuning.js';
 
-function createAppleBodyGeometry(radius, lowDetail) {
+function createAppleBodyGeometry(radius, lowDetail, ultraHigh = false) {
   // Revolved silhouette: wide shoulders, rounded belly, tapered bottom and a
   // small top indentation. The widest point stays inside the physics sphere.
   const r = radius;
@@ -21,7 +21,7 @@ function createAppleBodyGeometry(radius, lowDetail) {
   ];
 
   const points = profile.map(([radial, y]) => new THREE.Vector2(radial * r, y * r));
-  const geometry = new THREE.LatheGeometry(points, lowDetail ? 12 : 24);
+  const geometry = new THREE.LatheGeometry(points, lowDetail ? 12 : (ultraHigh ? 40 : 24));
   geometry.computeVertexNormals();
   return geometry;
 }
@@ -44,6 +44,7 @@ export class Ball {
     this.RAPIER = RAPIER;
     this.input = input;
     this.lowDetail = Boolean(options.lowDetail);
+    this.ultraHigh = Boolean(options.ultraHigh) && !this.lowDetail;
     this.clientOnly = Boolean(options.clientOnly);
     this.radius = BALL_TUNING.radius;
     this.spawn = new THREE.Vector3(0, BALL_TUNING.spawnY, 0);
@@ -102,13 +103,22 @@ export class Ball {
 
     const appleMaterial = this.lowDetail
       ? new THREE.MeshBasicMaterial({ color: 0xd92b2b })
-      : new THREE.MeshStandardMaterial({
-          color: 0xe53b35,
-          roughness: 0.68,
-          metalness: 0.0
-        });
+      : (this.ultraHigh
+        ? new THREE.MeshPhysicalMaterial({
+            color: 0xe8443c,
+            roughness: 0.46,
+            metalness: 0.0,
+            clearcoat: 0.58,
+            clearcoatRoughness: 0.24,
+            envMapIntensity: 1.1
+          })
+        : new THREE.MeshStandardMaterial({
+            color: 0xe53b35,
+            roughness: 0.68,
+            metalness: 0.0
+          }));
 
-    const body = new THREE.Mesh(createAppleBodyGeometry(this.radius, this.lowDetail), appleMaterial);
+    const body = new THREE.Mesh(createAppleBodyGeometry(this.radius, this.lowDetail, this.ultraHigh), appleMaterial);
     this.mesh.add(body);
 
     const stemMaterial = this.lowDetail
@@ -119,7 +129,7 @@ export class Ball {
         this.radius * 0.055,
         this.radius * 0.075,
         this.radius * 0.43,
-        this.lowDetail ? 6 : 10
+        this.lowDetail ? 6 : (this.ultraHigh ? 16 : 10)
       ),
       stemMaterial
     );
@@ -142,7 +152,7 @@ export class Ball {
 
     this.scene.add(this.mesh);
 
-    if (this.lowDetail) {
+    if (this.lowDetail || this.ultraHigh) {
       this.shadow = null;
       return;
     }

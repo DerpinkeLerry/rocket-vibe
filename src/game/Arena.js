@@ -40,6 +40,8 @@ export class Arena {
     this.world = world;
     this.RAPIER = RAPIER;
     this.lowDetail = Boolean(options.lowDetail);
+    this.ultraHigh = Boolean(options.ultraHigh) && !this.lowDetail;
+    this.maxAnisotropy = Math.max(1, Number(options.maxAnisotropy) || 1);
     this.enablePhysics = options.createPhysics !== false;
     this.group = new THREE.Group();
     this.scene.add(this.group);
@@ -51,6 +53,7 @@ export class Arena {
     // low-detail mode makes the arena feel alive without adding shadow cost.
     this.createStands();
     this.createExteriorDecoration();
+    if (this.ultraHigh) this.createUltraHighStadiumDetails();
     this.createLights();
 
     // The whole arena is static. Avoid rebuilding local matrices every frame.
@@ -66,7 +69,9 @@ export class Arena {
     // when it moves behind the transparent arena walls.
     const material = this.lowDetail
       ? new THREE.MeshBasicMaterial({ color: 0x76957c })
-      : new THREE.MeshStandardMaterial({ color: 0x78967f, roughness: 1.0, metalness: 0.0 });
+      : (this.ultraHigh
+        ? new THREE.MeshPhysicalMaterial({ color: 0x789b80, roughness: 0.96, metalness: 0.0, clearcoat: 0.08, clearcoatRoughness: 0.82 })
+        : new THREE.MeshStandardMaterial({ color: 0x78967f, roughness: 1.0, metalness: 0.0 }));
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(250, 320), material);
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.055;
@@ -74,10 +79,48 @@ export class Arena {
     this.group.add(ground);
   }
 
+  createUltraTurfTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 1024;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    const stripeHeight = 86;
+    for (let y = 0; y < canvas.height; y += stripeHeight) {
+      ctx.fillStyle = Math.floor(y / stripeHeight) % 2 === 0 ? '#2d8b67' : '#267b5d';
+      ctx.fillRect(0, y, canvas.width, stripeHeight);
+    }
+    for (let i = 0; i < 3400; i++) {
+      const x = (i * 73) % canvas.width;
+      const y = (i * 191) % canvas.height;
+      const alpha = 0.025 + ((i * 17) % 10) * 0.003;
+      ctx.fillStyle = `rgba(225,255,230,${alpha})`;
+      ctx.fillRect(x, y, 1, 2 + (i % 3));
+    }
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(2.2, 4.4);
+    texture.anisotropy = Math.min(16, this.maxAnisotropy);
+    return texture;
+  }
+
   createField() {
+    const turfTexture = this.ultraHigh ? this.createUltraTurfTexture() : null;
     const turfMat = this.lowDetail
       ? new THREE.MeshBasicMaterial({ color: 0x2b8767 })
-      : new THREE.MeshStandardMaterial({ color: 0x287f63, roughness: 0.9, metalness: 0.0 });
+      : (this.ultraHigh
+        ? new THREE.MeshPhysicalMaterial({
+            color: 0xffffff,
+            map: turfTexture,
+            roughness: 0.88,
+            metalness: 0.0,
+            clearcoat: 0.12,
+            clearcoatRoughness: 0.7
+          })
+        : new THREE.MeshStandardMaterial({ color: 0x287f63, roughness: 0.9, metalness: 0.0 }));
     const turf = new THREE.Mesh(
       roundedRectGeometry(FIELD_W, FIELD_L, CORNER_R, this.lowDetail ? 4 : 10),
       turfMat
@@ -108,24 +151,51 @@ export class Arena {
           depthWrite: false,
           side: THREE.DoubleSide
         })
-      : new THREE.MeshStandardMaterial({
-          color: 0x93e9ff,
-          transparent: true,
-          opacity: 0.17,
-          roughness: 0.12,
-          metalness: 0.08,
-          depthWrite: false,
-          side: THREE.DoubleSide
-        });
+      : (this.ultraHigh
+        ? new THREE.MeshPhysicalMaterial({
+            color: 0xbfefff,
+            transparent: true,
+            opacity: 0.22,
+            roughness: 0.06,
+            metalness: 0.02,
+            transmission: 0.18,
+            thickness: 0.18,
+            ior: 1.42,
+            clearcoat: 1.0,
+            clearcoatRoughness: 0.08,
+            envMapIntensity: 1.35,
+            depthWrite: false,
+            side: THREE.DoubleSide
+          })
+        : new THREE.MeshStandardMaterial({
+            color: 0x93e9ff,
+            transparent: true,
+            opacity: 0.17,
+            roughness: 0.12,
+            metalness: 0.08,
+            depthWrite: false,
+            side: THREE.DoubleSide
+          }));
     const frameMaterial = this.lowDetail
       ? new THREE.MeshBasicMaterial({ color: 0x31c9ef })
-      : new THREE.MeshStandardMaterial({
-          color: 0xa7edff,
-          emissive: 0x12799b,
-          emissiveIntensity: 1.2,
-          roughness: 0.28,
-          metalness: 0.64
-        });
+      : (this.ultraHigh
+        ? new THREE.MeshPhysicalMaterial({
+            color: 0xbcefff,
+            emissive: 0x12799b,
+            emissiveIntensity: 1.55,
+            roughness: 0.18,
+            metalness: 0.82,
+            clearcoat: 0.72,
+            clearcoatRoughness: 0.14,
+            envMapIntensity: 1.45
+          })
+        : new THREE.MeshStandardMaterial({
+            color: 0xa7edff,
+            emissive: 0x12799b,
+            emissiveIntensity: 1.2,
+            roughness: 0.28,
+            metalness: 0.64
+          }));
 
     this.createGlassEnclosure(glassMaterial, frameMaterial);
 
@@ -279,7 +349,9 @@ export class Arena {
     const geometry = new THREE.BoxGeometry(1, 1, 1);
     const material = this.lowDetail
       ? new THREE.MeshBasicMaterial({ color: 0x356b68 })
-      : new THREE.MeshStandardMaterial({ color: 0x3a706c, roughness: 0.78, metalness: 0.08 });
+      : (this.ultraHigh
+        ? new THREE.MeshPhysicalMaterial({ color: 0x397f72, roughness: 0.68, metalness: 0.05, clearcoat: 0.16, clearcoatRoughness: 0.55 })
+        : new THREE.MeshStandardMaterial({ color: 0x3a706c, roughness: 0.78, metalness: 0.08 }));
     const ramps = new THREE.InstancedMesh(geometry, material, rampPanels.length * RAMP_SEGMENTS);
     const matrix = new THREE.Matrix4();
     const basis = new THREE.Matrix4();
@@ -409,13 +481,24 @@ export class Arena {
       const goal = new THREE.Group();
       goal.position.set(0, 0, zFront);
       goal.rotation.y = sign > 0 ? Math.PI : 0;
-      const frameMat = new THREE.MeshStandardMaterial({
-        color,
-        emissive: color,
-        emissiveIntensity: 1.7,
-        roughness: 0.32,
-        metalness: 0.44
-      });
+      const frameMat = this.ultraHigh
+        ? new THREE.MeshPhysicalMaterial({
+            color,
+            emissive: color,
+            emissiveIntensity: 2.6,
+            roughness: 0.18,
+            metalness: 0.64,
+            clearcoat: 0.8,
+            clearcoatRoughness: 0.12,
+            envMapIntensity: 1.35
+          })
+        : new THREE.MeshStandardMaterial({
+            color,
+            emissive: color,
+            emissiveIntensity: 1.7,
+            roughness: 0.32,
+            metalness: 0.44
+          });
       const postGeo = new THREE.BoxGeometry(0.55, GOAL_H, 0.55);
       const barGeo = new THREE.BoxGeometry(GOAL_W, 0.55, 0.55);
       for (const px of [-GOAL_W / 2 + 0.275, GOAL_W / 2 - 0.275]) {
@@ -705,9 +788,9 @@ export class Arena {
     // Each block represents a small cluster of spectators. Hundreds of visible
     // "people" still cost a single draw call thanks to InstancedMesh.
     const positions = [];
-    const rowCount = this.lowDetail ? 1 : 2;
-    const longStep = this.lowDetail ? 8.0 : 4.6;
-    const endStep = this.lowDetail ? 7.0 : 4.1;
+    const rowCount = this.lowDetail ? 1 : (this.ultraHigh ? 4 : 2);
+    const longStep = this.lowDetail ? 8.0 : (this.ultraHigh ? 2.75 : 4.6);
+    const endStep = this.lowDetail ? 7.0 : (this.ultraHigh ? 2.55 : 4.1);
 
     for (const side of [-1, 1]) {
       for (let row = 0; row < rowCount; row++) {
@@ -779,7 +862,7 @@ export class Arena {
   }
 
   createTrees() {
-    const count = this.lowDetail ? 14 : 28;
+    const count = this.lowDetail ? 14 : (this.ultraHigh ? 54 : 28);
     const trunkGeometry = new THREE.CylinderGeometry(0.28, 0.38, 3.0, 5);
     const crownGeometry = new THREE.ConeGeometry(2.2, 5.4, 6);
     const trunkMaterial = new THREE.MeshBasicMaterial({ color: 0x6f5439 });
@@ -839,19 +922,96 @@ export class Arena {
     this.group.add(buildings);
   }
 
+  createUltraHighStadiumDetails() {
+    const box = new THREE.BoxGeometry(1, 1, 1);
+    const steel = new THREE.MeshPhysicalMaterial({
+      color: 0x354b59,
+      roughness: 0.24,
+      metalness: 0.88,
+      clearcoat: 0.42,
+      clearcoatRoughness: 0.2,
+      envMapIntensity: 1.25
+    });
+    const beamData = [];
+    for (const sign of [-1, 1]) {
+      for (let i = -4; i <= 4; i++) beamData.push([i * 11.5, 13.2, sign * (FIELD_L * 0.5 + 14.8), 9.4, 0.38, 0.38]);
+      for (let i = -5; i <= 5; i++) beamData.push([sign * (FIELD_W * 0.5 + 14.8), 13.2, i * 10.2, 0.38, 0.38, 8.4]);
+    }
+    const beams = new THREE.InstancedMesh(box, steel, beamData.length);
+    const dummy = new THREE.Object3D();
+    beamData.forEach(([x, y, z, w, h, d], index) => {
+      dummy.position.set(x, y, z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(w, h, d);
+      dummy.updateMatrix();
+      beams.setMatrixAt(index, dummy.matrix);
+    });
+    beams.instanceMatrix.needsUpdate = true;
+    this.group.add(beams);
+
+    const lampMaterial = new THREE.MeshStandardMaterial({
+      color: 0xe7f5ff,
+      emissive: 0xcfeeff,
+      emissiveIntensity: 5.6,
+      roughness: 0.18,
+      metalness: 0.22,
+      toneMapped: false
+    });
+    const lampPositions = [
+      [-FIELD_W * 0.5 - 13, 16.5, -FIELD_L * 0.5 - 8], [FIELD_W * 0.5 + 13, 16.5, -FIELD_L * 0.5 - 8],
+      [-FIELD_W * 0.5 - 13, 16.5, FIELD_L * 0.5 + 8], [FIELD_W * 0.5 + 13, 16.5, FIELD_L * 0.5 + 8]
+    ];
+    const lamps = new THREE.InstancedMesh(box, lampMaterial, lampPositions.length * 3);
+    let lampIndex = 0;
+    for (const [x, y, z] of lampPositions) {
+      for (let offset = -1; offset <= 1; offset++) {
+        dummy.position.set(x + (Math.abs(x) > Math.abs(z) ? 0 : offset * 1.5), y, z + (Math.abs(x) > Math.abs(z) ? offset * 1.5 : 0));
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(1.25, 0.55, 0.22);
+        dummy.updateMatrix();
+        lamps.setMatrixAt(lampIndex++, dummy.matrix);
+      }
+    }
+    lamps.instanceMatrix.needsUpdate = true;
+    this.group.add(lamps);
+  }
+
   createLights() {
-    // Daylight without shadows: three tiny light objects, no shadow-map pass.
-    const hemi = new THREE.HemisphereLight(0xd6efff, 0x5e765c, this.lowDetail ? 1.85 : 2.15);
+    const hemi = new THREE.HemisphereLight(
+      this.ultraHigh ? 0xe6f5ff : 0xd6efff,
+      this.ultraHigh ? 0x617355 : 0x5e765c,
+      this.lowDetail ? 1.85 : (this.ultraHigh ? 1.55 : 2.15)
+    );
     this.scene.add(hemi);
 
-    const sun = new THREE.DirectionalLight(0xfff2d0, this.lowDetail ? 1.65 : 2.35);
-    sun.position.set(-34, 62, -28);
-    sun.castShadow = false;
+    const sun = new THREE.DirectionalLight(0xfff2d0, this.lowDetail ? 1.65 : (this.ultraHigh ? 3.15 : 2.35));
+    if (this.ultraHigh) sun.position.set(-42, 76, -36);
+    else sun.position.set(-34, 62, -28);
+    sun.castShadow = this.ultraHigh;
+    if (this.ultraHigh) {
+      sun.shadow.mapSize.set(4096, 4096);
+      sun.shadow.camera.left = -92;
+      sun.shadow.camera.right = 92;
+      sun.shadow.camera.top = 118;
+      sun.shadow.camera.bottom = -118;
+      sun.shadow.camera.near = 10;
+      sun.shadow.camera.far = 210;
+      sun.shadow.bias = -0.00018;
+      sun.shadow.normalBias = 0.035;
+      sun.shadow.radius = 2.2;
+    }
     this.scene.add(sun);
 
-    const fill = new THREE.DirectionalLight(0xaedcff, this.lowDetail ? 0.34 : 0.52);
+    const fill = new THREE.DirectionalLight(0xaedcff, this.lowDetail ? 0.34 : (this.ultraHigh ? 0.42 : 0.52));
     fill.position.set(32, 24, 38);
     fill.castShadow = false;
     this.scene.add(fill);
+
+    if (this.ultraHigh) {
+      const warmRim = new THREE.DirectionalLight(0xffc98e, 0.26);
+      warmRim.position.set(26, 18, -50);
+      warmRim.castShadow = false;
+      this.scene.add(warmRim);
+    }
   }
 }

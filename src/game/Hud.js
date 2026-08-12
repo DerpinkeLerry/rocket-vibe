@@ -26,7 +26,7 @@ export class Hud {
         <span data-fps>FPS -- · Render --%</span>
       </div>
       <div class="hud__controls">
-        <kbd>F2</kbd><span>Normal / Ultra-VM umschalten</span>
+        <kbd>F2</kbd><span>Normal / Ultra High / Ultra Low</span>
         <kbd>C</kbd><span data-camera-mode>Ball Cam / Car Cam · aktuell: BALL CAM</span>
         <kbd>W / S</kbd><span>Boden: Gas · Luft: Pitch</span>
         <kbd>A / D</kbd><span>Boden: Lenken · Luft: Yaw</span>
