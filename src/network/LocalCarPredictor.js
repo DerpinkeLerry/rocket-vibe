@@ -25,6 +25,8 @@ export class LocalCarPredictor {
     this.airTime = 0;
     this.groundLockout = 0;
     this.dodgeTime = 0;
+    this.boost = Number.isFinite(Number(car.boost)) ? Number(car.boost) : CAR_TUNING.boostCapacity;
+    this.car.boost = this.boost;
 
     this.q = new THREE.Quaternion();
     this.targetQ = new THREE.Quaternion();
@@ -105,7 +107,9 @@ export class LocalCarPredictor {
     const forwardInput = (this.isDown(INPUT_BITS.W) ? 1 : 0) - (this.isDown(INPUT_BITS.S) ? 1 : 0);
     const sideInput = (this.isDown(INPUT_BITS.A) ? 1 : 0) - (this.isDown(INPUT_BITS.D) ? 1 : 0);
     const rollInput = (this.isDown(INPUT_BITS.Q) ? 1 : 0) - (this.isDown(INPUT_BITS.E) ? 1 : 0);
-    const boosting = this.isDown(INPUT_BITS.BOOST);
+    const wantsBoost = this.isDown(INPUT_BITS.BOOST);
+    const boosting = wantsBoost && this.boost > 0.001;
+    if (boosting) this.boost = Math.max(0, this.boost - CAR_TUNING.boostConsumptionPerSecond * dt);
 
     const nearFloor = this.pos.y <= CAR_HITBOX.y + 0.12 && this.up.y > 0.45 && Math.abs(this.vel.y) < 4.5;
     if (nearFloor && !this.grounded) this.groundNormal.set(0, 1, 0);
@@ -118,6 +122,8 @@ export class LocalCarPredictor {
       this.airTime = 0;
       this.groundLockout = 0;
       this.dodgeTime = 0;
+      this.boost = CAR_TUNING.boostCapacity;
+      this.car.boost = this.boost;
       return;
     }
 
@@ -153,7 +159,7 @@ export class LocalCarPredictor {
     this.vel.multiplyScalar(Math.exp(-CAR_TUNING.linearDamping * dt));
     this.ang.multiplyScalar(Math.exp(-CAR_TUNING.angularDamping * dt));
 
-    const maxSafetySpeed = CAR_TUNING.maxBoostSpeed * 1.35;
+    const maxSafetySpeed = CAR_TUNING.maxBoostSpeed;
     const speed = this.vel.length();
     if (speed > maxSafetySpeed) this.vel.multiplyScalar(maxSafetySpeed / speed);
 
@@ -173,6 +179,8 @@ export class LocalCarPredictor {
     this.body.setLinvel({ x: this.vel.x, y: this.vel.y, z: this.vel.z }, false);
     this.body.setAngvel({ x: this.ang.x, y: this.ang.y, z: this.ang.z }, false);
     this.car.grounded = this.grounded;
+    this.car.boost = this.boost;
+    this.car.boosting = boosting;
   }
 
   applyGroundDrive(dt, throttle, steer, boosting) {
@@ -473,6 +481,14 @@ export class LocalCarPredictor {
 
   reconcile(target, dt, ageSec, rttMs) {
     if (!target) return;
+
+    const serverBoost = Number(target.b);
+    if (Number.isFinite(serverBoost)) {
+      const clampedBoost = clamp(serverBoost, 0, CAR_TUNING.boostCapacity);
+      if (clampedBoost > this.boost + 4) this.boost = clampedBoost;
+      else this.boost = THREE.MathUtils.lerp(this.boost, clampedBoost, 0.38);
+      this.car.boost = this.boost;
+    }
 
     // The received snapshot describes the server a little in the past. Advance it
     // by half the measured RTT plus packet age before comparing against prediction.

@@ -25,8 +25,126 @@ func TestConnectedCarDrivesAndRemainsSpeedLimited(t *testing.T) {
 	if car.Position.Z >= playerSpawns[0].Position.Z-2 {
 		t.Fatalf("car did not drive forward: z=%f", car.Position.Z)
 	}
-	if speed := car.Velocity.Length(); speed > world.Config.Car.MaxBoostSpeed*1.36 {
-		t.Fatalf("car exceeded safety speed cap: %f", speed)
+	if speed := car.Velocity.Length(); speed > world.Config.Car.MaxBoostSpeed+1e-6 {
+		t.Fatalf("car exceeded 80 km/h speed cap: %f", speed)
+	}
+}
+
+func TestNormalAndBoostTopSpeedsMatchRequestedKmh(t *testing.T) {
+	config := DefaultConfig()
+	if math.Abs(config.Car.MaxGroundSpeed*3.6-60) > 1e-9 {
+		t.Fatalf("normal top speed is %.3f km/h, want 60", config.Car.MaxGroundSpeed*3.6)
+	}
+	if math.Abs(config.Car.MaxBoostSpeed*3.6-80) > 1e-9 {
+		t.Fatalf("boost top speed is %.3f km/h, want 80", config.Car.MaxBoostSpeed*3.6)
+	}
+
+	world := NewWorld(config)
+	world.SetConnected(0, true)
+	if !world.SetInput(0, Input{Sequence: 1, Mask: InputW}) {
+		t.Fatal("normal drive input was not accepted")
+	}
+	dt := 1 / float64(config.PhysicsHz)
+	for range config.PhysicsHz * 5 {
+		world.Step(dt)
+	}
+	if speedKmh := world.Cars[0].Velocity.Length() * 3.6; speedKmh > 60.1 {
+		t.Fatalf("normal driving exceeded 60 km/h: %.3f", speedKmh)
+	}
+}
+
+func TestBoostConsumesFromHundredToZero(t *testing.T) {
+	config := DefaultConfig()
+	world := NewWorld(config)
+	world.SetConnected(0, true)
+	if !world.SetInput(0, Input{Sequence: 1, Mask: InputBoost}) {
+		t.Fatal("boost input was not accepted")
+	}
+	dt := 1 / float64(config.PhysicsHz)
+	sequence := uint32(1)
+	for step := 0; step < config.PhysicsHz*3+2; step++ {
+		if step > 0 && step%30 == 0 {
+			sequence++
+			if !world.SetInput(0, Input{Sequence: sequence, Mask: InputBoost}) {
+				t.Fatal("boost heartbeat was not accepted")
+			}
+		}
+		world.Step(dt)
+		if step == config.PhysicsHz-1 {
+			if boost := world.Cars[0].Boost; math.Abs(boost-66.6666667) > 0.4 {
+				t.Fatalf("boost after one second is %.3f, want about 66.7", boost)
+			}
+		}
+	}
+	if world.Cars[0].Boost > 1e-6 {
+		t.Fatalf("boost did not empty: %.9f", world.Cars[0].Boost)
+	}
+}
+
+func TestSmallAndLargeBoostPadsCollectAndRespawn(t *testing.T) {
+	config := DefaultConfig()
+	world := NewWorld(config)
+	world.SetConnected(0, true)
+	car := &world.Cars[0]
+
+	// Small pad gives +20 and should disappear for four seconds.
+	car.Boost = 50
+	small := &world.BoostPads[4]
+	car.Position = Vec3{X: small.Position.X, Y: config.Car.HalfExtents.Y, Z: small.Position.Z}
+	world.collectBoostPads()
+	if math.Abs(car.Boost-70) > 1e-9 {
+		t.Fatalf("small pad gave wrong boost: %.3f", car.Boost)
+	}
+	if small.Active {
+		t.Fatal("small pad remained active after pickup")
+	}
+	world.Tick = small.RespawnAtTick
+	world.refreshBoostPads()
+	if !small.Active {
+		t.Fatal("small pad did not respawn")
+	}
+
+	// Full corner pad fills to 100.
+	car.Boost = 12
+	large := &world.BoostPads[0]
+	car.Position = Vec3{X: large.Position.X, Y: config.Car.HalfExtents.Y, Z: large.Position.Z}
+	world.collectBoostPads()
+	if car.Boost != config.Car.BoostCapacity {
+		t.Fatalf("large pad did not fill boost: %.3f", car.Boost)
+	}
+	if large.Active {
+		t.Fatal("large pad remained active after pickup")
+	}
+}
+
+func TestFullCarDoesNotConsumeBoostPad(t *testing.T) {
+	config := DefaultConfig()
+	world := NewWorld(config)
+	world.SetConnected(0, true)
+	car := &world.Cars[0]
+	pad := &world.BoostPads[4]
+	car.Boost = config.Car.BoostCapacity
+	car.Position = Vec3{X: pad.Position.X, Y: config.Car.HalfExtents.Y, Z: pad.Position.Z}
+	world.collectBoostPads()
+	if !pad.Active {
+		t.Fatal("full car consumed a boost pad")
+	}
+}
+
+func TestSnapshotCarriesBoostAndBoostPadMask(t *testing.T) {
+	world := NewWorld(DefaultConfig())
+	world.SetConnected(0, true)
+	world.Cars[0].Boost = 37.4
+	world.BoostPads[3].Active = false
+	snapshot := world.Snapshot()
+	if snapshot.Boost[0] != 37 {
+		t.Fatalf("snapshot boost is %d, want 37", snapshot.Boost[0])
+	}
+	if snapshot.BoostPadMask&(1<<3) != 0 {
+		t.Fatal("inactive pad was marked active in snapshot")
+	}
+	if snapshot.BoostPadMask&(1<<2) == 0 {
+		t.Fatal("active pad missing from snapshot mask")
 	}
 }
 

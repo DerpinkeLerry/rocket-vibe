@@ -77,7 +77,7 @@ export class ChaseCamera {
     // be correct while driving on side walls or the ceiling.
     this.pivot.copy(this.carPosition).addScaledVector(this.carUp, CAR_TARGET_LOCAL_HEIGHT);
 
-    const speed = Math.min(this.car.getSpeedKmh() / 180, 1);
+    const speed = Math.min(this.car.getSpeedKmh() / 80, 1);
 
     if (this.mode === MODE_BALL) this.updateBallCam(dt, speed);
     else this.updateCarCam(dt, speed);

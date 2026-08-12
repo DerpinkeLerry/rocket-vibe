@@ -19,13 +19,17 @@ export const INPUT_EDGES = Object.freeze({
 // the local predictor intentionally use the same values so input never changes
 // character when an authoritative snapshot arrives.
 export const CAR_TUNING = Object.freeze({
-  maxGroundSpeed: 40,
-  maxBoostSpeed: 54,
-  driveAcceleration: 30.0,
-  reverseAcceleration: 22.0,
-  brakeAcceleration: 44.0,
-  coastDeceleration: 4.2,
-  boostAcceleration: 34.0,
+  // Internal physics units are metres/second. These caps correspond to the
+  // HUD targets requested for the slower, more readable game pace.
+  maxGroundSpeed: 60 / 3.6,
+  maxBoostSpeed: 80 / 3.6,
+  driveAcceleration: 14.0,
+  reverseAcceleration: 10.0,
+  brakeAcceleration: 28.0,
+  coastDeceleration: 3.5,
+  boostAcceleration: 16.0,
+  boostCapacity: 100,
+  boostConsumptionPerSecond: 100 / 3,
   grip: 18.0,
   steerRate: 2.75,
   steerResponse: 14.0,

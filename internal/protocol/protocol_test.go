@@ -9,7 +9,7 @@ import (
 )
 
 func TestStatePacketMatchesBrowserLayout(t *testing.T) {
-	snapshot := game.Snapshot{Tick: 0x11223344, ConnectedMask: 0x05, GroundMask: 0x01, OrangeScore: 7, BlueScore: 9}
+	snapshot := game.Snapshot{Tick: 0x11223344, ConnectedMask: 0x05, GroundMask: 0x01, OrangeScore: 7, BlueScore: 9, Boost: [game.MaxPlayers]uint8{100, 55, 20, 0}, BoostPadMask: 0xa55a}
 	snapshot.Cars[0] = game.EntityState{
 		Position: game.Vec3{X: 1.25, Y: -2.5, Z: 3.75},
 		Rotation: game.IdentityQuat(),
@@ -27,7 +27,13 @@ func TestStatePacketMatchesBrowserLayout(t *testing.T) {
 	if binary.LittleEndian.Uint16(packet[7:9]) != 7 || binary.LittleEndian.Uint16(packet[9:11]) != 9 {
 		t.Fatalf("invalid score: %v", packet[7:11])
 	}
-	if value := math.Float32frombits(binary.LittleEndian.Uint32(packet[11:15])); value != 1.25 {
+	if packet[11] != 100 || packet[12] != 55 || packet[13] != 20 || packet[14] != 0 {
+		t.Fatalf("invalid boost bytes: %v", packet[11:15])
+	}
+	if binary.LittleEndian.Uint16(packet[15:17]) != 0xa55a {
+		t.Fatalf("invalid boost pad mask: %04x", binary.LittleEndian.Uint16(packet[15:17]))
+	}
+	if value := math.Float32frombits(binary.LittleEndian.Uint32(packet[17:21])); value != 1.25 {
 		t.Fatalf("first float is %f", value)
 	}
 }

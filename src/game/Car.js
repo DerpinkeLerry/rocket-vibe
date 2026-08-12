@@ -32,6 +32,8 @@ export class Car {
     this.isLocalPlayer = Boolean(options.localPlayer);
     this.maxGroundSpeed = CAR_TUNING.maxGroundSpeed;
     this.maxBoostSpeed = CAR_TUNING.maxBoostSpeed;
+    this.boost = CAR_TUNING.boostCapacity;
+    this.boosting = false;
     this.grip = CAR_TUNING.grip;
     this.steerRate = CAR_TUNING.steerRate;
     this.steerResponse = CAR_TUNING.steerResponse;
@@ -425,7 +427,10 @@ export class Car {
     const forwardInput = (this.input.isDown('KeyW', 'ArrowUp') ? 1 : 0) - (this.input.isDown('KeyS', 'ArrowDown') ? 1 : 0);
     const sideInput = (this.input.isDown('KeyA', 'ArrowLeft') ? 1 : 0) - (this.input.isDown('KeyD', 'ArrowRight') ? 1 : 0);
     const rollInput = (this.input.isDown('KeyQ') ? 1 : 0) - (this.input.isDown('KeyE') ? 1 : 0);
-    const boosting = this.input.isDown('ShiftLeft', 'ShiftRight');
+    const wantsBoost = this.input.isDown('ShiftLeft', 'ShiftRight');
+    const boosting = wantsBoost && this.boost > 0.001;
+    if (boosting) this.boost = Math.max(0, this.boost - CAR_TUNING.boostConsumptionPerSecond * dt);
+    this.boosting = boosting;
 
     const vRaw = this.body.linvel();
     this.velocityVec.set(vRaw.x, vRaw.y, vRaw.z);
@@ -665,6 +670,31 @@ export class Car {
     return Math.hypot(v.x, v.y, v.z) * 3.6;
   }
 
+  getBoost() {
+    return THREE.MathUtils.clamp(Number(this.boost) || 0, 0, CAR_TUNING.boostCapacity);
+  }
+
+  setBoost(value) {
+    this.boost = THREE.MathUtils.clamp(Number(value) || 0, 0, CAR_TUNING.boostCapacity);
+  }
+
+  collectBoostPad(amount, full = false) {
+    const before = this.getBoost();
+    const next = full
+      ? CAR_TUNING.boostCapacity
+      : Math.min(CAR_TUNING.boostCapacity, before + Math.max(0, Number(amount) || 0));
+    this.boost = next;
+    return next > before + 0.001;
+  }
+
+  enforceSpeedLimit() {
+    const v = this.body.linvel();
+    const speed = Math.hypot(v.x, v.y, v.z);
+    if (speed <= CAR_TUNING.maxBoostSpeed || speed < 0.000001) return;
+    const scale = CAR_TUNING.maxBoostSpeed / speed;
+    this.body.setLinvel({ x: v.x * scale, y: v.y * scale, z: v.z * scale }, true);
+  }
+
   reset() {
     this.body.setTranslation({ x: this.spawn.x, y: this.spawn.y, z: this.spawn.z }, true);
     this.setSpawnRotation();
@@ -677,5 +707,7 @@ export class Car {
     this.groundContactLockout = 0;
     this.dodgeTime = 0;
     this.grounded = false;
+    this.boost = CAR_TUNING.boostCapacity;
+    this.boosting = false;
   }
 }

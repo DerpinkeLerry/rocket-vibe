@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Arena } from './Arena.js';
 import { Ball } from './Ball.js';
+import { BoostPads } from './BoostPads.js';
 import { Car } from './Car.js';
 import { ChaseCamera } from './ChaseCamera.js';
 import { Input } from './Input.js';
@@ -93,6 +94,7 @@ export class Game {
       lowDetail: this.profile.lowDetail,
       createPhysics: !this.networked
     });
+    this.boostPads = new BoostPads(this.scene, { lowDetail: this.profile.lowDetail });
 
     this.cars = PLAYER_CONFIGS.map((config, index) => new Car(
       this.scene,
@@ -270,6 +272,7 @@ export class Game {
         const cameraMode = this.chaseCamera.toggleMode();
         this.hud.setCameraMode(cameraMode);
       }
+      this.boostPads.update(renderDt);
       this.chaseCamera.update(renderDt);
 
       this.hudAccumulator += renderDt;
@@ -326,6 +329,8 @@ export class Game {
     this.car0.fixedUpdate(dt);
     this.ball.fixedUpdate(dt);
     this.world.step();
+    this.car0.enforceSpeedLimit();
+    this.boostPads.updateOffline(this.car0, dt);
     this.detectOfflineGoal();
   }
 
@@ -339,6 +344,7 @@ export class Game {
     else this.orangeScore += 1;
     this.car0.reset();
     this.ball.reset();
+    this.boostPads.resetAll();
     this.hud.setScore(this.orangeScore, this.blueScore);
   }
 
@@ -354,6 +360,7 @@ export class Game {
     }
 
     this.hud.setScore(state.orangeScore, state.blueScore);
+    this.boostPads.setActiveMask(state.boostPadMask);
 
     const packetAge = Math.max(0, now - this.latestNetworkStateReceivedAt);
     const rttMs = this.network?.rttMs ?? 0;
@@ -370,6 +377,7 @@ export class Game {
       } else {
         this.smoothRemoteBody(this.cars[i].body, target, dt, packetAge, rttMs, 28, 0.12);
         this.cars[i].grounded = Boolean(target.g);
+        if (Number.isFinite(Number(target.b))) this.cars[i].setBoost(target.b);
       }
     }
 

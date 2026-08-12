@@ -23,6 +23,8 @@ type CarConfig struct {
 	Mass                 float64 `json:"mass"`
 	MaxGroundSpeed       float64 `json:"maxGroundSpeed"`
 	MaxBoostSpeed        float64 `json:"maxBoostSpeed"`
+	BoostCapacity        float64 `json:"boostCapacity"`
+	BoostConsumption     float64 `json:"boostConsumptionPerSecond"`
 	DriveAcceleration    float64 `json:"driveAcceleration"`
 	ReverseAcceleration  float64 `json:"reverseAcceleration"`
 	BrakeAcceleration    float64 `json:"brakeAcceleration"`
@@ -91,13 +93,15 @@ func DefaultConfig() Config {
 		Car: CarConfig{
 			HalfExtents:          Vec3{X: 0.83, Y: 0.45, Z: 1.48},
 			Mass:                 420,
-			MaxGroundSpeed:       40,
-			MaxBoostSpeed:        54,
-			DriveAcceleration:    30,
-			ReverseAcceleration:  22,
-			BrakeAcceleration:    44,
-			CoastDeceleration:    4.2,
-			BoostAcceleration:    34,
+			MaxGroundSpeed:       60.0 / 3.6,
+			MaxBoostSpeed:        80.0 / 3.6,
+			BoostCapacity:        100,
+			BoostConsumption:     100.0 / 3.0,
+			DriveAcceleration:    14,
+			ReverseAcceleration:  10,
+			BrakeAcceleration:    28,
+			CoastDeceleration:    3.5,
+			BoostAcceleration:    16,
 			Grip:                 18,
 			SteerRate:            2.75,
 			SteerResponse:        14,

@@ -20,6 +20,8 @@ const (
 
 	TeamOrange = "orange"
 	TeamBlue   = "blue"
+
+	BoostPadCount = 16
 )
 
 type Input struct {
@@ -46,7 +48,18 @@ type Car struct {
 	AirTime       float64 `json:"-"`
 	GroundLockout float64 `json:"-"`
 	DodgeTime     float64 `json:"-"`
+	Boost         float64 `json:"boost"`
 	GroundNormal  Vec3    `json:"-"`
+}
+
+type BoostPad struct {
+	Position       Vec3
+	Amount         float64
+	Radius         float64
+	RespawnSeconds float64
+	Full           bool
+	Active         bool
+	RespawnAtTick  uint64
 }
 
 type Ball struct {
@@ -66,6 +79,8 @@ type Snapshot struct {
 	GroundMask    uint8                   `json:"groundMask"`
 	OrangeScore   uint16                  `json:"orangeScore"`
 	BlueScore     uint16                  `json:"blueScore"`
+	Boost         [MaxPlayers]uint8       `json:"boost"`
+	BoostPadMask  uint16                  `json:"boostPadMask"`
 	Cars          [MaxPlayers]EntityState `json:"cars"`
 	Ball          EntityState             `json:"ball"`
 }
@@ -77,6 +92,7 @@ type World struct {
 	Tick        uint64
 	OrangeScore uint16
 	BlueScore   uint16
+	BoostPads   [BoostPadCount]BoostPad
 }
 
 func TeamForSlot(slot int) string {
@@ -96,12 +112,32 @@ var playerSpawns = [MaxPlayers]struct {
 	{Position: Vec3{X: 13, Y: 0.52, Z: -44}, Yaw: math.Pi},
 }
 
+var boostPadSpecs = [BoostPadCount]BoostPad{
+	{Position: Vec3{X: -43, Z: -68}, Amount: 100, Radius: 2.8, RespawnSeconds: 10, Full: true},
+	{Position: Vec3{X: 43, Z: -68}, Amount: 100, Radius: 2.8, RespawnSeconds: 10, Full: true},
+	{Position: Vec3{X: -43, Z: 68}, Amount: 100, Radius: 2.8, RespawnSeconds: 10, Full: true},
+	{Position: Vec3{X: 43, Z: 68}, Amount: 100, Radius: 2.8, RespawnSeconds: 10, Full: true},
+	{Position: Vec3{X: -28, Z: -45}, Amount: 20, Radius: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: 0, Z: -52}, Amount: 20, Radius: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: 28, Z: -45}, Amount: 20, Radius: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: -24, Z: -20}, Amount: 20, Radius: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: 0, Z: -26}, Amount: 20, Radius: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: 24, Z: -20}, Amount: 20, Radius: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: -24, Z: 20}, Amount: 20, Radius: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: 0, Z: 26}, Amount: 20, Radius: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: 24, Z: 20}, Amount: 20, Radius: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: -28, Z: 45}, Amount: 20, Radius: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: 0, Z: 52}, Amount: 20, Radius: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: 28, Z: 45}, Amount: 20, Radius: 1.65, RespawnSeconds: 4},
+}
+
 func NewWorld(config Config) *World {
 	world := &World{Config: config}
 	for slot := range world.Cars {
 		world.Cars[slot].Slot = slot
 		world.resetCar(&world.Cars[slot])
 	}
+	world.resetBoostPads()
 	world.resetBall()
 	return world
 }
@@ -122,6 +158,7 @@ func (world *World) ResetMatch() {
 	for index := range world.Cars {
 		world.resetCar(&world.Cars[index])
 	}
+	world.resetBoostPads()
 	world.resetBall()
 }
 
@@ -153,6 +190,7 @@ func (world *World) Step(dt float64) {
 		return
 	}
 	world.Tick++
+	world.refreshBoostPads()
 
 	ballReset := false
 	for index := range world.Cars {
@@ -194,6 +232,7 @@ func (world *World) Step(dt float64) {
 			resolveCarBall(carA, &world.Ball, world.Config)
 		}
 	}
+	world.collectBoostPads()
 	world.detectGoal()
 
 	for index := range world.Cars {
@@ -237,7 +276,10 @@ func (world *World) stepCar(car *Car, dt float64) {
 	forwardInput := boolValue(inputMask&InputW != 0) - boolValue(inputMask&InputS != 0)
 	steerInput := boolValue(inputMask&InputA != 0) - boolValue(inputMask&InputD != 0)
 	rollInput := boolValue(inputMask&InputQ != 0) - boolValue(inputMask&InputE != 0)
-	boosting := inputMask&InputBoost != 0
+	boosting := inputMask&InputBoost != 0 && car.Boost > 0.001
+	if boosting {
+		car.Boost = math.Max(0, car.Boost-config.BoostConsumption*dt)
+	}
 
 	if driveGrounded {
 		world.applyGroundDrive(car, forward, right, forwardInput, steerInput, boosting, dt)
@@ -282,7 +324,7 @@ func (world *World) stepCar(car *Car, dt float64) {
 	car.Velocity.Y -= world.Config.Gravity * dt
 	car.Velocity = car.Velocity.Mul(math.Exp(-config.LinearDamping * dt))
 	car.AngularVelocity = car.AngularVelocity.Mul(math.Exp(-config.AngularDamping * dt))
-	car.Velocity = clampMagnitude(car.Velocity, config.MaxBoostSpeed*1.35)
+	car.Velocity = clampMagnitude(car.Velocity, config.MaxBoostSpeed)
 	car.Position = car.Position.Add(car.Velocity.Mul(dt))
 	car.Rotation = car.Rotation.Integrate(car.AngularVelocity, dt)
 }
@@ -423,6 +465,62 @@ func (world *World) finishBallStep() {
 	}
 }
 
+func (world *World) resetBoostPads() {
+	for index := range world.BoostPads {
+		pad := boostPadSpecs[index]
+		pad.Active = true
+		pad.RespawnAtTick = 0
+		world.BoostPads[index] = pad
+	}
+}
+
+func (world *World) refreshBoostPads() {
+	for index := range world.BoostPads {
+		pad := &world.BoostPads[index]
+		if !pad.Active && pad.RespawnAtTick > 0 && world.Tick >= pad.RespawnAtTick {
+			pad.Active = true
+			pad.RespawnAtTick = 0
+		}
+	}
+}
+
+func (world *World) collectBoostPads() {
+	for carIndex := range world.Cars {
+		car := &world.Cars[carIndex]
+		if !car.Connected || car.Position.Y > 2.45 {
+			continue
+		}
+		for padIndex := range world.BoostPads {
+			pad := &world.BoostPads[padIndex]
+			if !pad.Active {
+				continue
+			}
+			dx := car.Position.X - pad.Position.X
+			dz := car.Position.Z - pad.Position.Z
+			if dx*dx+dz*dz > pad.Radius*pad.Radius {
+				continue
+			}
+
+			before := car.Boost
+			if pad.Full {
+				car.Boost = world.Config.Car.BoostCapacity
+			} else {
+				car.Boost = math.Min(world.Config.Car.BoostCapacity, car.Boost+pad.Amount)
+			}
+			if car.Boost <= before+0.001 {
+				continue
+			}
+
+			pad.Active = false
+			respawnTicks := uint64(math.Ceil(pad.RespawnSeconds * float64(world.Config.PhysicsHz)))
+			if respawnTicks < 1 {
+				respawnTicks = 1
+			}
+			pad.RespawnAtTick = world.Tick + respawnTicks
+		}
+	}
+}
+
 func (world *World) resetCar(car *Car) {
 	spawn := playerSpawns[car.Slot]
 	car.Body = Body{Position: spawn.Position, Rotation: QuatFromYaw(spawn.Yaw)}
@@ -433,6 +531,7 @@ func (world *World) resetCar(car *Car) {
 	car.AirTime = 0
 	car.GroundLockout = 0
 	car.DodgeTime = 0
+	car.Boost = world.Config.Car.BoostCapacity
 	car.GroundNormal = Vec3{Y: 1}
 }
 
@@ -454,6 +553,12 @@ func (world *World) Snapshot() Snapshot {
 			snapshot.GroundMask |= 1 << index
 		}
 		snapshot.Cars[index] = stateFromBody(car.Body)
+		snapshot.Boost[index] = uint8(math.Round(clamp(car.Boost, 0, world.Config.Car.BoostCapacity)))
+	}
+	for index := range world.BoostPads {
+		if world.BoostPads[index].Active {
+			snapshot.BoostPadMask |= 1 << index
+		}
 	}
 	snapshot.Ball = stateFromBody(world.Ball.Body)
 	return snapshot
@@ -481,6 +586,7 @@ func (world *World) detectGoal() bool {
 			world.resetCar(&world.Cars[index])
 		}
 	}
+	world.resetBoostPads()
 	world.resetBall()
 	return true
 }

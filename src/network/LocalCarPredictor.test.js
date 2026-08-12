@@ -141,3 +141,16 @@ test('prediction gives a held jump more lift than a tap', () => {
   assert.ok(held.body.translation().y > tapped.body.translation().y + 0.15);
   assert.ok(held.body.linvel().y > tapped.body.linvel().y + 0.5);
 });
+
+test('prediction consumes boost and enforces the 80 km/h hard cap', () => {
+  const { body, predictor } = makePredictor();
+  predictor.syncGrounded(true);
+  predictor.setInput({ mask: INPUT_BITS.W | INPUT_BITS.BOOST, edges: 0 });
+
+  for (let index = 0; index < 120; index++) predictor.step(1 / 120);
+  assert.ok(predictor.boost < 67.1 && predictor.boost > 66.2, `boost after 1s was ${predictor.boost}`);
+  assert.ok(Math.hypot(body.linvel().x, body.linvel().y, body.linvel().z) * 3.6 <= 80.01);
+
+  for (let index = 0; index < 250; index++) predictor.step(1 / 120);
+  assert.ok(predictor.boost <= 0.001, `boost did not empty: ${predictor.boost}`);
+});

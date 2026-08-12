@@ -12,7 +12,7 @@ export class Hud {
     this.el = document.createElement('div');
     this.el.className = 'hud';
     this.el.innerHTML = `
-      <div class="hud__title">ROCKET VIBE // ONLINE 1.6 <span class="hud__perf" data-perf>${profile}</span></div>
+      <div class="hud__title">ROCKET VIBE // ONLINE 1.7 <span class="hud__perf" data-perf>${profile}</span></div>
       <div class="hud__scoreboard" aria-label="Spielstand Orange gegen Blau">
         <div class="hud__score-team hud__score-team--orange"><span>ORANGE</span><strong data-orange-score>0</strong></div>
         <div class="hud__score-separator">:</div>
@@ -36,6 +36,10 @@ export class Hud {
         <kbd>B</kbd><span>Ball Reset</span>
         <kbd>R</kbd><span>Eigenes Auto Reset</span>
       </div>
+      <div class="hud__boost" aria-label="Boost Anzeige">
+        <div class="hud__boost-head"><span>BOOST</span><strong data-boost-value>100</strong></div>
+        <div class="hud__boost-track"><div class="hud__boost-fill" data-boost-fill></div></div>
+      </div>
       <div class="hud__speed">
         <div class="hud__speed-number" data-speed>000</div>
         <div class="hud__speed-label">km/h</div>
@@ -52,6 +56,8 @@ export class Hud {
     this.perf = this.el.querySelector('[data-perf]');
     this.identity = this.el.querySelector('[data-identity]');
     this.cameraMode = this.el.querySelector('[data-camera-mode]');
+    this.boostValue = this.el.querySelector('[data-boost-value]');
+    this.boostFill = this.el.querySelector('[data-boost-fill]');
     this.identity.textContent = playerName;
     this.orangeScore = this.el.querySelector('[data-orange-score]');
     this.blueScore = this.el.querySelector('[data-blue-score]');
@@ -89,5 +95,9 @@ export class Hud {
   update(car) {
     this.speed.textContent = String(Math.round(car.getSpeedKmh())).padStart(3, '0');
     this.state.textContent = car.grounded ? 'GROUND' : 'AIR';
+    const boost = Math.max(0, Math.min(100, Number(car.getBoost?.() ?? car.boost) || 0));
+    if (this.boostValue) this.boostValue.textContent = String(Math.round(boost));
+    if (this.boostFill) this.boostFill.style.transform = `scaleX(${boost / 100})`;
+    this.el.classList.toggle('hud--boost-low', boost <= 20);
   }
 }
