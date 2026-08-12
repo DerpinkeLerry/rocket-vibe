@@ -12,6 +12,7 @@ const (
 	InputQ     uint8 = 1 << 4
 	InputE     uint8 = 1 << 5
 	InputBoost uint8 = 1 << 6
+	InputJump  uint8 = 1 << 7
 
 	EdgeJump      uint8 = 1 << 0
 	EdgeReset     uint8 = 1 << 1
@@ -44,6 +45,7 @@ type Car struct {
 	JumpCount     int     `json:"-"`
 	AirTime       float64 `json:"-"`
 	GroundLockout float64 `json:"-"`
+	DodgeTime     float64 `json:"-"`
 	GroundNormal  Vec3    `json:"-"`
 }
 
@@ -88,10 +90,10 @@ var playerSpawns = [MaxPlayers]struct {
 	Position Vec3
 	Yaw      float64
 }{
-	{Position: Vec3{X: -13, Y: 1.25, Z: 44}, Yaw: 0},
-	{Position: Vec3{X: -13, Y: 1.25, Z: -44}, Yaw: math.Pi},
-	{Position: Vec3{X: 13, Y: 1.25, Z: 44}, Yaw: 0},
-	{Position: Vec3{X: 13, Y: 1.25, Z: -44}, Yaw: math.Pi},
+	{Position: Vec3{X: -13, Y: 0.52, Z: 44}, Yaw: 0},
+	{Position: Vec3{X: -13, Y: 0.52, Z: -44}, Yaw: math.Pi},
+	{Position: Vec3{X: 13, Y: 0.52, Z: 44}, Yaw: 0},
+	{Position: Vec3{X: 13, Y: 0.52, Z: -44}, Yaw: math.Pi},
 }
 
 func NewWorld(config Config) *World {
@@ -131,7 +133,7 @@ func (world *World) SetInput(slot int, input Input) bool {
 	if !car.Connected || !sequenceIsNewer(input.Sequence, car.Input.Sequence) {
 		return false
 	}
-	input.Mask &= 0x7f
+	input.Mask &= 0xff
 	input.Edges &= 0x07
 	input.Edges |= car.Input.Edges
 	car.Input = input
@@ -215,6 +217,7 @@ func (world *World) stepCar(car *Car, dt float64) {
 	}
 
 	car.GroundLockout = math.Max(0, car.GroundLockout-dt)
+	car.DodgeTime = math.Max(0, car.DodgeTime-dt)
 	inputMask := car.Input.Mask
 	if world.Tick-car.LastInputTick > uint64(world.Config.PhysicsHz) {
 		inputMask = 0
@@ -225,7 +228,7 @@ func (world *World) stepCar(car *Car, dt float64) {
 	forward := rotation.Rotate(Vec3{Z: -1}).NormalizeOr(Vec3{Z: -1})
 	right := rotation.Rotate(Vec3{X: 1}).NormalizeOr(Vec3{X: 1})
 	up := rotation.Rotate(Vec3{Y: 1}).NormalizeOr(Vec3{Y: 1})
-	nearFloor := car.Position.Y < 1.55 && up.Y > 0.35 && math.Abs(car.Velocity.Y) < 6.5
+	nearFloor := car.Position.Y <= config.HalfExtents.Y+0.12 && up.Y > 0.45 && math.Abs(car.Velocity.Y) < 4.5
 	driveGrounded := car.GroundLockout <= 0 && (car.Grounded || nearFloor)
 	if nearFloor && !car.Grounded {
 		car.GroundNormal = Vec3{Y: 1}
@@ -250,24 +253,65 @@ func (world *World) stepCar(car *Car, dt float64) {
 			normalSpeed := car.Velocity.Dot(groundNormal)
 			car.Velocity = car.Velocity.Add(groundNormal.Mul(math.Max(0, config.JumpSpeed-normalSpeed)))
 			car.JumpCount = 1
+			car.AirTime = 0
 			car.Grounded = false
-			car.GroundLockout = 0.18
-		} else if !driveGrounded && car.JumpCount == 1 && car.AirTime < 1.4 {
-			car.Velocity.Y += config.DoubleJumpSpeed
-			car.JumpCount = 2
+			car.GroundLockout = 0.16
+			driveGrounded = false
+		} else if !driveGrounded && car.JumpCount == 1 && car.AirTime <= config.DodgeWindow {
+			world.applySecondJumpOrDodge(car, forward, right, up, forwardInput, steerInput)
 		}
+	}
+
+	if inputMask&InputJump != 0 && car.JumpCount == 1 && car.AirTime <= config.JumpHoldDuration {
+		car.Velocity = car.Velocity.Add(up.Mul(config.JumpHoldAcceleration * dt))
 	}
 
 	if driveGrounded {
 		groundNormal := car.GroundNormal.NormalizeOr(Vec3{Y: 1})
+		// On steep surfaces the ordinary world gravity would pull a perfectly
+		// aligned car straight down the glass.  Cancel only the tangential part
+		// as the surface turns vertical, then press the suspension into the wall.
+		// Jumping disables both immediately through driveGrounded/lockout.
+		steepness := clamp(1-math.Max(0, groundNormal.Y), 0, 1)
+		gravity := Vec3{Y: -world.Config.Gravity}
+		tangentGravity := gravity.Sub(groundNormal.Mul(gravity.Dot(groundNormal)))
+		car.Velocity = car.Velocity.Sub(tangentGravity.Mul(config.WallGravityCancel * steepness * dt))
 		car.Velocity = car.Velocity.Sub(groundNormal.Mul(config.DownAcceleration * dt))
 	}
+
 	car.Velocity.Y -= world.Config.Gravity * dt
 	car.Velocity = car.Velocity.Mul(math.Exp(-config.LinearDamping * dt))
 	car.AngularVelocity = car.AngularVelocity.Mul(math.Exp(-config.AngularDamping * dt))
 	car.Velocity = clampMagnitude(car.Velocity, config.MaxBoostSpeed*1.35)
 	car.Position = car.Position.Add(car.Velocity.Mul(dt))
 	car.Rotation = car.Rotation.Integrate(car.AngularVelocity, dt)
+}
+
+func (world *World) applySecondJumpOrDodge(car *Car, forward, right, up Vec3, forwardInput, steerInput float64) {
+	config := world.Config.Car
+	directionMagnitude := math.Hypot(forwardInput, steerInput)
+	if directionMagnitude < 0.25 {
+		// A neutral second jump follows the car roof, just like the first jump.
+		// This also makes wall double-jumps behave naturally after detaching.
+		car.Velocity = car.Velocity.Add(up.NormalizeOr(Vec3{Y: 1}).Mul(config.DoubleJumpSpeed))
+		car.JumpCount = 2
+		return
+	}
+
+	forwardAmount := forwardInput / directionMagnitude
+	sideAmount := steerInput / directionMagnitude
+	dodgeDirection := forward.Mul(forwardAmount).Add(right.Mul(-sideAmount)).NormalizeOr(forward)
+	car.Velocity = car.Velocity.
+		Add(dodgeDirection.Mul(config.DodgeImpulse)).
+		Add(up.NormalizeOr(Vec3{Y: 1}).Mul(config.DodgeLift))
+
+	// W/S flips around the local right axis; A/D flips around the local forward
+	// axis.  Set the requested component instead of stacking unlimited spin.
+	flipAxis := right.Mul(-forwardAmount).Add(forward.Mul(sideAmount)).NormalizeOr(right)
+	currentFlipSpeed := car.AngularVelocity.Dot(flipAxis)
+	car.AngularVelocity = car.AngularVelocity.Add(flipAxis.Mul(config.DodgeAngularSpeed - currentFlipSpeed))
+	car.DodgeTime = config.DodgeDuration
+	car.JumpCount = 2
 }
 
 func (world *World) applyGroundDrive(car *Car, forward, right Vec3, throttle, steer float64, boosting bool, dt float64) {
@@ -310,7 +354,7 @@ func (world *World) applyGroundDrive(car *Car, forward, right Vec3, throttle, st
 		Add(right.Mul(nextLateral)).
 		Add(groundNormal.Mul(normalSpeed))
 
-	steerStrength := clamp(math.Max(math.Abs(nextForward), 1.5)/7, 0.18, 1) * clamp(1-tangentSpeed/62, 0.38, 1)
+	steerStrength := clamp(math.Max(math.Abs(nextForward), 1.5)/7, 0.18, 1) * clamp(1-tangentSpeed/70, 0.48, 1)
 	reverseSign := 1.0
 	if nextForward < -0.01 || (math.Abs(nextForward) <= 0.01 && throttle < 0) {
 		reverseSign = -1
@@ -324,11 +368,17 @@ func (world *World) applyGroundDrive(car *Car, forward, right Vec3, throttle, st
 
 func (world *World) applyAirControl(car *Car, forward, right, up Vec3, pitch, yaw, roll float64, boosting bool, dt float64) {
 	config := world.Config.Car
+	controlScale := 1.0
+	maximumAngular := config.MaxAirAngular
+	if car.DodgeTime > 0 {
+		controlScale = config.DodgeControlScale
+		maximumAngular = math.Max(maximumAngular, config.DodgeAngularSpeed)
+	}
 	car.AngularVelocity = car.AngularVelocity.
-		Add(right.Mul(-pitch * config.AirPitchAcceleration * dt)).
-		Add(up.Mul(yaw * config.AirYawAcceleration * dt)).
-		Add(forward.Mul(roll * config.AirRollAcceleration * dt))
-	car.AngularVelocity = clampMagnitude(car.AngularVelocity, config.MaxAirAngular)
+		Add(right.Mul(-pitch * config.AirPitchAcceleration * controlScale * dt)).
+		Add(up.Mul(yaw * config.AirYawAcceleration * controlScale * dt)).
+		Add(forward.Mul(roll * config.AirRollAcceleration * controlScale * dt))
+	car.AngularVelocity = clampMagnitude(car.AngularVelocity, maximumAngular)
 
 	if boosting {
 		car.Velocity = car.Velocity.Add(forward.Mul(config.BoostAcceleration * dt))
@@ -355,11 +405,12 @@ func (world *World) finishCarStep(car *Car, dt float64) {
 	forward := car.Rotation.Rotate(Vec3{Z: -1})
 	forward = forward.Sub(groundNormal.Mul(forward.Dot(groundNormal))).NormalizeOr(Vec3{Z: -1})
 	target := QuatFromForwardUp(forward, groundNormal)
-	car.Rotation = car.Rotation.NLerp(target, 1-math.Exp(-12*dt))
+	car.Rotation = car.Rotation.NLerp(target, 1-math.Exp(-world.Config.Car.SurfaceAlignResponse*dt))
 	spin := car.AngularVelocity.Dot(groundNormal)
-	perpendicular := car.AngularVelocity.Sub(groundNormal.Mul(spin)).Mul(math.Exp(-8 * dt))
+	perpendicular := car.AngularVelocity.Sub(groundNormal.Mul(spin)).Mul(math.Exp(-world.Config.Car.GroundAngularDamping * dt))
 	car.AngularVelocity = perpendicular.Add(groundNormal.Mul(spin))
 	car.JumpCount = 0
+	car.DodgeTime = 0
 	car.AirTime = 0
 }
 
@@ -381,6 +432,7 @@ func (world *World) resetCar(car *Car) {
 	car.JumpCount = 0
 	car.AirTime = 0
 	car.GroundLockout = 0
+	car.DodgeTime = 0
 	car.GroundNormal = Vec3{Y: 1}
 }
 

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { TransformBody } from '../network/TransformBody.js';
+import { CAR_TUNING } from '../shared/game-tuning.js';
 
 const VEC3_UP = new THREE.Vector3(0, 1, 0);
 const VEC3_FORWARD = new THREE.Vector3(0, 0, -1);
@@ -8,6 +9,10 @@ const VEC3_RIGHT = new THREE.Vector3(1, 0, 0);
 
 const clamp = THREE.MathUtils.clamp;
 const damp = (current, target, lambda, dt) => THREE.MathUtils.lerp(current, target, 1 - Math.exp(-lambda * dt));
+const moveTowards = (current, target, maxDelta) => {
+  if (Math.abs(target - current) <= maxDelta) return target;
+  return current + Math.sign(target - current) * maxDelta;
+};
 
 export class Car {
   constructor(scene, world, RAPIER, input, options = {}) {
@@ -18,37 +23,36 @@ export class Car {
     this.lowDetail = Boolean(options.lowDetail);
     this.clientOnly = Boolean(options.clientOnly);
 
-    const spawn = options.spawn ?? { x: 0, y: 1.25, z: 34 };
+    const spawn = options.spawn ?? { x: 0, y: 0.52, z: 34 };
     this.spawn = new THREE.Vector3(spawn.x, spawn.y, spawn.z);
     this.spawnYaw = options.spawnYaw ?? 0;
     this.paintColor = options.color ?? 0xf46b20;
     this.playerName = String(options.playerName || 'Spieler').slice(0, 16);
     this.team = options.team === 'blue' ? 'blue' : 'orange';
     this.isLocalPlayer = Boolean(options.localPlayer);
-    this.maxGroundSpeed = 39;
-    this.maxBoostSpeed = 52;
-    this.driveForce = 12200;
-    this.reverseForce = 9200;
-    this.boostForce = 16800;
-    this.grip = 13.5;
-    this.steerRate = 2.55;
-    this.steerResponse = 10.0;
-    this.airPitchTorque = 1650;
-    this.airYawTorque = 1320;
-    this.airRollTorque = 1500;
-    this.jumpImpulse = 4300;
-    this.downforce = 3300;
+    this.maxGroundSpeed = CAR_TUNING.maxGroundSpeed;
+    this.maxBoostSpeed = CAR_TUNING.maxBoostSpeed;
+    this.grip = CAR_TUNING.grip;
+    this.steerRate = CAR_TUNING.steerRate;
+    this.steerResponse = CAR_TUNING.steerResponse;
+    this.airPitchTorque = 2100;
+    this.airYawTorque = 1700;
+    this.airRollTorque = 2050;
 
     this.grounded = false;
     this.groundNormal = new THREE.Vector3(0, 1, 0);
     this.jumpCount = 0;
     this.airTime = 0;
     this.groundContactLockout = 0;
+    this.dodgeTime = 0;
     this.wheelSpin = 0;
 
     this.tempQ = new THREE.Quaternion();
     this.velocityVec = new THREE.Vector3();
     this.workVec = new THREE.Vector3();
+    this.dodgeDir = new THREE.Vector3();
+    this.flipAxis = new THREE.Vector3();
+    this.surfaceForce = new THREE.Vector3();
     this.groundAvg = new THREE.Vector3();
     this.sampleWorld = new THREE.Vector3();
     this.wheelSamples = [
@@ -82,8 +86,8 @@ export class Car {
     const R = this.RAPIER;
     const bodyDesc = R.RigidBodyDesc.dynamic()
       .setTranslation(this.spawn.x, this.spawn.y, this.spawn.z)
-      .setLinearDamping(0.08)
-      .setAngularDamping(0.32)
+      .setLinearDamping(CAR_TUNING.linearDamping)
+      .setAngularDamping(CAR_TUNING.angularDamping)
       .setCcdEnabled(true)
       .setSoftCcdPrediction(0.6)
       .setCanSleep(false);
@@ -352,6 +356,7 @@ export class Car {
     // would switch WASD back to ground controls for a few frames.
     if (this.groundContactLockout > 0) {
       this.grounded = false;
+      this.airTime += dt;
       return;
     }
 
@@ -387,6 +392,7 @@ export class Car {
       this.groundNormal.lerp(this.groundAvg, 0.45).normalize();
       this.airTime = 0;
       if (this.jumpCount > 0) this.jumpCount = 0;
+      this.dodgeTime = 0;
     } else {
       this.airTime += dt;
     }
@@ -400,6 +406,7 @@ export class Car {
 
     this.getTransformBasis();
     this.groundContactLockout = Math.max(0, this.groundContactLockout - dt);
+    this.dodgeTime = Math.max(0, this.dodgeTime - dt);
     this.sampleGround(dt);
 
     if (this.grounded) {
@@ -415,7 +422,6 @@ export class Car {
     // Context-sensitive Rocket-League-style controls:
     // GROUND: W/S = throttle/reverse, A/D = steering.
     // AIR:    W/S = pitch, A/D = yaw, Q/E = roll.
-    // Shift remains boost in both states.
     const forwardInput = (this.input.isDown('KeyW', 'ArrowUp') ? 1 : 0) - (this.input.isDown('KeyS', 'ArrowDown') ? 1 : 0);
     const sideInput = (this.input.isDown('KeyA', 'ArrowLeft') ? 1 : 0) - (this.input.isDown('KeyD', 'ArrowRight') ? 1 : 0);
     const rollInput = (this.input.isDown('KeyQ') ? 1 : 0) - (this.input.isDown('KeyE') ? 1 : 0);
@@ -425,88 +431,86 @@ export class Car {
     this.velocityVec.set(vRaw.x, vRaw.y, vRaw.z);
     const speedForward = this.velocityVec.dot(this.forward);
     const speedLateral = this.velocityVec.dot(this.right);
-    const flatSpeed = Math.hypot(speedForward, speedLateral);
+    const tangentSpeed = Math.hypot(speedForward, speedLateral);
 
-    if (this.grounded) {
-      this.applyGroundDrive(dt, forwardInput, sideInput, speedForward, speedLateral, flatSpeed, boosting);
+    let driveGrounded = this.grounded;
+    if (driveGrounded) {
+      this.applyGroundDrive(dt, forwardInput, sideInput, boosting);
+      this.airTime = 0;
     } else {
-      this.applyAirControl(dt, forwardInput, sideInput, rollInput);
-    }
-
-    if (boosting) {
-      const speed = this.velocityVec.dot(this.forward);
-      if (speed < this.maxBoostSpeed) {
-        const boostImpulse = this.boostForce * dt;
-        this.body.applyImpulse({
-          x: this.forward.x * boostImpulse,
-          y: this.forward.y * boostImpulse,
-          z: this.forward.z * boostImpulse
-        }, true);
-      }
+      this.applyAirControl(dt, forwardInput, sideInput, rollInput, boosting);
     }
 
     if (this.input.consumePressed('Space')) {
-      if (this.grounded && this.jumpCount === 0) {
-        this.body.applyImpulse({
-          x: this.groundNormal.x * this.jumpImpulse,
-          y: this.groundNormal.y * this.jumpImpulse,
-          z: this.groundNormal.z * this.jumpImpulse
+      if (driveGrounded && this.jumpCount === 0) {
+        const lin = this.body.linvel();
+        const normalSpeed = lin.x * this.groundNormal.x + lin.y * this.groundNormal.y + lin.z * this.groundNormal.z;
+        const deltaSpeed = Math.max(0, CAR_TUNING.jumpSpeed - normalSpeed);
+        this.body.setLinvel({
+          x: lin.x + this.groundNormal.x * deltaSpeed,
+          y: lin.y + this.groundNormal.y * deltaSpeed,
+          z: lin.z + this.groundNormal.z * deltaSpeed
         }, true);
         this.jumpCount = 1;
+        this.airTime = 0;
         this.grounded = false;
         this.groundContactLockout = 0.16;
-      } else if (!this.grounded && this.jumpCount === 1 && this.airTime < 1.4) {
-        this.body.applyImpulse({ x: 0, y: this.jumpImpulse * 0.82, z: 0 }, true);
-        this.jumpCount = 2;
+        driveGrounded = false;
+      } else if (!driveGrounded && this.jumpCount === 1 && this.airTime <= CAR_TUNING.dodgeWindow) {
+        this.applySecondJumpOrDodge(forwardInput, sideInput);
       }
     }
 
-    if (this.grounded) {
-      const downImpulse = this.downforce * dt;
-      this.body.applyImpulse({
-        x: -this.groundNormal.x * downImpulse,
-        y: -this.groundNormal.y * downImpulse,
-        z: -this.groundNormal.z * downImpulse
+    if (this.input.isDown('Space') && this.jumpCount === 1 && this.airTime <= CAR_TUNING.jumpHoldDuration) {
+      const lin = this.body.linvel();
+      this.body.setLinvel({
+        x: lin.x + this.up.x * CAR_TUNING.jumpHoldAcceleration * dt,
+        y: lin.y + this.up.y * CAR_TUNING.jumpHoldAcceleration * dt,
+        z: lin.z + this.up.z * CAR_TUNING.jumpHoldAcceleration * dt
       }, true);
+    }
+
+    if (driveGrounded) {
+      this.applySurfaceForces(dt);
       this.alignToGround(dt);
     }
 
-    this.updateVisualAnimation(dt, this.grounded ? sideInput : 0, speedForward, boosting);
+    this.updateVisualAnimation(dt, driveGrounded ? sideInput : 0, speedForward, boosting);
   }
 
-  applyGroundDrive(dt, throttle, steer, speedForward, speedLateral, flatSpeed, boosting) {
-    const maxSpeed = boosting ? this.maxBoostSpeed : this.maxGroundSpeed;
-    const force = throttle >= 0 ? this.driveForce : this.reverseForce;
-
-    if (throttle !== 0 && (Math.abs(speedForward) < maxSpeed || Math.sign(throttle) !== Math.sign(speedForward))) {
-      const driveImpulse = force * throttle * dt;
-      this.body.applyImpulse({
-        x: this.forward.x * driveImpulse,
-        y: this.forward.y * driveImpulse,
-        z: this.forward.z * driveImpulse
-      }, true);
-    }
-
+  applyGroundDrive(dt, throttle, steer, boosting) {
     const lin = this.body.linvel();
-    const gripAmount = clamp(this.grip * dt, 0, 1);
-    const corrected = this.workVec.set(lin.x, lin.y, lin.z)
-      .addScaledVector(this.right, -speedLateral * gripAmount);
-
-    if (Math.abs(throttle) < 0.01) {
-      const coast = Math.exp(-1.25 * dt);
-      const along = corrected.dot(this.forward);
-      corrected.addScaledVector(this.forward, along * (coast - 1));
+    this.velocityVec.set(lin.x, lin.y, lin.z);
+    const speedForward = this.velocityVec.dot(this.forward);
+    const speedLateral = this.velocityVec.dot(this.right);
+    const tangentSpeed = Math.hypot(speedForward, speedLateral);
+    const maxSpeed = boosting ? CAR_TUNING.maxBoostSpeed : CAR_TUNING.maxGroundSpeed;
+    const targetForward = throttle * (throttle < 0 ? CAR_TUNING.maxGroundSpeed * 0.68 : maxSpeed);
+    let acceleration = throttle < 0 ? CAR_TUNING.reverseAcceleration : CAR_TUNING.driveAcceleration;
+    if (throttle !== 0 && Math.abs(speedForward) > 0.05 && Math.sign(throttle) !== Math.sign(speedForward)) {
+      acceleration = CAR_TUNING.brakeAcceleration;
     }
 
-    this.body.setLinvel({ x: corrected.x, y: corrected.y, z: corrected.z }, true);
+    let nextForward = speedForward;
+    if (throttle !== 0) nextForward = moveTowards(speedForward, targetForward, acceleration * dt);
+    else nextForward = moveTowards(speedForward, 0, CAR_TUNING.coastDeceleration * dt);
+    if (boosting) nextForward = moveTowards(nextForward, CAR_TUNING.maxBoostSpeed, CAR_TUNING.boostAcceleration * dt);
 
-    const steerStrength = clamp(Math.abs(speedForward) / 6, 0, 1) * clamp(1 - flatSpeed / 58, 0.35, 1);
-    const reverseSign = Math.sign(speedForward || throttle || 1);
-    const targetYaw = steer * this.steerRate * steerStrength * reverseSign;
+    const nextLateral = speedLateral * Math.exp(-CAR_TUNING.grip * dt);
+    const normalSpeed = Math.min(0, this.velocityVec.dot(this.groundNormal));
+    this.workVec.copy(this.forward).multiplyScalar(nextForward)
+      .addScaledVector(this.right, nextLateral)
+      .addScaledVector(this.groundNormal, normalSpeed);
+    this.body.setLinvel({ x: this.workVec.x, y: this.workVec.y, z: this.workVec.z }, true);
+
+    const steerStrength = clamp(Math.max(Math.abs(nextForward), 1.5) / 7, 0.18, 1)
+      * clamp(1 - tangentSpeed / 70, 0.48, 1);
+    const reverseSign = Math.sign(nextForward || throttle || 1);
+    const targetYaw = steer * CAR_TUNING.steerRate * steerStrength * reverseSign;
     const ang = this.body.angvel();
     const spin = ang.x * this.groundNormal.x + ang.y * this.groundNormal.y + ang.z * this.groundNormal.z;
-    const tangentDamping = Math.exp(-7.5 * dt);
-    const yaw = damp(spin, targetYaw, this.steerResponse, dt);
+    const tangentDamping = Math.exp(-CAR_TUNING.angularGroundDamping * dt);
+    const yaw = damp(spin, targetYaw, CAR_TUNING.steerResponse, dt);
     this.body.setAngvel({
       x: (ang.x - this.groundNormal.x * spin) * tangentDamping + this.groundNormal.x * yaw,
       y: (ang.y - this.groundNormal.y * spin) * tangentDamping + this.groundNormal.y * yaw,
@@ -528,21 +532,16 @@ export class Car {
     this.surfaceBack.copy(this.forward).multiplyScalar(-1);
     this.surfaceMatrix.makeBasis(this.surfaceRight, this.groundNormal, this.surfaceBack);
     this.surfaceTargetQ.setFromRotationMatrix(this.surfaceMatrix).normalize();
-    this.tempQ.slerp(this.surfaceTargetQ, 1 - Math.exp(-12 * dt));
+    this.tempQ.slerp(this.surfaceTargetQ, 1 - Math.exp(-CAR_TUNING.surfaceAlignResponse * dt));
     this.body.setRotation({ x: this.tempQ.x, y: this.tempQ.y, z: this.tempQ.z, w: this.tempQ.w }, true);
   }
 
-  applyAirControl(dt, forwardInput, sideInput, rollInput) {
-    // With this coordinate system positive local X pitches the nose up,
-    // therefore W uses a negative pitch impulse (nose down) and S positive.
-    const pitch = -forwardInput;
-    const yaw = sideInput;
-    const roll = rollInput;
-
+  applyAirControl(dt, forwardInput, sideInput, rollInput, boosting) {
+    const controlScale = this.dodgeTime > 0 ? CAR_TUNING.dodgeControlScale : 1;
     const torque = this.workVec.set(0, 0, 0)
-      .addScaledVector(this.right, pitch * this.airPitchTorque)
-      .addScaledVector(this.up, yaw * this.airYawTorque)
-      .addScaledVector(this.forward, roll * this.airRollTorque);
+      .addScaledVector(this.right, -forwardInput * this.airPitchTorque * controlScale)
+      .addScaledVector(this.up, sideInput * this.airYawTorque * controlScale)
+      .addScaledVector(this.forward, rollInput * this.airRollTorque * controlScale);
 
     if (torque.lengthSq() > 0) {
       this.body.applyTorqueImpulse({
@@ -552,15 +551,77 @@ export class Car {
       }, true);
     }
 
-    // Cap rotation so keyboard input stays controllable instead of spinning
-    // forever after a long key press. The motion itself still has inertia.
     const ang = this.body.angvel();
-    const maxAirAngular = 6.5;
+    const maxAirAngular = this.dodgeTime > 0
+      ? Math.max(CAR_TUNING.maxAirAngular, CAR_TUNING.dodgeAngularSpeed)
+      : CAR_TUNING.maxAirAngular;
     const mag = Math.hypot(ang.x, ang.y, ang.z);
     if (mag > maxAirAngular) {
-      const s = maxAirAngular / mag;
-      this.body.setAngvel({ x: ang.x * s, y: ang.y * s, z: ang.z * s }, true);
+      const scale = maxAirAngular / mag;
+      this.body.setAngvel({ x: ang.x * scale, y: ang.y * scale, z: ang.z * scale }, true);
     }
+
+    if (boosting) {
+      const lin = this.body.linvel();
+      this.velocityVec.set(lin.x, lin.y, lin.z).addScaledVector(this.forward, CAR_TUNING.boostAcceleration * dt);
+      const speed = this.velocityVec.length();
+      if (speed > CAR_TUNING.maxBoostSpeed) this.velocityVec.multiplyScalar(CAR_TUNING.maxBoostSpeed / speed);
+      this.body.setLinvel({ x: this.velocityVec.x, y: this.velocityVec.y, z: this.velocityVec.z }, true);
+    }
+  }
+
+  applySecondJumpOrDodge(forwardInput, sideInput) {
+    const directionMagnitude = Math.hypot(forwardInput, sideInput);
+    const lin = this.body.linvel();
+    this.velocityVec.set(lin.x, lin.y, lin.z);
+
+    if (directionMagnitude < 0.25) {
+      this.velocityVec.addScaledVector(this.up, CAR_TUNING.doubleJumpSpeed);
+      this.body.setLinvel({ x: this.velocityVec.x, y: this.velocityVec.y, z: this.velocityVec.z }, true);
+      this.jumpCount = 2;
+      return;
+    }
+
+    const forwardAmount = forwardInput / directionMagnitude;
+    const sideAmount = sideInput / directionMagnitude;
+    this.dodgeDir.copy(this.forward).multiplyScalar(forwardAmount)
+      .addScaledVector(this.right, -sideAmount)
+      .normalize();
+    this.velocityVec.addScaledVector(this.dodgeDir, CAR_TUNING.dodgeImpulse)
+      .addScaledVector(this.up, CAR_TUNING.dodgeLift);
+    this.body.setLinvel({ x: this.velocityVec.x, y: this.velocityVec.y, z: this.velocityVec.z }, true);
+
+    this.flipAxis.copy(this.right).multiplyScalar(-forwardAmount)
+      .addScaledVector(this.forward, sideAmount)
+      .normalize();
+    const ang = this.body.angvel();
+    const currentFlipSpeed = ang.x * this.flipAxis.x + ang.y * this.flipAxis.y + ang.z * this.flipAxis.z;
+    const deltaFlip = CAR_TUNING.dodgeAngularSpeed - currentFlipSpeed;
+    this.body.setAngvel({
+      x: ang.x + this.flipAxis.x * deltaFlip,
+      y: ang.y + this.flipAxis.y * deltaFlip,
+      z: ang.z + this.flipAxis.z * deltaFlip
+    }, true);
+    this.dodgeTime = CAR_TUNING.dodgeDuration;
+    this.jumpCount = 2;
+  }
+
+  applySurfaceForces(dt) {
+    const steepness = clamp(1 - Math.max(0, this.groundNormal.y), 0, 1);
+    const gravityDotNormal = -CAR_TUNING.gravity * this.groundNormal.y;
+    this.surfaceForce.set(0, -CAR_TUNING.gravity, 0)
+      .addScaledVector(this.groundNormal, -gravityDotNormal)
+      .multiplyScalar(-CAR_TUNING.wallGravityCancel * steepness)
+      .addScaledVector(this.groundNormal, -CAR_TUNING.downAcceleration);
+
+    // Rapier already applies world gravity, so this impulse only adds the
+    // wall-gravity cancellation and suspension adhesion acceleration.
+    const mass = Math.max(1, Number(this.body.mass?.()) || 420);
+    this.body.applyImpulse({
+      x: this.surfaceForce.x * mass * dt,
+      y: this.surfaceForce.y * mass * dt,
+      z: this.surfaceForce.z * mass * dt
+    }, true);
   }
 
   updateVisualAnimation(dt, steer, speedForward, boosting) {
@@ -614,6 +675,7 @@ export class Car {
     this.jumpCount = 0;
     this.airTime = 0;
     this.groundContactLockout = 0;
+    this.dodgeTime = 0;
     this.grounded = false;
   }
 }

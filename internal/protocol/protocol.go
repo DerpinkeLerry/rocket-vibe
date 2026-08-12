@@ -29,7 +29,7 @@ func DecodeInput(data []byte) (InputPacket, bool) {
 	}
 	return InputPacket{
 		Sequence: binary.LittleEndian.Uint32(data[1:5]),
-		Mask:     data[5] & 0x7f,
+		Mask:     data[5] & 0xff,
 		Edges:    data[6] & 0x07,
 	}, true
 }

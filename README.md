@@ -23,8 +23,10 @@ Die Serverphysik rechnet intern mit `float64`. Fuer das Netzwerk werden Position
 
 Der Go-Server ist die einzige Online-Autoritaet und verarbeitet:
 
-- Bodenbeschleunigung, Bremsen, Grip, Lenkung und Boost
-- Sprung, Doppelsprung sowie Pitch/Yaw/Roll in der Luft
+- Rocket-League-artige Bodenbeschleunigung, Bremsen, Grip, Lenkung und Boost
+- Variabler Sprung durch gehaltenes Space, neutraler Doppelsprung und gerichtete Dodge/Flips
+- Pitch/Yaw/Roll in der Luft mit begrenzter, kontrollierbarer Winkelgeschwindigkeit
+- Surface-Adhesion: Rampen und senkrechte Waende halten das Auto bis zum aktiven Absprung
 - Auto gegen Auto
 - Auto gegen Ball
 - Auto und Ball gegen Boden, Seitenwaende, Endwaende, Torrahmen, Tortunnel und Decke
@@ -88,7 +90,7 @@ Ein Deployment beendet laufende Matches beim Containerwechsel. Fuer spaetere Mat
 - A / D: Boden Lenken, Luft Yaw
 - Q / E: Air Roll
 - Shift: Boost
-- Space: Sprung / Doppelsprung
+- Space: Sprung (halten = mehr Lift) / Doppelsprung; mit W/A/S/D beim zweiten Sprung = Flip/Dodge
 - R: eigenes Auto resetten
 - B: Ball resetten (Entwicklungsfunktion)
 - F2: Normal / Ultra-VM umschalten und Seite neu laden

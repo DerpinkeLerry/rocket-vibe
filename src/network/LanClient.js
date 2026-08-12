@@ -234,7 +234,7 @@ export class LanClient {
     const view = new DataView(buffer);
     view.setUint8(0, MSG_INPUT);
     view.setUint32(1, seq, true);
-    view.setUint8(5, (Number(input?.mask) || 0) & 0x7f);
+    view.setUint8(5, (Number(input?.mask) || 0) & 0xff);
     view.setUint8(6, (Number(input?.edges) || 0) & 0x07);
     this.socket.send(buffer);
     return true;

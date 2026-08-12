@@ -5,7 +5,8 @@ export const INPUT_BITS = Object.freeze({
   D: 1 << 3,
   Q: 1 << 4,
   E: 1 << 5,
-  BOOST: 1 << 6
+  BOOST: 1 << 6,
+  JUMP: 1 << 7
 });
 
 export const INPUT_EDGES = Object.freeze({
@@ -14,28 +15,41 @@ export const INPUT_EDGES = Object.freeze({
   BALL_RESET: 1 << 2
 });
 
+// Arcade handling tuned around Rocket-League-style behaviour.  The server and
+// the local predictor intentionally use the same values so input never changes
+// character when an authoritative snapshot arrives.
 export const CAR_TUNING = Object.freeze({
-  maxGroundSpeed: 39,
-  maxBoostSpeed: 52,
-  driveAcceleration: 25.5,
-  reverseAcceleration: 20.0,
-  brakeAcceleration: 34.0,
-  coastDeceleration: 5.5,
-  boostAcceleration: 31.0,
-  grip: 13.5,
-  steerRate: 2.55,
-  steerResponse: 10.0,
-  angularGroundDamping: 8.5,
-  airPitchAcceleration: 8.5,
-  airYawAcceleration: 7.4,
-  airRollAcceleration: 8.0,
-  maxAirAngular: 6.5,
-  jumpSpeed: 11.8,
-  doubleJumpSpeed: 8.4,
-  downAcceleration: 5.5,
+  maxGroundSpeed: 40,
+  maxBoostSpeed: 54,
+  driveAcceleration: 30.0,
+  reverseAcceleration: 22.0,
+  brakeAcceleration: 44.0,
+  coastDeceleration: 4.2,
+  boostAcceleration: 34.0,
+  grip: 18.0,
+  steerRate: 2.75,
+  steerResponse: 14.0,
+  angularGroundDamping: 11.0,
+  airPitchAcceleration: 11.0,
+  airYawAcceleration: 8.8,
+  airRollAcceleration: 10.5,
+  maxAirAngular: 6.6,
+  jumpSpeed: 12.4,
+  jumpHoldAcceleration: 24.0,
+  jumpHoldDuration: 0.18,
+  doubleJumpSpeed: 10.0,
+  dodgeImpulse: 13.5,
+  dodgeLift: 2.2,
+  dodgeAngularSpeed: 11.5,
+  dodgeWindow: 1.25,
+  dodgeDuration: 0.65,
+  dodgeControlScale: 0.18,
+  downAcceleration: 18.0,
+  wallGravityCancel: 1.0,
+  surfaceAlignResponse: 18.0,
   gravity: 20.5,
-  linearDamping: 0.08,
-  angularDamping: 0.32
+  linearDamping: 0.06,
+  angularDamping: 0.55
 });
 
 export const BALL_TUNING = Object.freeze({

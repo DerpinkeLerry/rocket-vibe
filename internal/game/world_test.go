@@ -176,6 +176,118 @@ func TestCarCanDriveUpSideWall(t *testing.T) {
 	}
 }
 
+func TestHoldingJumpAddsExtraLift(t *testing.T) {
+	config := DefaultConfig()
+	dt := 1 / float64(config.PhysicsHz)
+
+	makeJumpingWorld := func(mask uint8) *World {
+		world := NewWorld(config)
+		world.SetConnected(0, true)
+		car := &world.Cars[0]
+		car.Position = Vec3{Y: config.Car.HalfExtents.Y}
+		car.Rotation = IdentityQuat()
+		car.Grounded = true
+		car.GroundNormal = Vec3{Y: 1}
+		if !world.SetInput(0, Input{Sequence: 1, Mask: mask, Edges: EdgeJump}) {
+			t.Fatal("jump input was not accepted")
+		}
+		return world
+	}
+
+	tapped := makeJumpingWorld(0)
+	held := makeJumpingWorld(InputJump)
+	for range 18 {
+		tapped.Step(dt)
+		held.Step(dt)
+	}
+	if held.Cars[0].Position.Y <= tapped.Cars[0].Position.Y+0.15 {
+		t.Fatalf("holding jump did not add meaningful lift: tapY=%f heldY=%f", tapped.Cars[0].Position.Y, held.Cars[0].Position.Y)
+	}
+	if held.Cars[0].Velocity.Y <= tapped.Cars[0].Velocity.Y+0.5 {
+		t.Fatalf("holding jump did not preserve extra upward velocity: tapV=%f heldV=%f", tapped.Cars[0].Velocity.Y, held.Cars[0].Velocity.Y)
+	}
+}
+
+func TestDirectionalSecondJumpCreatesRocketStyleDodge(t *testing.T) {
+	config := DefaultConfig()
+	world := NewWorld(config)
+	world.SetConnected(0, true)
+	car := &world.Cars[0]
+	car.Position = Vec3{Y: config.Car.HalfExtents.Y}
+	car.Rotation = IdentityQuat()
+	car.Grounded = true
+	car.GroundNormal = Vec3{Y: 1}
+
+	if !world.SetInput(0, Input{Sequence: 1, Edges: EdgeJump}) {
+		t.Fatal("first jump input was not accepted")
+	}
+	dt := 1 / float64(config.PhysicsHz)
+	world.Step(dt)
+	if car.JumpCount != 1 || car.Grounded {
+		t.Fatalf("first jump did not detach cleanly: jumpCount=%d grounded=%v", car.JumpCount, car.Grounded)
+	}
+
+	if !world.SetInput(0, Input{Sequence: 2, Mask: InputW, Edges: EdgeJump}) {
+		t.Fatal("dodge input was not accepted")
+	}
+	world.Step(dt)
+	if car.JumpCount != 2 {
+		t.Fatalf("directional second jump did not consume dodge: jumpCount=%d", car.JumpCount)
+	}
+	if car.Velocity.Z > -config.Car.DodgeImpulse*0.75 {
+		t.Fatalf("forward dodge did not add enough forward speed: %+v", car.Velocity)
+	}
+	if car.AngularVelocity.X > -config.Car.DodgeAngularSpeed*0.65 {
+		t.Fatalf("forward dodge did not create a flip rotation: %+v", car.AngularVelocity)
+	}
+	if car.DodgeTime <= 0 {
+		t.Fatal("dodge control window was not activated")
+	}
+}
+
+func TestVerticalWallAdhesionHoldsUntilJump(t *testing.T) {
+	config := DefaultConfig()
+	world := NewWorld(config)
+	world.SetConnected(0, true)
+	car := &world.Cars[0]
+
+	wallNormal := Vec3{X: -1}
+	car.Position = Vec3{X: config.Arena.Width*0.5 - config.Car.HalfExtents.Y + 0.03, Y: 11, Z: 0}
+	car.Rotation = QuatFromForwardUp(Vec3{Z: -1}, wallNormal)
+	car.Velocity = Vec3{}
+	car.AngularVelocity = Vec3{}
+	car.GroundLockout = 0
+	resolveCarArena(car, config)
+	finishStartY := car.Position.Y
+	world.finishCarStep(car, 1/float64(config.PhysicsHz))
+	if !car.Grounded || car.GroundNormal.Dot(wallNormal) < 0.95 {
+		t.Fatalf("test car did not establish wall contact: grounded=%v normal=%+v", car.Grounded, car.GroundNormal)
+	}
+
+	dt := 1 / float64(config.PhysicsHz)
+	for range config.PhysicsHz {
+		world.Step(dt)
+	}
+	if !car.Grounded || car.GroundNormal.Dot(wallNormal) < 0.9 {
+		t.Fatalf("car lost vertical wall contact without jumping: grounded=%v normal=%+v", car.Grounded, car.GroundNormal)
+	}
+	if drop := finishStartY - car.Position.Y; drop > 0.18 {
+		t.Fatalf("wall gravity pulled the car down despite adhesion: drop=%f position=%+v", drop, car.Position)
+	}
+
+	if !world.SetInput(0, Input{Sequence: 1, Edges: EdgeJump}) {
+		t.Fatal("wall jump input was not accepted")
+	}
+	beforeX := car.Position.X
+	world.Step(dt)
+	if car.Grounded || car.GroundLockout <= 0 {
+		t.Fatalf("wall jump did not disable adhesion: grounded=%v lockout=%f", car.Grounded, car.GroundLockout)
+	}
+	if car.Position.X >= beforeX || car.Velocity.X >= -config.Car.JumpSpeed*0.7 {
+		t.Fatalf("wall jump did not push away from glass: position=%+v velocity=%+v", car.Position, car.Velocity)
+	}
+}
+
 func TestNegativeZBlueGoalScoresForOrange(t *testing.T) {
 	config := DefaultConfig()
 	world := NewWorld(config)

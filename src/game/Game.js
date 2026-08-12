@@ -13,10 +13,10 @@ import { ARENA_TUNING } from '../shared/arena-tuning.js';
 const CLIENT_INPUT_HEARTBEAT_HZ = 15;
 
 const PLAYER_CONFIGS = [
-  { spawn: { x: -13, y: 1.25, z: 44 }, spawnYaw: 0, color: 0xf46b20, team: 'orange' },
-  { spawn: { x: -13, y: 1.25, z: -44 }, spawnYaw: Math.PI, color: 0x238cff, team: 'blue' },
-  { spawn: { x: 13, y: 1.25, z: 44 }, spawnYaw: 0, color: 0xffa51f, team: 'orange' },
-  { spawn: { x: 13, y: 1.25, z: -44 }, spawnYaw: Math.PI, color: 0x35d7ff, team: 'blue' }
+  { spawn: { x: -13, y: 0.52, z: 44 }, spawnYaw: 0, color: 0xf46b20, team: 'orange' },
+  { spawn: { x: -13, y: 0.52, z: -44 }, spawnYaw: Math.PI, color: 0x238cff, team: 'blue' },
+  { spawn: { x: 13, y: 0.52, z: 44 }, spawnYaw: 0, color: 0xffa51f, team: 'orange' },
+  { spawn: { x: 13, y: 0.52, z: -44 }, spawnYaw: Math.PI, color: 0x35d7ff, team: 'blue' }
 ];
 
 export class Game {

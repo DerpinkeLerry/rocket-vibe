@@ -38,7 +38,7 @@ func TestInputPacketDecodeAndSanitize(t *testing.T) {
 	if !ok {
 		t.Fatal("packet was rejected")
 	}
-	if input.Sequence != 9 || input.Mask != 0x7f || input.Edges != 0x07 {
+	if input.Sequence != 9 || input.Mask != 0xff || input.Edges != 0x07 {
 		t.Fatalf("unexpected input: %+v", input)
 	}
 }

@@ -37,8 +37,18 @@ type CarConfig struct {
 	AirRollAcceleration  float64 `json:"airRollAcceleration"`
 	MaxAirAngular        float64 `json:"maxAirAngular"`
 	JumpSpeed            float64 `json:"jumpSpeed"`
+	JumpHoldAcceleration float64 `json:"jumpHoldAcceleration"`
+	JumpHoldDuration     float64 `json:"jumpHoldDuration"`
 	DoubleJumpSpeed      float64 `json:"doubleJumpSpeed"`
+	DodgeImpulse         float64 `json:"dodgeImpulse"`
+	DodgeLift            float64 `json:"dodgeLift"`
+	DodgeAngularSpeed    float64 `json:"dodgeAngularSpeed"`
+	DodgeWindow          float64 `json:"dodgeWindow"`
+	DodgeDuration        float64 `json:"dodgeDuration"`
+	DodgeControlScale    float64 `json:"dodgeControlScale"`
 	DownAcceleration     float64 `json:"downAcceleration"`
+	WallGravityCancel    float64 `json:"wallGravityCancel"`
+	SurfaceAlignResponse float64 `json:"surfaceAlignResponse"`
 	LinearDamping        float64 `json:"linearDamping"`
 	AngularDamping       float64 `json:"angularDamping"`
 	Restitution          float64 `json:"restitution"`
@@ -81,26 +91,36 @@ func DefaultConfig() Config {
 		Car: CarConfig{
 			HalfExtents:          Vec3{X: 0.83, Y: 0.45, Z: 1.48},
 			Mass:                 420,
-			MaxGroundSpeed:       39,
-			MaxBoostSpeed:        52,
-			DriveAcceleration:    25.5,
-			ReverseAcceleration:  20,
-			BrakeAcceleration:    34,
-			CoastDeceleration:    5.5,
-			BoostAcceleration:    31,
-			Grip:                 13.5,
-			SteerRate:            2.55,
-			SteerResponse:        10,
-			GroundAngularDamping: 8.5,
-			AirPitchAcceleration: 8.5,
-			AirYawAcceleration:   7.4,
-			AirRollAcceleration:  8,
-			MaxAirAngular:        6.5,
-			JumpSpeed:            11.8,
-			DoubleJumpSpeed:      8.4,
-			DownAcceleration:     5.5,
-			LinearDamping:        0.08,
-			AngularDamping:       0.32,
+			MaxGroundSpeed:       40,
+			MaxBoostSpeed:        54,
+			DriveAcceleration:    30,
+			ReverseAcceleration:  22,
+			BrakeAcceleration:    44,
+			CoastDeceleration:    4.2,
+			BoostAcceleration:    34,
+			Grip:                 18,
+			SteerRate:            2.75,
+			SteerResponse:        14,
+			GroundAngularDamping: 11,
+			AirPitchAcceleration: 11,
+			AirYawAcceleration:   8.8,
+			AirRollAcceleration:  10.5,
+			MaxAirAngular:        6.6,
+			JumpSpeed:            12.4,
+			JumpHoldAcceleration: 24,
+			JumpHoldDuration:     0.18,
+			DoubleJumpSpeed:      10,
+			DodgeImpulse:         13.5,
+			DodgeLift:            2.2,
+			DodgeAngularSpeed:    11.5,
+			DodgeWindow:          1.25,
+			DodgeDuration:        0.65,
+			DodgeControlScale:    0.18,
+			DownAcceleration:     18,
+			WallGravityCancel:    1,
+			SurfaceAlignResponse: 18,
+			LinearDamping:        0.06,
+			AngularDamping:       0.55,
 			Restitution:          0,
 		},
 		Ball: BallConfig{

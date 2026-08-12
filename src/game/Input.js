@@ -5,7 +5,8 @@ const NETWORK_DOWN_BITS = [
   ['KeyD', 1 << 3],
   ['KeyQ', 1 << 4],
   ['KeyE', 1 << 5],
-  ['ShiftLeft', 1 << 6]
+  ['ShiftLeft', 1 << 6],
+  ['Space', 1 << 7]
 ];
 
 const NETWORK_EDGE_CODES = ['Space', 'KeyR', 'KeyB'];
