@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { TransformBody } from '../network/TransformBody.js';
 import { BALL_TUNING } from '../shared/game-tuning.js';
+import { CAR_HITBOX } from '../shared/arena-tuning.js';
 
 function createAppleBodyGeometry(radius, lowDetail) {
   // Revolved silhouette: wide shoulders, rounded belly, tapered bottom and a
@@ -48,6 +49,17 @@ export class Ball {
     this.spawn = new THREE.Vector3(0, BALL_TUNING.spawnY, 0);
     this.maxSpeed = BALL_TUNING.maxSpeed;
     this.maxAngularSpeed = BALL_TUNING.maxAngularSpeed;
+    this.carContactActive = false;
+    this.pendingHitSpeed = 0;
+    this.pendingHitNormal = new THREE.Vector3();
+    this.hitBallPos = new THREE.Vector3();
+    this.hitCarPos = new THREE.Vector3();
+    this.hitLocal = new THREE.Vector3();
+    this.hitClosest = new THREE.Vector3();
+    this.hitDelta = new THREE.Vector3();
+    this.hitNormal = new THREE.Vector3();
+    this.hitQuat = new THREE.Quaternion();
+    this.hitInverseQuat = new THREE.Quaternion();
 
     this.createPhysics();
     this.createVisual();
@@ -63,8 +75,8 @@ export class Ball {
     const R = this.RAPIER;
     const bodyDesc = R.RigidBodyDesc.dynamic()
       .setTranslation(this.spawn.x, this.spawn.y, this.spawn.z)
-      .setLinearDamping(0.035)
-      .setAngularDamping(0.06)
+      .setLinearDamping(BALL_TUNING.linearDamping)
+      .setAngularDamping(BALL_TUNING.angularDamping)
       .setCcdEnabled(true)
       .setSoftCcdPrediction(0.45)
       .setCanSleep(true);
@@ -74,8 +86,8 @@ export class Ball {
       // Radius is much larger than before. Lower density keeps total ball mass
       // close to v1.2 so cars can still launch it instead of hitting a boulder.
       .setDensity(BALL_TUNING.density)
-      .setFriction(0.24)
-      .setRestitution(0.62)
+      .setFriction(BALL_TUNING.friction)
+      .setRestitution(BALL_TUNING.restitution)
       .setRestitutionCombineRule(R.CoefficientCombineRule.Max)
       .setContactSkin(0.01);
 
@@ -145,6 +157,76 @@ export class Ball {
     this.scene.add(this.shadow);
   }
 
+  prepareCarHit(car) {
+    if (this.clientOnly || !car?.body) return;
+
+    const ballPos = this.body.translation();
+    const carPos = car.body.translation();
+    const carRot = car.body.rotation();
+    this.hitBallPos.set(ballPos.x, ballPos.y, ballPos.z);
+    this.hitCarPos.set(carPos.x, carPos.y, carPos.z);
+    this.hitQuat.set(carRot.x, carRot.y, carRot.z, carRot.w).normalize();
+    this.hitInverseQuat.copy(this.hitQuat).invert();
+    this.hitLocal.copy(this.hitBallPos).sub(this.hitCarPos).applyQuaternion(this.hitInverseQuat);
+    this.hitClosest.set(
+      THREE.MathUtils.clamp(this.hitLocal.x, -CAR_HITBOX.x, CAR_HITBOX.x),
+      THREE.MathUtils.clamp(this.hitLocal.y, -CAR_HITBOX.y, CAR_HITBOX.y),
+      THREE.MathUtils.clamp(this.hitLocal.z, -CAR_HITBOX.z, CAR_HITBOX.z)
+    );
+    this.hitDelta.copy(this.hitLocal).sub(this.hitClosest);
+    const distance = this.hitDelta.length();
+    const contactRange = this.radius + 0.42;
+    if (distance > contactRange) {
+      if (distance > this.radius + 0.65) this.carContactActive = false;
+      this.pendingHitSpeed = 0;
+      return;
+    }
+
+    if (distance > 0.0001) {
+      this.hitNormal.copy(this.hitDelta).multiplyScalar(1 / distance).applyQuaternion(this.hitQuat).normalize();
+    } else {
+      this.hitNormal.copy(this.hitBallPos).sub(this.hitCarPos).normalize();
+      if (this.hitNormal.lengthSq() < 0.0001) this.hitNormal.set(0, 0, -1).applyQuaternion(this.hitQuat);
+    }
+
+    const carVel = car.body.linvel();
+    const ballVel = this.body.linvel();
+    const relativeX = carVel.x - ballVel.x;
+    const relativeY = carVel.y - ballVel.y;
+    const relativeZ = carVel.z - ballVel.z;
+    const closingSpeed = relativeX * this.hitNormal.x + relativeY * this.hitNormal.y + relativeZ * this.hitNormal.z;
+    if (!this.carContactActive && closingSpeed > 1.0) {
+      this.pendingHitSpeed = closingSpeed;
+      this.pendingHitNormal.copy(this.hitNormal);
+    }
+    this.carContactActive = true;
+  }
+
+  applyPreparedCarHit() {
+    if (this.clientOnly || this.pendingHitSpeed <= 0) return;
+    const impactSpeed = this.pendingHitSpeed;
+    const extraForward = THREE.MathUtils.clamp(impactSpeed * BALL_TUNING.carHitPower, 0, 5.5);
+    const liftRamp = THREE.MathUtils.clamp((impactSpeed - 1) / 3, 0, 1);
+    const lift = THREE.MathUtils.clamp(
+      (BALL_TUNING.carHitLiftBase + impactSpeed * BALL_TUNING.carHitLift) * liftRamp,
+      0,
+      7.5
+    );
+    const velocity = this.body.linvel();
+    let x = velocity.x + this.pendingHitNormal.x * extraForward;
+    let y = velocity.y + this.pendingHitNormal.y * extraForward + lift;
+    let z = velocity.z + this.pendingHitNormal.z * extraForward;
+    const speed = Math.hypot(x, y, z);
+    if (speed > this.maxSpeed) {
+      const scale = this.maxSpeed / speed;
+      x *= scale;
+      y *= scale;
+      z *= scale;
+    }
+    this.body.setLinvel({ x, y, z }, true);
+    this.pendingHitSpeed = 0;
+  }
+
   fixedUpdate() {
     if (this.body.translation().y < -12) {
       this.reset();
@@ -189,5 +271,7 @@ export class Ball {
     this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     this.body.resetForces(true);
     this.body.resetTorques(true);
+    this.carContactActive = false;
+    this.pendingHitSpeed = 0;
   }
 }

@@ -391,7 +391,12 @@ export class Car {
     this.grounded = hits >= 1 && this.groundAvg.lengthSq() > 0;
     if (this.grounded) {
       this.groundAvg.normalize();
-      this.groundNormal.lerp(this.groundAvg, 0.45).normalize();
+      if (this.groundNormal.dot(this.groundAvg) > 0.05) {
+        const normalAlpha = 1 - Math.exp(-CAR_TUNING.surfaceNormalResponse * dt);
+        this.groundNormal.lerp(this.groundAvg, normalAlpha).normalize();
+      } else {
+        this.groundNormal.copy(this.groundAvg);
+      }
       this.airTime = 0;
       if (this.jumpCount > 0) this.jumpCount = 0;
       this.dodgeTime = 0;
@@ -412,12 +417,7 @@ export class Car {
     this.sampleGround(dt);
 
     if (this.grounded) {
-      this.forward.addScaledVector(this.groundNormal, -this.forward.dot(this.groundNormal));
-      if (this.forward.lengthSq() < 0.000001) {
-        if (Math.abs(this.groundNormal.y) < 0.9) this.forward.set(0, -1, 0);
-        else this.forward.set(0, 0, -1);
-      }
-      this.forward.normalize();
+      this.projectForwardToSurface();
       this.right.crossVectors(this.forward, this.groundNormal).normalize();
     }
 
@@ -483,6 +483,28 @@ export class Car {
     this.updateVisualAnimation(dt, driveGrounded ? sideInput : 0, speedForward, boosting);
   }
 
+  projectForwardToSurface() {
+    this.forward.addScaledVector(this.groundNormal, -this.forward.dot(this.groundNormal));
+    if (this.forward.lengthSq() > 0.0125) {
+      this.forward.normalize();
+      return;
+    }
+
+    const lin = this.body.linvel();
+    this.forward.set(lin.x, lin.y, lin.z)
+      .addScaledVector(this.groundNormal, -(lin.x * this.groundNormal.x + lin.y * this.groundNormal.y + lin.z * this.groundNormal.z));
+    if (this.forward.lengthSq() > 0.25) {
+      this.forward.normalize();
+      return;
+    }
+
+    this.forward.copy(VEC3_UP).addScaledVector(this.groundNormal, -this.groundNormal.y);
+    if (this.forward.lengthSq() < 0.0125) {
+      this.forward.copy(VEC3_FORWARD).addScaledVector(this.groundNormal, -VEC3_FORWARD.dot(this.groundNormal));
+    }
+    this.forward.normalize();
+  }
+
   applyGroundDrive(dt, throttle, steer, boosting) {
     const lin = this.body.linvel();
     this.velocityVec.set(lin.x, lin.y, lin.z);
@@ -527,12 +549,7 @@ export class Car {
     const rotation = this.body.rotation();
     this.tempQ.set(rotation.x, rotation.y, rotation.z, rotation.w).normalize();
     this.forward.copy(VEC3_FORWARD).applyQuaternion(this.tempQ);
-    this.forward.addScaledVector(this.groundNormal, -this.forward.dot(this.groundNormal));
-    if (this.forward.lengthSq() < 0.000001) {
-      if (Math.abs(this.groundNormal.y) < 0.9) this.forward.set(0, -1, 0);
-      else this.forward.set(0, 0, -1);
-    }
-    this.forward.normalize();
+    this.projectForwardToSurface();
     this.surfaceRight.crossVectors(this.forward, this.groundNormal).normalize();
     this.surfaceBack.copy(this.forward).multiplyScalar(-1);
     this.surfaceMatrix.makeBasis(this.surfaceRight, this.groundNormal, this.surfaceBack);

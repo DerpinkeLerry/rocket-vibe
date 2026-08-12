@@ -7,15 +7,16 @@ const (
 )
 
 type ArenaConfig struct {
-	Width        float64 `json:"width"`
-	Length       float64 `json:"length"`
-	Ceiling      float64 `json:"ceiling"`
-	WallHeight   float64 `json:"wallHeight"`
-	CornerRadius float64 `json:"cornerRadius"`
-	RampRadius   float64 `json:"rampRadius"`
-	GoalWidth    float64 `json:"goalWidth"`
-	GoalHeight   float64 `json:"goalHeight"`
-	GoalDepth    float64 `json:"goalDepth"`
+	Width             float64 `json:"width"`
+	Length            float64 `json:"length"`
+	Ceiling           float64 `json:"ceiling"`
+	WallHeight        float64 `json:"wallHeight"`
+	CornerRadius      float64 `json:"cornerRadius"`
+	RampRadius        float64 `json:"rampRadius"`
+	CeilingRampRadius float64 `json:"ceilingRampRadius"`
+	GoalWidth         float64 `json:"goalWidth"`
+	GoalHeight        float64 `json:"goalHeight"`
+	GoalDepth         float64 `json:"goalDepth"`
 }
 
 type CarConfig struct {
@@ -65,6 +66,9 @@ type BallConfig struct {
 	AngularDamping  float64 `json:"angularDamping"`
 	MaxSpeed        float64 `json:"maxSpeed"`
 	MaxAngularSpeed float64 `json:"maxAngularSpeed"`
+	CarHitPower     float64 `json:"carHitPower"`
+	CarHitLift      float64 `json:"carHitLift"`
+	CarHitLiftBase  float64 `json:"carHitLiftBase"`
 	SpawnY          float64 `json:"spawnY"`
 }
 
@@ -87,7 +91,7 @@ func DefaultConfig() Config {
 		SolverSteps: 4,
 		Gravity:     20.5,
 		Arena: ArenaConfig{
-			Width: 110, Length: 160, Ceiling: 25, WallHeight: 25, CornerRadius: 16, RampRadius: 7,
+			Width: 110, Length: 160, Ceiling: 25, WallHeight: 25, CornerRadius: 16, RampRadius: 7, CeilingRampRadius: 6,
 			GoalWidth: 34, GoalHeight: 12, GoalDepth: 14,
 		},
 		Car: CarConfig{
@@ -122,7 +126,7 @@ func DefaultConfig() Config {
 			DodgeControlScale:    0.18,
 			DownAcceleration:     18,
 			WallGravityCancel:    1,
-			SurfaceAlignResponse: 18,
+			SurfaceAlignResponse: 16,
 			LinearDamping:        0.06,
 			AngularDamping:       0.55,
 			Restitution:          0,
@@ -130,12 +134,15 @@ func DefaultConfig() Config {
 		Ball: BallConfig{
 			Radius:          2.2,
 			Mass:            30,
-			Restitution:     0.62,
-			Friction:        0.24,
-			LinearDamping:   0.035,
-			AngularDamping:  0.06,
-			MaxSpeed:        56,
-			MaxAngularSpeed: 32,
+			Restitution:     0.68,
+			Friction:        0.22,
+			LinearDamping:   0.03,
+			AngularDamping:  0.055,
+			MaxSpeed:        60,
+			MaxAngularSpeed: 34,
+			CarHitPower:     0.24,
+			CarHitLift:      0.30,
+			CarHitLiftBase:  1.5,
 			SpawnY:          5.5,
 		},
 	}

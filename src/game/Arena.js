@@ -7,6 +7,7 @@ const WALL_H = ARENA_TUNING.wallHeight;
 const WALL_T = ARENA_TUNING.wallThickness;
 const CORNER_R = ARENA_TUNING.cornerRadius;
 const RAMP_R = ARENA_TUNING.rampRadius;
+const CEILING_R = ARENA_TUNING.ceilingRampRadius;
 const RAMP_SEGMENTS = ARENA_TUNING.rampSegments;
 const GOAL_W = ARENA_TUNING.goalWidth;
 const GOAL_H = ARENA_TUNING.goalHeight;
@@ -140,7 +141,6 @@ export class Arena {
           z,
           length: GOAL_W,
           minY: GOAL_H,
-          height: WALL_H - GOAL_H,
           yaw: 0,
           nx: 0,
           nz: signZ,
@@ -180,13 +180,15 @@ export class Arena {
   createGlassEnclosure(glassMaterial, frameMaterial) {
     const panels = this.buildBoundarySegments();
     this.createWallRamps(panels);
+    this.createCeilingRamps(panels, glassMaterial);
     const panelGeometry = new THREE.BoxGeometry(1, 1, 1);
     const glass = new THREE.InstancedMesh(panelGeometry, glassMaterial, panels.length);
     const dummy = new THREE.Object3D();
     for (let index = 0; index < panels.length; index++) {
       const panel = panels[index];
       const minY = panel.minY ?? 0;
-      const height = panel.height ?? WALL_H - minY;
+      const maxY = panel.upperRamp === false ? WALL_H : WALL_H - CEILING_R;
+      const height = panel.height ?? Math.max(0.2, maxY - minY);
       dummy.position.set(panel.x, minY + height * 0.5, panel.z);
       dummy.rotation.set(0, panel.yaw, 0);
       dummy.scale.set(panel.length, height, WALL_T);
@@ -203,7 +205,8 @@ export class Arena {
     let railIndex = 0;
     for (const panel of panels) {
       const minY = panel.minY ?? 0;
-      const height = panel.height ?? WALL_H - minY;
+      const maxY = panel.upperRamp === false ? WALL_H : WALL_H - CEILING_R;
+      const height = panel.height ?? Math.max(0.2, maxY - minY);
       const centerY = minY + height * 0.5;
       for (const y of [minY + 0.13, centerY + height * 0.5 - 0.13]) {
         dummy.position.set(panel.x, y, panel.z);
@@ -229,9 +232,10 @@ export class Arena {
     const supports = new THREE.InstancedMesh(panelGeometry, frameMaterial, supportPositions.length);
     for (let index = 0; index < supportPositions.length; index++) {
       const [x, z] = supportPositions[index];
-      dummy.position.set(x, WALL_H * 0.5, z);
+      const supportHeight = WALL_H - CEILING_R;
+      dummy.position.set(x, supportHeight * 0.5, z);
       dummy.rotation.set(0, 0, 0);
-      dummy.scale.set(0.26, WALL_H, 0.26);
+      dummy.scale.set(0.26, supportHeight, 0.26);
       dummy.updateMatrix();
       supports.setMatrixAt(index, dummy.matrix);
     }
@@ -242,7 +246,12 @@ export class Arena {
     roofMaterial.opacity = this.lowDetail ? 0.045 : 0.075;
     roofMaterial.depthWrite = false;
     const roof = new THREE.Mesh(
-      roundedRectGeometry(FIELD_W, FIELD_L, CORNER_R, this.lowDetail ? 4 : 10),
+      roundedRectGeometry(
+        FIELD_W - CEILING_R * 2,
+        FIELD_L - CEILING_R * 2,
+        Math.max(1, CORNER_R - CEILING_R),
+        this.lowDetail ? 4 : 10
+      ),
       roofMaterial
     );
     roof.position.y = ARENA_TUNING.ceiling;
@@ -292,6 +301,52 @@ export class Arena {
       }
     }
     ramps.instanceMatrix.needsUpdate = true;
+    this.group.add(ramps);
+  }
+
+  createCeilingRamps(panels, glassMaterial) {
+    const upperPanels = panels.filter((panel) => panel.upperRamp !== false);
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const material = glassMaterial.clone();
+    material.opacity = this.lowDetail ? 0.07 : 0.12;
+    material.depthWrite = false;
+    const ramps = new THREE.InstancedMesh(geometry, material, upperPanels.length * RAMP_SEGMENTS);
+    const matrix = new THREE.Matrix4();
+    const basis = new THREE.Matrix4();
+    const quaternion = new THREE.Quaternion();
+    const position = new THREE.Vector3();
+    const scale = new THREE.Vector3();
+    const tangent = new THREE.Vector3();
+    const normal = new THREE.Vector3();
+    const slope = new THREE.Vector3();
+    const delta = Math.PI * 0.5 / RAMP_SEGMENTS;
+    const arcLength = CEILING_R * delta * 1.055;
+    let instance = 0;
+
+    for (const panel of upperPanels) {
+      const boundaryX = panel.x - panel.nx * WALL_T * 0.5;
+      const boundaryZ = panel.z - panel.nz * WALL_T * 0.5;
+      tangent.set(panel.nz, 0, -panel.nx).normalize();
+      for (let index = 0; index < RAMP_SEGMENTS; index++) {
+        const angle = (index + 0.5) * delta;
+        const sine = Math.sin(angle);
+        const cosine = Math.cos(angle);
+        normal.set(-panel.nx * cosine, -sine, -panel.nz * cosine).normalize();
+        slope.crossVectors(tangent, normal).normalize();
+        basis.makeBasis(tangent, normal, slope);
+        quaternion.setFromRotationMatrix(basis);
+        position.set(
+          boundaryX - panel.nx * (CEILING_R - CEILING_R * cosine),
+          ARENA_TUNING.ceiling - CEILING_R + CEILING_R * sine,
+          boundaryZ - panel.nz * (CEILING_R - CEILING_R * cosine)
+        ).addScaledVector(normal, -0.10);
+        scale.set(panel.length * 1.035, 0.20, arcLength);
+        matrix.compose(position, quaternion, scale);
+        ramps.setMatrixAt(instance++, matrix);
+      }
+    }
+    ramps.instanceMatrix.needsUpdate = true;
+    ramps.renderOrder = 1;
     this.group.add(ramps);
   }
 
@@ -411,7 +466,8 @@ export class Arena {
     const panels = this.buildBoundarySegments();
     for (const panel of panels) {
       const minY = panel.minY ?? 0;
-      const height = panel.height ?? WALL_H - minY;
+      const maxY = panel.upperRamp === false ? WALL_H : WALL_H - CEILING_R;
+      const height = panel.height ?? Math.max(0.2, maxY - minY);
       this.addFixedColliderRotated(
         panel.x,
         minY + height * 0.5,
@@ -424,6 +480,7 @@ export class Arena {
         0
       );
       if (panel.ramp !== false) this.addRampPhysics(panel);
+      if (panel.upperRamp !== false) this.addCeilingRampPhysics(panel);
     }
 
     for (const sign of [-1, 1]) {
@@ -437,9 +494,18 @@ export class Arena {
       this.addFixedCollider(0, -0.2, zCenter, GOAL_W * 0.5, 0.2, GOAL_D * 0.5, 0.72, 0);
     }
 
-    // A thin physical glass roof completes the enclosure. CCD plus four CCD
-    // substeps in Game prevents fast cars/balls from tunnelling through it.
-    this.addFixedCollider(0, ARENA_TUNING.ceiling + 0.2, 0, halfWidth, 0.2, halfLength, 0.08, 0);
+    // The flat roof is inset because the outer band is now a rounded glass
+    // transition. This avoids a sharp hidden box edge fighting the upper ramps.
+    this.addFixedCollider(
+      0,
+      ARENA_TUNING.ceiling + 0.2,
+      0,
+      halfWidth - CEILING_R,
+      0.2,
+      halfLength - CEILING_R,
+      0.08,
+      0
+    );
   }
 
   addRampPhysics(panel) {
@@ -475,6 +541,44 @@ export class Arena {
         arcLength * 0.5,
         quaternion,
         0.72,
+        0
+      );
+    }
+  }
+
+  addCeilingRampPhysics(panel) {
+    const delta = Math.PI * 0.5 / RAMP_SEGMENTS;
+    const arcLength = CEILING_R * delta * 1.065;
+    const boundaryX = panel.x - panel.nx * WALL_T * 0.5;
+    const boundaryZ = panel.z - panel.nz * WALL_T * 0.5;
+    const tangent = new THREE.Vector3(panel.nz, 0, -panel.nx).normalize();
+    const normal = new THREE.Vector3();
+    const slope = new THREE.Vector3();
+    const basis = new THREE.Matrix4();
+    const quaternion = new THREE.Quaternion();
+
+    for (let index = 0; index < RAMP_SEGMENTS; index++) {
+      const angle = (index + 0.5) * delta;
+      const sine = Math.sin(angle);
+      const cosine = Math.cos(angle);
+      normal.set(-panel.nx * cosine, -sine, -panel.nz * cosine).normalize();
+      slope.crossVectors(tangent, normal).normalize();
+      basis.makeBasis(tangent, normal, slope);
+      quaternion.setFromRotationMatrix(basis);
+      const position = new THREE.Vector3(
+        boundaryX - panel.nx * (CEILING_R - CEILING_R * cosine),
+        ARENA_TUNING.ceiling - CEILING_R + CEILING_R * sine,
+        boundaryZ - panel.nz * (CEILING_R - CEILING_R * cosine)
+      ).addScaledVector(normal, -0.11);
+      this.addFixedColliderQuaternion(
+        position.x,
+        position.y,
+        position.z,
+        panel.length * 0.5 * 1.035,
+        0.11,
+        arcLength * 0.5,
+        quaternion,
+        0.16,
         0
       );
     }

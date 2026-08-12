@@ -2,17 +2,21 @@ package game
 
 import "math"
 
+const surfaceContactSlop = 0.075
+
 func resolveCarArena(car *Car, config Config) {
 	half := config.Car.HalfExtents
 	extentX, extentY, extentZ := projectedExtents(car.Rotation, half)
-	resolveCarFloorAndCeiling(car, config, extentY)
 
 	halfLength := config.Arena.Length * 0.5
 	absX := math.Abs(car.Position.X)
 	goalHalfWidth := config.Arena.GoalWidth * 0.5
 	goalFits := absX+extentX <= goalHalfWidth &&
 		car.Position.Y+extentY <= config.Arena.GoalHeight
-	if boundary, ok := nearestArenaBoundary(car.Position, config.Arena, goalFits); ok {
+	boundary, hasBoundary := nearestArenaBoundary(car.Position, config.Arena, goalFits)
+
+	resolveCarFloorAndCeiling(car, config, extentY, boundary, hasBoundary)
+	if hasBoundary {
 		resolveCarBoundary(car, config, boundary)
 	}
 
@@ -21,8 +25,10 @@ func resolveCarArena(car *Car, config Config) {
 	}
 }
 
-func resolveCarFloorAndCeiling(car *Car, config Config, extentY float64) {
-	if floorExistsAt(car.Position, config.Arena) {
+func resolveCarFloorAndCeiling(car *Car, config Config, extentY float64, boundary arenaBoundary, hasBoundary bool) {
+	lowerRampZone := hasBoundary && boundary.Distance < config.Arena.RampRadius+surfaceContactSlop &&
+		car.Position.Y <= config.Arena.RampRadius+extentY+surfaceContactSlop
+	if floorExistsAt(car.Position, config.Arena) && !lowerRampZone {
 		penetration := extentY - car.Position.Y
 		if penetration > 0 {
 			car.Position.Y += penetration
@@ -32,14 +38,28 @@ func resolveCarFloorAndCeiling(car *Car, config Config, extentY float64) {
 				car.Velocity.Y = 0
 			}
 		}
-		up := car.Rotation.Rotate(Vec3{Y: 1})
-		if penetration >= -0.04 && up.Y > 0.3 && car.GroundLockout <= 0 {
-			car.Grounded = true
-			car.GroundNormal = Vec3{Y: 1}
+		if penetration >= -surfaceContactSlop {
+			markCarSurfaceContact(car, Vec3{Y: 1})
 		}
 	}
 
-	resolveBodyMaximum(&car.Body, 1, config.Arena.Ceiling, extentY, config.Car.Restitution)
+	ceilingRampZone := hasBoundary && boundary.Distance < config.Arena.CeilingRampRadius+surfaceContactSlop &&
+		car.Position.Y >= config.Arena.Ceiling-config.Arena.CeilingRampRadius-extentY-surfaceContactSlop
+	if !ceilingRampZone {
+		penetration := car.Position.Y + extentY - config.Arena.Ceiling
+		if penetration > 0 {
+			car.Position.Y -= penetration
+			if car.Velocity.Y > 0 {
+				car.Velocity.Y = -car.Velocity.Y * config.Car.Restitution
+			}
+		}
+		if penetration >= -surfaceContactSlop {
+			// An upside-down car may keep its wheels on the glass roof for a
+			// short time. Gravity still wins slowly because the adhesion force is
+			// intentionally a little weaker than world gravity on the ceiling.
+			markCarSurfaceContact(car, Vec3{Y: -1})
+		}
+	}
 }
 
 type arenaBoundary struct {
@@ -92,25 +112,52 @@ func nearestArenaBoundary(position Vec3, arena ArenaConfig, goalOpening bool) (a
 }
 
 func resolveCarBoundary(car *Car, config Config, boundary arenaBoundary) {
-	rampRadius := config.Arena.RampRadius
 	outward := boundary.Outward
 	inward := outward.Mul(-1)
 	up := Vec3{Y: 1}
-	horizontal := rampRadius - boundary.Distance
-	vertical := car.Position.Y - rampRadius
 
-	// The lower wall is a quarter circle. Its contact normal continuously turns
-	// from world-up into the inward wall normal, so cars can drive onto glass.
-	if horizontal >= 0 && vertical <= 0 {
-		radial := outward.Mul(horizontal).Add(up.Mul(vertical))
+	// The lower wall is a quarter circle. Keep accepting near-contact (not only
+	// penetration) so later solver iterations do not replace this smooth normal
+	// with a flat floor/wall normal and make the car jerk.
+	lowerRadius := config.Arena.RampRadius
+	lowerHorizontal := lowerRadius - boundary.Distance
+	lowerVertical := car.Position.Y - lowerRadius
+	if lowerHorizontal >= 0 && lowerVertical <= 0 {
+		radial := outward.Mul(lowerHorizontal).Add(up.Mul(lowerVertical))
 		distance := radial.Length()
 		if distance > 1e-9 {
 			normal := radial.Mul(-1 / distance)
 			support := orientedBoxSupport(car.Rotation, config.Car.HalfExtents, normal)
-			maximumDistance := math.Max(0.1, rampRadius-support)
+			maximumDistance := math.Max(0.1, lowerRadius-support)
 			penetration := distance - maximumDistance
-			if penetration > 0 {
-				resolveBodyIntoPlayable(&car.Body, normal, penetration, config.Car.Restitution)
+			if penetration >= -surfaceContactSlop {
+				if penetration > 0 {
+					resolveBodyIntoPlayable(&car.Body, normal, penetration, config.Car.Restitution)
+				}
+				markCarSurfaceContact(car, normal)
+				return
+			}
+		}
+	}
+
+	// Mirror the same rounded transition at the top. The normal rotates from
+	// the inward wall normal to world-down, which lets a sufficiently aligned
+	// car roll naturally from the glass wall onto the glass ceiling.
+	upperRadius := config.Arena.CeilingRampRadius
+	upperHorizontal := upperRadius - boundary.Distance
+	upperVertical := car.Position.Y - (config.Arena.Ceiling - upperRadius)
+	if upperHorizontal >= 0 && upperVertical >= 0 {
+		radial := outward.Mul(upperHorizontal).Add(up.Mul(upperVertical))
+		distance := radial.Length()
+		if distance > 1e-9 {
+			normal := radial.Mul(-1 / distance)
+			support := orientedBoxSupport(car.Rotation, config.Car.HalfExtents, normal)
+			maximumDistance := math.Max(0.1, upperRadius-support)
+			penetration := distance - maximumDistance
+			if penetration >= -surfaceContactSlop {
+				if penetration > 0 {
+					resolveBodyIntoPlayable(&car.Body, normal, penetration, config.Car.Restitution)
+				}
 				markCarSurfaceContact(car, normal)
 				return
 			}
@@ -119,8 +166,10 @@ func resolveCarBoundary(car *Car, config Config, boundary arenaBoundary) {
 
 	support := orientedBoxSupport(car.Rotation, config.Car.HalfExtents, inward)
 	penetration := support - boundary.Distance
-	if penetration > 0 {
-		resolveBodyIntoPlayable(&car.Body, inward, penetration, config.Car.Restitution)
+	if penetration >= -surfaceContactSlop {
+		if penetration > 0 {
+			resolveBodyIntoPlayable(&car.Body, inward, penetration, config.Car.Restitution)
+		}
 		markCarSurfaceContact(car, inward)
 		car.AngularVelocity = car.AngularVelocity.Mul(0.985)
 	}
@@ -130,12 +179,22 @@ func markCarSurfaceContact(car *Car, normal Vec3) {
 	if car.GroundLockout > 0 {
 		return
 	}
+	candidate := normal.NormalizeOr(Vec3{Y: 1})
 	up := car.Rotation.Rotate(Vec3{Y: 1})
-	if up.Dot(normal) <= 0.1 {
+	if up.Dot(candidate) <= 0.06 {
 		return
 	}
+
+	// Keep the normal continuous across floor -> ramp -> wall -> roof. A direct
+	// assignment here was the main source of visible angle snapping and tiny
+	// position corrections on every solver pass.
+	previous := car.GroundNormal.NormalizeOr(candidate)
+	if previous.Dot(candidate) > 0.05 {
+		const blend = 0.08
+		candidate = previous.Mul(1 - blend).Add(candidate.Mul(blend)).NormalizeOr(candidate)
+	}
 	car.Grounded = true
-	car.GroundNormal = normal.NormalizeOr(Vec3{Y: 1})
+	car.GroundNormal = candidate
 }
 
 func resolveGoalCar(car *Car, config Config, extentX, extentY, extentZ float64) {
@@ -160,8 +219,15 @@ func resolveGoalCar(car *Car, config Config, extentX, extentY, extentZ float64) 
 func resolveBallArena(ball *Ball, config Config) {
 	radius := config.Ball.Radius
 	halfLength := config.Arena.Length * 0.5
+	absX := math.Abs(ball.Position.X)
+	goalHalfWidth := config.Arena.GoalWidth * 0.5
+	goalFits := absX+radius <= goalHalfWidth &&
+		ball.Position.Y+radius <= config.Arena.GoalHeight
+	boundary, hasBoundary := nearestArenaBoundary(ball.Position, config.Arena, goalFits)
 
-	if floorExistsAt(ball.Position, config.Arena) {
+	lowerRampZone := hasBoundary && boundary.Distance < config.Arena.RampRadius+radius &&
+		ball.Position.Y <= config.Arena.RampRadius+radius
+	if floorExistsAt(ball.Position, config.Arena) && !lowerRampZone {
 		penetration := radius - ball.Position.Y
 		if penetration > 0 {
 			ball.Position.Y += penetration
@@ -178,13 +244,14 @@ func resolveBallArena(ball *Ball, config Config) {
 			ball.AngularVelocity.Z = lerp(ball.AngularVelocity.Z, rolling.Z, 0.04)
 		}
 	}
-	resolveBodyMaximum(&ball.Body, 1, config.Arena.Ceiling, radius, config.Ball.Restitution)
 
-	absX := math.Abs(ball.Position.X)
-	goalHalfWidth := config.Arena.GoalWidth * 0.5
-	goalFits := absX+radius <= goalHalfWidth &&
-		ball.Position.Y+radius <= config.Arena.GoalHeight
-	if boundary, ok := nearestArenaBoundary(ball.Position, config.Arena, goalFits); ok {
+	upperRampZone := hasBoundary && boundary.Distance < config.Arena.CeilingRampRadius+radius &&
+		ball.Position.Y >= config.Arena.Ceiling-config.Arena.CeilingRampRadius-radius
+	if !upperRampZone {
+		resolveBodyMaximum(&ball.Body, 1, config.Arena.Ceiling, radius, config.Ball.Restitution)
+	}
+
+	if hasBoundary {
 		resolveBallBoundary(ball, config, boundary)
 	}
 
@@ -202,16 +269,31 @@ func resolveBallArena(ball *Ball, config Config) {
 }
 
 func resolveBallBoundary(ball *Ball, config Config, boundary arenaBoundary) {
-	rampRadius := config.Arena.RampRadius
 	outward := boundary.Outward
 	inward := outward.Mul(-1)
-	horizontal := rampRadius - boundary.Distance
-	vertical := ball.Position.Y - rampRadius
 
-	if horizontal >= 0 && vertical <= 0 {
-		radial := outward.Mul(horizontal).Add(Vec3{Y: vertical})
+	lowerRadius := config.Arena.RampRadius
+	lowerHorizontal := lowerRadius - boundary.Distance
+	lowerVertical := ball.Position.Y - lowerRadius
+	if lowerHorizontal >= 0 && lowerVertical <= 0 {
+		radial := outward.Mul(lowerHorizontal).Add(Vec3{Y: lowerVertical})
 		distance := radial.Length()
-		maximumDistance := math.Max(0.1, rampRadius-config.Ball.Radius)
+		maximumDistance := math.Max(0.1, lowerRadius-config.Ball.Radius)
+		penetration := distance - maximumDistance
+		if penetration > 0 && distance > 1e-9 {
+			normal := radial.Mul(-1 / distance)
+			resolveBodyIntoPlayable(&ball.Body, normal, penetration, config.Ball.Restitution)
+			return
+		}
+	}
+
+	upperRadius := config.Arena.CeilingRampRadius
+	upperHorizontal := upperRadius - boundary.Distance
+	upperVertical := ball.Position.Y - (config.Arena.Ceiling - upperRadius)
+	if upperHorizontal >= 0 && upperVertical >= 0 {
+		radial := outward.Mul(upperHorizontal).Add(Vec3{Y: upperVertical})
+		distance := radial.Length()
+		maximumDistance := math.Max(0.1, upperRadius-config.Ball.Radius)
 		penetration := distance - maximumDistance
 		if penetration > 0 && distance > 1e-9 {
 			normal := radial.Mul(-1 / distance)
@@ -414,6 +496,18 @@ func resolveCarBall(car *Car, ball *Ball, config Config) {
 		maximumFriction := impulseMagnitude * 0.18
 		frictionMagnitude = clamp(frictionMagnitude, -maximumFriction, maximumFriction)
 		applyCarBallImpulse(car, ball, contact, tangent.Mul(frictionMagnitude), config, carInverseInertia, ballInverseInertia)
+	}
+
+	// Add a controlled arcade kick on meaningful car hits. The normal component
+	// makes shots feel heavier, while a modest world-up component gives bumper
+	// hits the requested pop instead of sending every low contact flat along the
+	// grass. Small resting contacts are deliberately ignored.
+	impactSpeed := -closingSpeed
+	if impactSpeed > 1.0 {
+		extraForward := clamp(impactSpeed*config.Ball.CarHitPower, 0, 5.5)
+		liftRamp := clamp((impactSpeed-1)/3, 0, 1)
+		lift := clamp((config.Ball.CarHitLiftBase+impactSpeed*config.Ball.CarHitLift)*liftRamp, 0, 7.5)
+		ball.Velocity = ball.Velocity.Add(normal.Mul(extraForward)).Add(Vec3{Y: lift})
 	}
 }
 

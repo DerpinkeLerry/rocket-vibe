@@ -492,3 +492,140 @@ func BenchmarkWorldStepFourPlayers(b *testing.B) {
 		world.Step(dt)
 	}
 }
+
+func TestWallAlignmentKeepsClimbingDirectionWhenNoseMeetsWall(t *testing.T) {
+	config := DefaultConfig()
+	world := NewWorld(config)
+	car := &world.Cars[0]
+	wallNormal := Vec3{X: -1}
+
+	// This is the degenerate pose that used to trigger the old fixed "down"
+	// fallback: the nose points into the wall while the collision has already
+	// turned the actual motion upward.
+	car.Rotation = QuatFromYaw(-math.Pi / 2)
+	car.Velocity = Vec3{Y: 12}
+	car.Grounded = true
+	car.GroundNormal = wallNormal
+	world.finishCarStep(car, 0.08)
+
+	forward := car.Rotation.Rotate(Vec3{Z: -1})
+	if forward.Y <= 0.2 {
+		t.Fatalf("wall alignment did not preserve upward climbing direction: forward=%+v", forward)
+	}
+	if forward.Y < 0 {
+		t.Fatalf("wall alignment pitched the car down the wall: forward=%+v", forward)
+	}
+}
+
+func TestCarCanRollFromWallOntoRoundedCeiling(t *testing.T) {
+	config := DefaultConfig()
+	world := NewWorld(config)
+	world.SetConnected(0, true)
+	car := &world.Cars[0]
+	wallNormal := Vec3{X: -1}
+
+	car.Position = Vec3{
+		X: config.Arena.Width*0.5 - config.Car.HalfExtents.Y + 0.02,
+		Y: config.Arena.Ceiling - config.Arena.CeilingRampRadius - 1.2,
+		Z: 0,
+	}
+	car.Rotation = QuatFromForwardUp(Vec3{Y: 1}, wallNormal)
+	car.Velocity = Vec3{Y: 14}
+	car.Grounded = true
+	car.GroundNormal = wallNormal
+	car.Boost = config.Car.BoostCapacity
+	if !world.SetInput(0, Input{Sequence: 1, Mask: InputW | InputBoost}) {
+		t.Fatal("input was not accepted")
+	}
+
+	dt := 1 / float64(config.PhysicsHz)
+	reachedUpperArc := false
+	reachedCeilingLikeNormal := false
+	minimumX := car.Position.X
+	maximumY := car.Position.Y
+	for step := 0; step < config.PhysicsHz; step++ {
+		if step == config.PhysicsHz/2 {
+			if !world.SetInput(0, Input{Sequence: 2, Mask: InputW | InputBoost}) {
+				t.Fatal("input heartbeat was not accepted")
+			}
+		}
+		world.Step(dt)
+		minimumX = math.Min(minimumX, car.Position.X)
+		maximumY = math.Max(maximumY, car.Position.Y)
+		if car.Position.Y > config.Arena.Ceiling-config.Arena.CeilingRampRadius+0.4 && car.Grounded {
+			reachedUpperArc = true
+		}
+		if car.Grounded && car.GroundNormal.Y < -0.45 {
+			reachedCeilingLikeNormal = true
+		}
+	}
+
+	if !reachedUpperArc {
+		t.Fatalf("car never entered the rounded ceiling transition: maxY=%.3f pos=%+v normal=%+v", maximumY, car.Position, car.GroundNormal)
+	}
+	if !reachedCeilingLikeNormal {
+		t.Fatalf("surface normal never rotated toward the ceiling: pos=%+v normal=%+v", car.Position, car.GroundNormal)
+	}
+	if minimumX >= config.Arena.Width*0.5-config.Arena.CeilingRampRadius*0.25 {
+		t.Fatalf("car did not roll inward across the ceiling arc: minX=%.3f", minimumX)
+	}
+}
+
+func TestCarHitGivesBallExtraPowerAndLift(t *testing.T) {
+	config := DefaultConfig()
+	world := NewWorld(config)
+	car := &world.Cars[0]
+	car.Position = Vec3{Y: config.Car.HalfExtents.Y}
+	car.Rotation = IdentityQuat()
+	car.Velocity = Vec3{Z: -16}
+	ball := &world.Ball
+	ball.Position = Vec3{Y: config.Car.HalfExtents.Y, Z: -3.55}
+	ball.Velocity = Vec3{}
+	ball.AngularVelocity = Vec3{}
+
+	resolveCarBall(car, ball, config)
+	if ball.Velocity.Z > -12 {
+		t.Fatalf("car hit did not launch ball strongly enough: velocity=%+v", ball.Velocity)
+	}
+	if ball.Velocity.Y < 4.5 {
+		t.Fatalf("car hit did not add the requested upward pop: velocity=%+v", ball.Velocity)
+	}
+}
+
+func TestWallClimbSurfaceNormalChangesContinuously(t *testing.T) {
+	config := DefaultConfig()
+	world := NewWorld(config)
+	world.SetConnected(0, true)
+	car := &world.Cars[0]
+	car.Position = Vec3{X: config.Arena.Width*0.5 - config.Arena.RampRadius - 3, Y: config.Car.HalfExtents.Y, Z: 0}
+	car.Rotation = QuatFromYaw(-math.Pi / 2)
+	car.Grounded = true
+	car.GroundNormal = Vec3{Y: 1}
+	if !world.SetInput(0, Input{Sequence: 1, Mask: InputW | InputBoost}) {
+		t.Fatal("input was not accepted")
+	}
+
+	dt := 1 / float64(config.PhysicsHz)
+	previous := car.GroundNormal
+	havePrevious := false
+	minimumDot := 1.0
+	for step := 0; step < config.PhysicsHz*2; step++ {
+		if step == config.PhysicsHz-1 {
+			world.SetInput(0, Input{Sequence: 2, Mask: InputW | InputBoost})
+		}
+		world.Step(dt)
+		if !car.Grounded {
+			havePrevious = false
+			continue
+		}
+		current := car.GroundNormal.NormalizeOr(Vec3{Y: 1})
+		if havePrevious {
+			minimumDot = math.Min(minimumDot, previous.Dot(current))
+		}
+		previous = current
+		havePrevious = true
+	}
+	if minimumDot < 0.94 {
+		t.Fatalf("surface normal snapped too sharply during wall climb: min dot=%.5f", minimumDot)
+	}
+}

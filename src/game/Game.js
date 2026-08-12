@@ -328,7 +328,9 @@ export class Game {
     if (this.input.consumePressed('KeyB')) this.ball.reset();
     this.car0.fixedUpdate(dt);
     this.ball.fixedUpdate(dt);
+    this.ball.prepareCarHit(this.car0);
     this.world.step();
+    this.ball.applyPreparedCarHit();
     this.car0.enforceSpeedLimit();
     this.boostPads.updateOffline(this.car0, dt);
     this.detectOfflineGoal();

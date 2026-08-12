@@ -6,6 +6,7 @@ const VEC_FORWARD = new THREE.Vector3(0, 0, -1);
 const VEC_RIGHT = new THREE.Vector3(1, 0, 0);
 const VEC_UP = new THREE.Vector3(0, 1, 0);
 const clamp = THREE.MathUtils.clamp;
+const SURFACE_CONTACT_SLOP = 0.075;
 const moveTowards = (current, target, maxDelta) => {
   if (Math.abs(target - current) <= maxDelta) return target;
   return current + Math.sign(target - current) * maxDelta;
@@ -183,13 +184,28 @@ export class LocalCarPredictor {
     this.car.boosting = boosting;
   }
 
-  applyGroundDrive(dt, throttle, steer, boosting) {
+  projectForwardToSurface() {
     this.forward.addScaledVector(this.groundNormal, -this.forward.dot(this.groundNormal));
-    if (this.forward.lengthSq() < 0.000001) {
-      if (Math.abs(this.groundNormal.y) < 0.9) this.forward.set(0, -1, 0);
-      else this.forward.set(0, 0, -1);
+    if (this.forward.lengthSq() > 0.0125) {
+      this.forward.normalize();
+      return;
+    }
+
+    this.forward.copy(this.vel).addScaledVector(this.groundNormal, -this.vel.dot(this.groundNormal));
+    if (this.forward.lengthSq() > 0.25) {
+      this.forward.normalize();
+      return;
+    }
+
+    this.forward.copy(VEC_UP).addScaledVector(this.groundNormal, -this.groundNormal.y);
+    if (this.forward.lengthSq() < 0.0125) {
+      this.forward.copy(VEC_FORWARD).addScaledVector(this.groundNormal, -VEC_FORWARD.dot(this.groundNormal));
     }
     this.forward.normalize();
+  }
+
+  applyGroundDrive(dt, throttle, steer, boosting) {
+    this.projectForwardToSurface();
     this.right.crossVectors(this.forward, this.groundNormal).normalize();
 
     const speedForward = this.vel.dot(this.forward);
@@ -349,16 +365,22 @@ export class LocalCarPredictor {
   }
 
   markSurfaceContact(nx, ny, nz) {
-    if (this.groundLockout > 0 || this.up.x * nx + this.up.y * ny + this.up.z * nz <= 0.1) return;
+    if (this.groundLockout > 0) return;
+    this.surfaceNormal.set(nx, ny, nz).normalize();
+    if (this.up.dot(this.surfaceNormal) <= 0.06) return;
+
+    if (this.groundNormal.dot(this.surfaceNormal) > 0.05) {
+      this.groundNormal.lerp(this.surfaceNormal, CAR_TUNING.surfaceNormalBlend).normalize();
+    } else {
+      this.groundNormal.copy(this.surfaceNormal);
+    }
     this.grounded = true;
     this.surfaceContactThisStep = true;
     this.airTime = 0;
-    this.groundNormal.set(nx, ny, nz).normalize();
   }
 
   resolveArenaCollision() {
     const arena = ARENA_TUNING;
-    const halfWidth = arena.width * 0.5;
     const halfLength = arena.length * 0.5;
     this.surfaceContactThisStep = false;
     this.grounded = false;
@@ -370,55 +392,90 @@ export class LocalCarPredictor {
     this.up.copy(VEC_UP).applyQuaternion(this.q).normalize();
 
     const extentY = this.supportAlong(0, 1, 0);
-    const floorContact = this.pos.y <= extentY + 0.035;
-    if (this.pos.y < extentY) {
-      this.pos.y = extentY;
-      if (this.vel.y < 0) this.vel.y = 0;
-    }
-    const ceilingY = arena.ceiling - extentY;
-    if (this.pos.y > ceilingY) {
-      this.pos.y = ceilingY;
-      if (this.vel.y > 0) this.vel.y = 0;
-    }
-
     const extentX = this.supportAlong(1, 0, 0);
     const extentZ = this.supportAlong(0, 0, 1);
     const absX = Math.abs(this.pos.x);
-    const absZ = Math.abs(this.pos.z);
     const goalFits = absX + extentX <= arena.goalWidth * 0.5
       && this.pos.y + extentY <= arena.goalHeight;
+    const hasBoundary = this.findNearestBoundary(goalFits);
 
-    if (this.findNearestBoundary(goalFits)) {
+    const lowerRampZone = hasBoundary
+      && this.boundaryDistance < arena.rampRadius + SURFACE_CONTACT_SLOP
+      && this.pos.y <= arena.rampRadius + extentY + SURFACE_CONTACT_SLOP;
+    let floorContact = false;
+    if (!lowerRampZone) {
+      floorContact = this.pos.y <= extentY + SURFACE_CONTACT_SLOP;
+      if (this.pos.y < extentY) {
+        this.pos.y = extentY;
+        if (this.vel.y < 0) this.vel.y = 0;
+      }
+    }
+
+    const upperRampZone = hasBoundary
+      && this.boundaryDistance < arena.ceilingRampRadius + SURFACE_CONTACT_SLOP
+      && this.pos.y >= arena.ceiling - arena.ceilingRampRadius - extentY - SURFACE_CONTACT_SLOP;
+    let ceilingContact = false;
+    if (!upperRampZone) {
+      const ceilingY = arena.ceiling - extentY;
+      ceilingContact = this.pos.y >= ceilingY - SURFACE_CONTACT_SLOP;
+      if (this.pos.y > ceilingY) {
+        this.pos.y = ceilingY;
+        if (this.vel.y > 0) this.vel.y = 0;
+      }
+    }
+
+    if (hasBoundary) {
       const outwardX = this.boundaryNX;
       const outwardZ = this.boundaryNZ;
-      const horizontal = arena.rampRadius - this.boundaryDistance;
-      const vertical = this.pos.y - arena.rampRadius;
-      let rampResolved = false;
+      let roundedResolved = false;
 
-      if (horizontal >= 0 && vertical <= 0) {
-        const distance = Math.hypot(horizontal, vertical);
+      const lowerHorizontal = arena.rampRadius - this.boundaryDistance;
+      const lowerVertical = this.pos.y - arena.rampRadius;
+      if (lowerHorizontal >= 0 && lowerVertical <= 0) {
+        const distance = Math.hypot(lowerHorizontal, lowerVertical);
         if (distance > 0.000001) {
-          const nx = -outwardX * horizontal / distance;
-          const ny = -vertical / distance;
-          const nz = -outwardZ * horizontal / distance;
+          const nx = -outwardX * lowerHorizontal / distance;
+          const ny = -lowerVertical / distance;
+          const nz = -outwardZ * lowerHorizontal / distance;
           const support = this.supportAlong(nx, ny, nz);
           const maximumDistance = Math.max(0.1, arena.rampRadius - support);
           const penetration = distance - maximumDistance;
-          if (penetration > 0) {
-            this.resolveIntoPlayable(nx, ny, nz, penetration);
+          if (penetration >= -SURFACE_CONTACT_SLOP) {
+            if (penetration > 0) this.resolveIntoPlayable(nx, ny, nz, penetration);
             this.markSurfaceContact(nx, ny, nz);
-            rampResolved = true;
+            roundedResolved = true;
           }
         }
       }
 
-      if (!rampResolved) {
+      if (!roundedResolved) {
+        const upperHorizontal = arena.ceilingRampRadius - this.boundaryDistance;
+        const upperVertical = this.pos.y - (arena.ceiling - arena.ceilingRampRadius);
+        if (upperHorizontal >= 0 && upperVertical >= 0) {
+          const distance = Math.hypot(upperHorizontal, upperVertical);
+          if (distance > 0.000001) {
+            const nx = -outwardX * upperHorizontal / distance;
+            const ny = -upperVertical / distance;
+            const nz = -outwardZ * upperHorizontal / distance;
+            const support = this.supportAlong(nx, ny, nz);
+            const maximumDistance = Math.max(0.1, arena.ceilingRampRadius - support);
+            const penetration = distance - maximumDistance;
+            if (penetration >= -SURFACE_CONTACT_SLOP) {
+              if (penetration > 0) this.resolveIntoPlayable(nx, ny, nz, penetration);
+              this.markSurfaceContact(nx, ny, nz);
+              roundedResolved = true;
+            }
+          }
+        }
+      }
+
+      if (!roundedResolved) {
         const nx = -outwardX;
         const nz = -outwardZ;
         const support = this.supportAlong(nx, 0, nz);
         const penetration = support - this.boundaryDistance;
-        if (penetration > 0) {
-          this.resolveIntoPlayable(nx, 0, nz, penetration);
+        if (penetration >= -SURFACE_CONTACT_SLOP) {
+          if (penetration > 0) this.resolveIntoPlayable(nx, 0, nz, penetration);
           this.markSurfaceContact(nx, 0, nz);
           this.ang.multiplyScalar(0.985);
         }
@@ -453,22 +510,14 @@ export class LocalCarPredictor {
       }
     }
 
-    if (!this.surfaceContactThisStep && floorContact && this.up.y > 0.3 && this.groundLockout <= 0) {
-      this.grounded = true;
-      this.airTime = 0;
-      this.groundNormal.set(0, 1, 0);
-    }
+    if (!this.surfaceContactThisStep && floorContact) this.markSurfaceContact(0, 1, 0);
+    if (!this.surfaceContactThisStep && ceilingContact) this.markSurfaceContact(0, -1, 0);
   }
 
   alignToSurface(dt) {
     if (!this.grounded || this.groundLockout > 0) return;
     this.forward.copy(VEC_FORWARD).applyQuaternion(this.q);
-    this.forward.addScaledVector(this.groundNormal, -this.forward.dot(this.groundNormal));
-    if (this.forward.lengthSq() < 0.000001) {
-      if (Math.abs(this.groundNormal.y) < 0.9) this.forward.set(0, -1, 0);
-      else this.forward.set(0, 0, -1);
-    }
-    this.forward.normalize();
+    this.projectForwardToSurface();
     this.surfaceRight.crossVectors(this.forward, this.groundNormal).normalize();
     this.surfaceBack.copy(this.forward).multiplyScalar(-1);
     this.surfaceMatrix.makeBasis(this.surfaceRight, this.groundNormal, this.surfaceBack);

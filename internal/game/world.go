@@ -359,7 +359,7 @@ func (world *World) applySecondJumpOrDodge(car *Car, forward, right, up Vec3, fo
 func (world *World) applyGroundDrive(car *Car, forward, right Vec3, throttle, steer float64, boosting bool, dt float64) {
 	config := world.Config.Car
 	groundNormal := car.GroundNormal.NormalizeOr(Vec3{Y: 1})
-	forward = forward.Sub(groundNormal.Mul(forward.Dot(groundNormal))).NormalizeOr(Vec3{Z: -1})
+	forward = surfaceTangentForward(forward, car.Velocity, groundNormal)
 	right = forward.Cross(groundNormal).NormalizeOr(right)
 
 	forwardSpeed := car.Velocity.Dot(forward)
@@ -408,6 +408,29 @@ func (world *World) applyGroundDrive(car *Car, forward, right Vec3, throttle, st
 	car.AngularVelocity = tangentAngular.Add(groundNormal.Mul(spin))
 }
 
+func surfaceTangentForward(forward, velocity, normal Vec3) Vec3 {
+	normal = normal.NormalizeOr(Vec3{Y: 1})
+	projected := forward.Sub(normal.Mul(forward.Dot(normal)))
+	if projected.LengthSquared() > 0.0125 {
+		return projected.NormalizeOr(Vec3{Z: -1})
+	}
+
+	// When the car reaches a near-vertical wall, its old nose direction can be
+	// almost parallel to the surface normal. Using a fixed downward fallback
+	// made it suddenly pitch toward the floor. Prefer actual tangential motion,
+	// which naturally points up the wall and around the ceiling transition.
+	motion := velocity.Sub(normal.Mul(velocity.Dot(normal)))
+	if motion.LengthSquared() > 0.25 {
+		return motion.NormalizeOr(Vec3{Y: 1})
+	}
+
+	stable := Vec3{Y: 1}.Sub(normal.Mul(normal.Y))
+	if stable.LengthSquared() < 0.0125 {
+		stable = Vec3{Z: -1}.Sub(normal.Mul(Vec3{Z: -1}.Dot(normal)))
+	}
+	return stable.NormalizeOr(Vec3{Z: -1})
+}
+
 func (world *World) applyAirControl(car *Car, forward, right, up Vec3, pitch, yaw, roll float64, boosting bool, dt float64) {
 	config := world.Config.Car
 	controlScale := 1.0
@@ -444,8 +467,7 @@ func (world *World) finishCarStep(car *Car, dt float64) {
 		return
 	}
 	groundNormal := car.GroundNormal.NormalizeOr(Vec3{Y: 1})
-	forward := car.Rotation.Rotate(Vec3{Z: -1})
-	forward = forward.Sub(groundNormal.Mul(forward.Dot(groundNormal))).NormalizeOr(Vec3{Z: -1})
+	forward := surfaceTangentForward(car.Rotation.Rotate(Vec3{Z: -1}), car.Velocity, groundNormal)
 	target := QuatFromForwardUp(forward, groundNormal)
 	car.Rotation = car.Rotation.NLerp(target, 1-math.Exp(-world.Config.Car.SurfaceAlignResponse*dt))
 	spin := car.AngularVelocity.Dot(groundNormal)

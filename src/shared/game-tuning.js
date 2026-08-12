@@ -50,7 +50,9 @@ export const CAR_TUNING = Object.freeze({
   dodgeControlScale: 0.18,
   downAcceleration: 18.0,
   wallGravityCancel: 1.0,
-  surfaceAlignResponse: 18.0,
+  surfaceNormalBlend: 0.28,
+  surfaceNormalResponse: 11.0,
+  surfaceAlignResponse: 16.0,
   gravity: 20.5,
   linearDamping: 0.06,
   angularDamping: 0.55
@@ -61,6 +63,13 @@ export const BALL_TUNING = Object.freeze({
   spawnY: 5.5,
   // Density compensates for the larger volume to keep mass near the old ball.
   density: 0.67,
-  maxSpeed: 56,
-  maxAngularSpeed: 32
+  restitution: 0.68,
+  friction: 0.22,
+  linearDamping: 0.03,
+  angularDamping: 0.055,
+  carHitPower: 0.24,
+  carHitLift: 0.30,
+  carHitLiftBase: 1.5,
+  maxSpeed: 60,
+  maxAngularSpeed: 34
 });
