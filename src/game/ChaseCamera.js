@@ -32,6 +32,7 @@ export class ChaseCamera {
     this.mode = MODE_BALL;
     this.replaySavedCar = null;
     this.replaySavedMode = null;
+    this.goalCelebrationActive = false;
 
     this.position = new THREE.Vector3(0, 4.4, 8.8);
     this.desired = new THREE.Vector3();
@@ -46,6 +47,7 @@ export class ChaseCamera {
     this.targetOrbitDirection = new THREE.Vector3(0, 0, -1);
     this.orbitDirection = new THREE.Vector3(0, 0, -1);
     this.carHeadingDirection = new THREE.Vector3(0, 0, -1);
+    this.celebrationOrbitDirection = new THREE.Vector3(0, 0, -1);
     this.q = new THREE.Quaternion();
 
     this.raycaster = new THREE.Raycaster();
@@ -64,6 +66,25 @@ export class ChaseCamera {
 
   getMode() {
     return this.mode;
+  }
+
+  setGoalCelebrationActive(active) {
+    const next = Boolean(active);
+    if (next === this.goalCelebrationActive) return;
+    this.goalCelebrationActive = next;
+
+    if (next) {
+      // Freeze a world-horizontal camera bearing before the authoritative goal
+      // blast starts tumbling the car. The car is still free to spin visually,
+      // but the chase camera no longer inherits that angular momentum.
+      const source = this.mode === MODE_BALL ? this.orbitDirection : this.carHeadingDirection;
+      this.celebrationOrbitDirection.set(source.x, 0, source.z);
+      if (this.celebrationOrbitDirection.lengthSq() < 0.0001) {
+        this.celebrationOrbitDirection.set(this.carForward.x, 0, this.carForward.z);
+      }
+      if (this.celebrationOrbitDirection.lengthSq() < 0.0001) this.celebrationOrbitDirection.set(0, 0, -1);
+      this.celebrationOrbitDirection.normalize();
+    }
   }
 
   beginReplay(car) {
@@ -118,14 +139,23 @@ export class ChaseCamera {
     this.carForward.set(0, 0, -1).applyQuaternion(this.q).normalize();
     this.carUp.set(0, 1, 0).applyQuaternion(this.q).normalize();
 
-    // Aim at the visual center of the car in LOCAL up-space. This continues to
-    // be correct while driving on side walls or the ceiling.
-    this.pivot.copy(this.carPosition).addScaledVector(this.carUp, CAR_TARGET_LOCAL_HEIGHT);
+    // Normal driving aims at the car in LOCAL up-space so wall/ceiling driving
+    // remains correct. During the goal blast, however, the car intentionally
+    // tumbles with very high angular velocity. Using local up there makes the
+    // camera target orbit around the chassis and causes the unpleasant shaking.
+    // Keep the explosion camera world-upright instead.
+    if (this.goalCelebrationActive) {
+      this.pivot.copy(this.carPosition);
+      this.pivot.y += CAR_TARGET_LOCAL_HEIGHT;
+    } else {
+      this.pivot.copy(this.carPosition).addScaledVector(this.carUp, CAR_TARGET_LOCAL_HEIGHT);
+    }
 
     const speed = Math.min(this.car.getSpeedKmh() / 120, 1);
 
     this.desiredLookTarget.copy(this.pivot);
-    if (this.mode === MODE_BALL) this.updateBallCam(dt, speed);
+    if (this.goalCelebrationActive) this.updateGoalCelebrationCam(speed);
+    else if (this.mode === MODE_BALL) this.updateBallCam(dt, speed);
     else this.updateCarCam(dt, speed);
 
     const positionT = 1 - Math.exp(-14.5 * dt);
@@ -140,6 +170,19 @@ export class ChaseCamera {
     else this.lookTarget.lerp(this.desiredLookTarget, lookT);
     this.camera.up.set(0, 1, 0);
     this.camera.lookAt(this.lookTarget);
+  }
+
+  updateGoalCelebrationCam(speed) {
+    // Rocket-style goal explosion camera: follow the translated car but ignore
+    // its forced tumble. A fixed world-horizontal bearing removes roll/pitch
+    // wobble while still showing the car being launched by the explosion.
+    const distance = 8.2 + speed * 1.4;
+    const height = 3.65 + speed * 0.55;
+    this.desired.copy(this.pivot)
+      .addScaledVector(this.celebrationOrbitDirection, -distance);
+    this.desired.y += height;
+    this.desiredLookTarget.copy(this.pivot);
+    this.desiredLookTarget.y += 0.24;
   }
 
   updateBallCam(dt, speed) {

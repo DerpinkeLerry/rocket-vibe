@@ -74,12 +74,13 @@ export function getPerformanceProfile(networked, explicitMode = null) {
     mobile,
     lowDetail: ultraLow,
     createClientPhysics: !networked,
-    // Ultra High now starts close to native resolution instead of spending a
-    // disproportionate amount of GPU time on supersampling. The visual budget
-    // goes into crisp field textures, wall geometry, materials and shadows instead.
-    initialPixelRatio: ultraLow ? 0.48 : (ultraHigh ? (mobile ? 0.80 : 0.95) : (mobile ? 1.25 : (networked ? 0.75 : 0.9))),
-    minPixelRatio: ultraLow ? 0.30 : (ultraHigh ? (mobile ? 0.55 : 0.68) : (mobile ? 0.90 : (networked ? 0.58 : 0.72))),
-    maxPixelRatio: ultraLow ? 0.56 : (ultraHigh ? (mobile ? 0.92 : 1.08) : (mobile ? 1.60 : (networked ? 0.82 : 1.0))),
+    // Mobile Ultra High previously rendered below 1x CSS resolution, which made
+    // the image visibly pixelated even on strong phones. Start it above 1x and
+    // keep a much higher floor; adaptive scaling can still save performance if
+    // the device actually struggles. Desktop stays deliberately restrained.
+    initialPixelRatio: ultraLow ? 0.48 : (ultraHigh ? (mobile ? 1.28 : 0.95) : (mobile ? 1.25 : (networked ? 0.75 : 0.9))),
+    minPixelRatio: ultraLow ? 0.30 : (ultraHigh ? (mobile ? 0.96 : 0.68) : (mobile ? 0.90 : (networked ? 0.58 : 0.72))),
+    maxPixelRatio: ultraLow ? 0.56 : (ultraHigh ? (mobile ? 1.52 : 1.08) : (mobile ? 1.60 : (networked ? 0.82 : 1.0))),
     adaptiveResolution: ultraLow || ultraHigh || mobile,
     predictionHz: ultraLow ? 60 : (mobile ? 90 : 120),
     hudHz: ultraLow ? 6 : (mobile ? 12 : 15),

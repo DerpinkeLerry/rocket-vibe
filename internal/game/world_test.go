@@ -270,6 +270,30 @@ func TestBoostPadLayoutMatchesSoccarReference(t *testing.T) {
 	}
 }
 
+func TestGoalRequiresEntireBallBeyondGoalLine(t *testing.T) {
+	config := DefaultConfig()
+	halfLength := config.Arena.Length * 0.5
+	world := NewWorld(config)
+	world.Ball.Position = Vec3{Y: config.Ball.Radius, Z: halfLength + config.Ball.Radius}
+
+	// The back edge of the sphere is exactly on the line: no goal yet.
+	if world.detectGoal() {
+		t.Fatal("ball touching the goal line counted before the whole sphere crossed")
+	}
+	if world.BlueScore != 0 || world.OrangeScore != 0 {
+		t.Fatalf("score changed while ball only touched goal line: orange=%d blue=%d", world.OrangeScore, world.BlueScore)
+	}
+
+	// Move the sphere just far enough that its back edge is fully beyond the line.
+	world.Ball.Position.Z = halfLength + config.Ball.Radius + 0.001
+	if !world.detectGoal() {
+		t.Fatal("whole ball beyond the goal line did not score")
+	}
+	if world.BlueScore != 1 || world.OrangeScore != 0 {
+		t.Fatalf("whole-ball crossing scored incorrectly: orange=%d blue=%d", world.OrangeScore, world.BlueScore)
+	}
+}
+
 func TestBallScoresThroughGoalButHitsSolidEndWall(t *testing.T) {
 	config := DefaultConfig()
 	dt := 1 / float64(config.PhysicsHz)
@@ -1035,7 +1059,7 @@ func TestGoalReplayTracksLastBallTouchAsScorer(t *testing.T) {
 	world.Tick = 123
 	world.LastBallTouchSlot = 1
 	world.LastBallTouchTick = 120
-	world.Ball.Position = Vec3{Y: config.Ball.Radius, Z: config.Arena.Length*0.5 + config.Ball.Radius}
+	world.Ball.Position = Vec3{Y: config.Ball.Radius, Z: config.Arena.Length*0.5 + config.Ball.Radius + 0.02}
 
 	if !world.detectGoal() {
 		t.Fatal("expected a goal")
@@ -1055,7 +1079,7 @@ func TestGoalExplosionKnockbackPushesEveryCarAwayAndLocksGoal(t *testing.T) {
 	world.SetConnected(1, true)
 	world.Cars[0].Position = Vec3{X: -8, Y: config.Car.HalfExtents.Y, Z: 26}
 	world.Cars[1].Position = Vec3{X: 11, Y: config.Car.HalfExtents.Y, Z: -18}
-	world.Ball.Position = Vec3{X: 1.5, Y: config.Ball.Radius, Z: config.Arena.Length*0.5 + config.Ball.Radius}
+	world.Ball.Position = Vec3{X: 1.5, Y: config.Ball.Radius, Z: config.Arena.Length*0.5 + config.Ball.Radius + 0.02}
 
 	if !world.detectGoal() {
 		t.Fatal("expected a goal")

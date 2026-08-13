@@ -26,3 +26,29 @@ test('desktop ultra-high uses a restrained supersampling range', () => {
   assert.equal(profile.usePostProcessing, false);
   assert.equal(profile.useEnvironmentReflections, false);
 });
+
+
+test('mobile ultra-high keeps a sharp render scale', () => {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  try {
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      writable: true,
+      value: {
+        location: { search: '?mobile=1' },
+        matchMedia: () => ({ matches: true }),
+        screen: { width: 844, height: 390 },
+        innerWidth: 844,
+        innerHeight: 390
+      }
+    });
+    const profile = getPerformanceProfile(false, 'ultra-high');
+    assert.equal(profile.mobile, true);
+    assert.equal(profile.initialPixelRatio, 1.28);
+    assert.equal(profile.minPixelRatio, 0.96);
+    assert.equal(profile.maxPixelRatio, 1.52);
+  } finally {
+    if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow);
+    else delete globalThis.window;
+  }
+});

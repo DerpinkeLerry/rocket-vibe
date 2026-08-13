@@ -687,6 +687,7 @@ export class Game {
     if (!this.networked && this.goalCelebrationActive && now >= this.goalCelebrationUntil) {
       this.goalCelebrationActive = false;
       this.goalCelebrationUntil = 0;
+      this.chaseCamera?.setGoalCelebrationActive?.(false);
     }
 
     if (this.networked) {
@@ -779,10 +780,10 @@ export class Game {
 
     if (this.profile.adaptiveResolution) {
       let next = this.renderPixelRatio;
-      const lowThreshold = this.profile.ultraHigh ? (this.profile.mobile ? 47 : 52) : (this.profile.mobile ? 46 : 52);
-      const highThreshold = this.profile.ultraHigh ? (this.profile.mobile ? 56 : 59) : (this.profile.mobile ? 57 : 59);
-      const downStep = this.profile.ultraHigh ? 0.08 : (this.profile.mobile ? 0.05 : 0.06);
-      const upStep = this.profile.ultraHigh ? 0.035 : (this.profile.mobile ? 0.03 : 0.02);
+      const lowThreshold = this.profile.ultraHigh ? (this.profile.mobile ? 44 : 52) : (this.profile.mobile ? 46 : 52);
+      const highThreshold = this.profile.ultraHigh ? (this.profile.mobile ? 57 : 59) : (this.profile.mobile ? 57 : 59);
+      const downStep = this.profile.ultraHigh ? (this.profile.mobile ? 0.05 : 0.08) : (this.profile.mobile ? 0.05 : 0.06);
+      const upStep = this.profile.ultraHigh ? (this.profile.mobile ? 0.03 : 0.035) : (this.profile.mobile ? 0.03 : 0.02);
       if (this.measuredFps < lowThreshold) next -= downStep;
       else if (this.measuredFps > highThreshold) next += upStep;
 
@@ -821,6 +822,7 @@ export class Game {
     const durationMs = Math.max(250, Number(goal.durationMs) || 1250);
     this.goalCelebrationActive = true;
     this.goalCelebrationUntil = performance.now() / 1000 + durationMs / 1000;
+    this.chaseCamera?.setGoalCelebrationActive?.(true);
     this.kickoffActive = false;
     this.hud.setScore(goal.orangeScore, goal.blueScore);
     this.goalExplosion?.trigger({
@@ -838,6 +840,7 @@ export class Game {
       const startingFreshCountdown = count === 3 || !this.kickoffActive;
       this.goalCelebrationActive = false;
       this.goalCelebrationUntil = 0;
+      this.chaseCamera?.setGoalCelebrationActive?.(false);
       this.goalExplosion?.stop();
       this.kickoffActive = true;
       if (startingFreshCountdown) this.resetForNetworkKickoff(Boolean(kickoff.resetScore));
@@ -866,6 +869,7 @@ export class Game {
 
     this.goalCelebrationActive = false;
     this.goalCelebrationUntil = 0;
+    this.chaseCamera?.setGoalCelebrationActive?.(false);
     this.goalExplosion?.stop();
     this.replayActive = true;
     this.replayWaiting = replay.phase === 'wait';
@@ -965,6 +969,7 @@ export class Game {
         this.boostPads.resetAll();
         this.goalCelebrationActive = false;
         this.goalCelebrationUntil = 0;
+        this.chaseCamera?.setGoalCelebrationActive?.(false);
       }
       return;
     }
@@ -1003,7 +1008,9 @@ export class Game {
     if (this.offlineGoalTimeRemaining > 0) return;
     const position = this.ball.body.translation();
     const halfLength = ARENA_TUNING.length * 0.5;
-    if (Math.abs(position.z) <= halfLength + this.ball.radius * 0.35) return;
+    // Match the authoritative whole-ball rule: the back edge of the sphere must
+    // be completely beyond the goal plane before the score can trigger.
+    if (Math.abs(position.z) - this.ball.radius <= halfLength) return;
     if (Math.abs(position.x) + this.ball.radius > ARENA_TUNING.goalWidth * 0.5
       || position.y + this.ball.radius > ARENA_TUNING.goalHeight) return;
 
@@ -1016,6 +1023,7 @@ export class Game {
     this.offlineGoalTimeRemaining = durationMs / 1000;
     this.goalCelebrationActive = true;
     this.goalCelebrationUntil = performance.now() / 1000 + this.offlineGoalTimeRemaining;
+    this.chaseCamera?.setGoalCelebrationActive?.(true);
     this.goalExplosion?.trigger({
       goalSign,
       scoringTeam,

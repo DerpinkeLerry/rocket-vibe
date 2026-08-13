@@ -824,7 +824,10 @@ func (world *World) detectGoal() bool {
 	}
 	halfLength := world.Config.Arena.Length * 0.5
 	ball := &world.Ball
-	if math.Abs(ball.Position.Z) <= halfLength+world.Config.Ball.Radius*0.35 {
+	// A goal only counts once the ENTIRE sphere has crossed the goal plane.
+	// Touching the line (or having only part of the ball inside the goal) is not
+	// enough, matching Rocket League's whole-ball goal rule.
+	if math.Abs(ball.Position.Z)-world.Config.Ball.Radius <= halfLength {
 		return false
 	}
 	if math.Abs(ball.Position.X)+world.Config.Ball.Radius > world.Config.Arena.GoalWidth*0.5 ||

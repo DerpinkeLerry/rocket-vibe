@@ -1,4 +1,10 @@
-# Rocket Vibe 1.10.23 – Clean Pitch Rework
+# Rocket Vibe 1.10.24 – Whole-Ball Goals, Stable Goal Camera & Mobile HQ
+
+## v1.10.24
+
+- Tore zaehlen jetzt erst, wenn der komplette Ball die Torlinie ueberquert hat. Ein Ball, der die Linie nur beruehrt oder noch teilweise ueber dem Spielfeld steht, loest keinen Treffer aus. Server und Offline-Modus verwenden dieselbe Whole-Ball-Regel.
+- Die Kamera waehrend der Goal Explosion ist jetzt von der absichtlichen Auto-Rotation entkoppelt. Das Auto darf weiterhin sichtbar wegfliegen und taumeln, aber die Kamera bleibt world-up und behaelt einen stabilen horizontalen Blickwinkel statt mitzuwackeln.
+- Mobile ULTRA HIGH rendert deutlich schaerfer: Start 1.28x, Mindestwert 0.96x und maximal 1.52x. Die adaptive Aufloesung reduziert auf High-End-Mobile ausserdem weniger aggressiv und greift erst bei deutlicheren FPS-Einbruechen ein.
 
 ## v1.10.23
 
