@@ -103,9 +103,9 @@ function carPreviewSvg(styleId) {
       spoiler: 'M127 36 H158 V41 H128 Z'
     },
     razor: {
-      body: 'M20 68 L44 51 L112 39 L153 53 L160 67 L155 78 L23 78 Z',
-      glass: 'M101 41 L115 31 L139 38 L149 52 L123 50 Z',
-      spoiler: ''
+      body: 'M23 70 L29 49 L55 40 L136 40 L154 52 L158 70 L151 80 L29 80 Z',
+      glass: 'M61 42 L72 27 L124 27 L140 42 L132 50 L65 50 Z',
+      spoiler: 'M126 34 H153 V40 H127 Z'
     }
   };
   const shape = shapes[styleId] || shapes.vortex;
@@ -161,6 +161,7 @@ function requestPlayerIdentity(root) {
                 <span class="car-choice__desc">${style.description}</span>
               </label>`).join('')}
           </div>
+          <div class="car-select__note">FENNEC nutzt in ULTRA HIGH das echte GLB-Modell. NORMAL und ULTRA LOW verwenden automatisch die leichte Fallback-Karosserie mit identischer Hitbox. <a href="https://sketchfab.com/3d-models/fennec-rocket-league-car-5b43b50b6eeb4a12a29671df3418f57a" target="_blank" rel="noopener noreferrer">3D: Jako/fairlight51 · CC BY 4.0</a></div>
         </fieldset>
 
         <fieldset class="boost-select">

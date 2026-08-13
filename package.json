@@ -1,6 +1,6 @@
 {
   "name": "rocket-vibe",
-  "version": "1.10.17",
+  "version": "1.10.19",
   "private": true,
   "type": "module",
   "engines": {
@@ -12,7 +12,7 @@
     "server": "go run ./cmd/server",
     "lan": "npm run build && npm run server",
     "start": "npm run server",
-    "test:js": "node --test src/shared/boost-tuning.test.js src/shared/boost-styles.test.js src/game/Input.test.js src/game/MobileControls.test.js src/game/Fullscreen.test.js src/game/PerformanceProfile.test.js src/game/ReplayBuffer.test.js src/network/LocalCarPredictor.test.js src/network/LanClient.test.js",
+    "test:js": "node --test src/shared/car-styles.test.js src/shared/boost-tuning.test.js src/shared/boost-styles.test.js src/game/Input.test.js src/game/MobileControls.test.js src/game/Fullscreen.test.js src/game/PerformanceProfile.test.js src/game/ReplayBuffer.test.js src/network/LocalCarPredictor.test.js src/network/LanClient.test.js",
     "test:go": "go test ./...",
     "smoke": "node scripts/smoke-websocket.mjs",
     "check": "npm run build && npm run test:js && npm run test:go"

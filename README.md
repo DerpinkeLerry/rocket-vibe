@@ -1,4 +1,12 @@
-# Rocket Vibe 1.10.17 – Circular Boost HUD
+# Rocket Vibe 1.10.18 – Mobile HUD Spacing
+
+## v1.10.18 – Mobile Quick Chat spacing
+
+- Mobile quick chat now uses a dedicated top-center lane under the scoreboard instead of the top-left boost-gauge area.
+- Portrait layouts move the feed below the circular boost gauge so messages remain readable.
+- Landscape layouts keep boost, score, network and quick-chat HUD regions separated.
+- Sketchfab/custom car models can be integrated as GLB/GLTF cosmetics while retaining the existing gameplay hitbox and physics.
+
 
 Browser-Spiel fuer bis zu vier Spieler mit Three.js-Rendering, lokaler Client-Prediction und einem autoritativen Go-Server. Frontend und Server werden auf Railway als **ein Service** betrieben. Dadurch verwendet der Browser dieselbe HTTPS-Domain fuer Seite und WebSocket (`/lan`); eine separate Backend-URL oder CORS-Konfiguration ist nicht erforderlich.
 
@@ -263,3 +271,15 @@ Nach jedem Tor startet serverweit eine Wiederholung aus der Ball-Cam-Perspektive
 Während der Wiederholung steht das Live-Match serverseitig still. Jeder Spieler, der beim Tor bereits in der Lobby war, bekommt einen `REPLAY ÜBERSPRINGEN`-Button. Der Server zählt jeden Skip genau einmal und beendet die Wiederholung sofort, sobald alle Replay-Teilnehmer geskippt haben. Verlässt jemand die Lobby, wird die notwendige Stimmenzahl entsprechend reduziert. Spieler, die erst während eines laufenden Replays beitreten, warten auf den nächsten Kickoff und blockieren die Abstimmung nicht.
 
 Nach Replay-Ende werden Ball, Autos und Boost-Pads auf Kickoff zurückgesetzt, der aktuelle Spielstand bleibt bestehen und der bekannte 3-Sekunden-Countdown startet. Falls während des Replays durch einen Join gerade ein neues faires 1v1/2v2 entstanden ist, greift weiterhin die bestehende Regel und der Match-Spielstand wird für dieses neue Duell zurückgesetzt.
+
+## FENNEC Ultra-High Model v1.10.19
+
+- Die bisherige sichtbare Auswahl `RAZOR` heisst im Startmenue jetzt `FENNEC`. Intern bleibt die ID `razor` fuer Netzwerk-/Server-Kompatibilitaet bestehen.
+- Nur `ULTRA HIGH` laedt und rendert das echte GLB-Modell. `NORMAL` und `ULTRA LOW` verwenden weiterhin automatisch die leichte prozedurale Fallback-Karosserie mit exakt derselben Gameplay-Hitbox.
+- Das GLB wird lazy geladen: Wer nicht Ultra High + FENNEC benutzt, laedt die ca. 8 MB grosse Modelldatei nicht herunter.
+- Geometrien und eingebettete Texturen werden zwischen mehreren FENNEC-Spielern geteilt; Materialien werden pro Auto geklont, damit Orange-/Blau-Lack sauber getrennt bleibt.
+- Physics, Gewicht, Hitbox, Booststaerke und Fahrwerte bleiben rein vom bestehenden Car-System bestimmt und werden vom GLB nicht beeinflusst.
+
+### 3D-Asset Attribution
+
+`Fennec - Rocket League Car` von **Jako (fairlight51)**, bereitgestellt ueber Sketchfab, Lizenz **CC BY 4.0**. Die hochgeladene GLB-Datei enthaelt die urspruenglichen Asset-Metadaten und die Lizenzangabe. Originalquelle laut GLB-Metadaten: Sketchfab-Modell `5b43b50b6eeb4a12a29671df3418f57a`.

@@ -2,9 +2,10 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { TransformBody } from '../network/TransformBody.js';
 import { CAR_TUNING } from '../shared/game-tuning.js';
-import { getCarStyle, normalizeCarStyle } from '../shared/car-styles.js';
+import { getCarStyle, normalizeCarStyle, shouldUsePremiumCarModel } from '../shared/car-styles.js';
 import { getBoostStyle, normalizeBoostStyle } from '../shared/boost-styles.js';
 import { BoostTrail } from './BoostTrail.js';
+import { createFennecPremiumVisual } from './PremiumCarModels.js';
 
 const VEC3_UP = new THREE.Vector3(0, 1, 0);
 const VEC3_FORWARD = new THREE.Vector3(0, 0, -1);
@@ -41,6 +42,11 @@ export class Car {
     this.lastVisualBoost = CAR_TUNING.boostCapacity;
     this.boostTrail = null;
     this.visualParts = null;
+    this.proceduralRoot = null;
+    this.premiumVisual = null;
+    this.premiumVisualLoad = null;
+    this.premiumWheelGroups = [];
+    this.premiumWheelMeshes = [];
     this.wheelPivots = [];
     this.maxGroundSpeed = CAR_TUNING.maxGroundSpeed;
     this.maxBoostSpeed = CAR_TUNING.maxBoostSpeed;
@@ -133,6 +139,9 @@ export class Car {
     }
     this.group = new THREE.Group();
     this.scene.add(this.group);
+    this.proceduralRoot = new THREE.Group();
+    this.proceduralRoot.name = 'ProceduralCarVisual';
+    this.group.add(this.proceduralRoot);
 
     const paint = this.ultraHigh
       ? new THREE.MeshPhysicalMaterial({
@@ -176,37 +185,37 @@ export class Car {
 
     const lower = new THREE.Mesh(new RoundedBoxGeometry(1.66, 0.62, 2.95, 5, 0.13), paint);
     lower.position.y = 0.02;
-    this.group.add(lower);
+    this.proceduralRoot.add(lower);
 
     const hood = new THREE.Mesh(new RoundedBoxGeometry(1.54, 0.28, 1.02, 4, 0.08), paint);
     hood.position.set(0, 0.38, -0.87);
     hood.rotation.x = -0.05;
-    this.group.add(hood);
+    this.proceduralRoot.add(hood);
 
     const cabin = new THREE.Mesh(new RoundedBoxGeometry(1.48, 0.58, 1.18, 5, 0.12), glass);
     cabin.position.set(0, 0.66, 0.19);
-    this.group.add(cabin);
+    this.proceduralRoot.add(cabin);
 
     const roof = new THREE.Mesh(new RoundedBoxGeometry(1.42, 0.12, 0.9, 3, 0.06), dark);
     roof.position.set(0, 0.98, 0.25);
-    this.group.add(roof);
+    this.proceduralRoot.add(roof);
 
     const frontBumper = new THREE.Mesh(new RoundedBoxGeometry(1.72, 0.22, 0.25, 3, 0.06), dark);
     frontBumper.position.set(0, -0.12, -1.5);
-    this.group.add(frontBumper);
+    this.proceduralRoot.add(frontBumper);
 
     const rearBumper = frontBumper.clone();
     rearBumper.position.z = 1.5;
-    this.group.add(rearBumper);
+    this.proceduralRoot.add(rearBumper);
 
     const spoilerBar = new THREE.Mesh(new RoundedBoxGeometry(1.5, 0.11, 0.23, 3, 0.05), dark);
     spoilerBar.position.set(0, 0.62, 1.45);
-    this.group.add(spoilerBar);
+    this.proceduralRoot.add(spoilerBar);
     const spoilerStruts = [];
     for (const x of [-0.55, 0.55]) {
       const strut = new THREE.Mesh(new RoundedBoxGeometry(0.09, 0.38, 0.09, 2, 0.03), dark);
       strut.position.set(x, 0.45, 1.39);
-      this.group.add(strut);
+      this.proceduralRoot.add(strut);
       spoilerStruts.push(strut);
     }
 
@@ -214,7 +223,7 @@ export class Car {
     for (const x of [-0.55, 0.55]) {
       const lamp = new THREE.Mesh(new RoundedBoxGeometry(0.32, 0.14, 0.06, 2, 0.03), lightMat);
       lamp.position.set(x, 0.13, -1.505);
-      this.group.add(lamp);
+      this.proceduralRoot.add(lamp);
       lamps.push(lamp);
     }
 
@@ -231,7 +240,7 @@ export class Car {
     for (const [x, y, z, isFront] of wheelPositions) {
       const pivot = new THREE.Group();
       pivot.position.set(x, y, z);
-      this.group.add(pivot);
+      this.proceduralRoot.add(pivot);
       this.wheelPivots.push(pivot);
 
       const tire = new THREE.Mesh(
@@ -311,6 +320,8 @@ export class Car {
     };
     this.applyCarStyleVisual();
     this.applyBoostStyleVisual();
+    this.updatePremiumVisualState();
+    this.ensurePremiumCarVisual();
 
     if (this.ultraHigh) {
       this.shadow = null;
@@ -475,11 +486,70 @@ export class Car {
     }
   }
 
+
+  wantsPremiumCarVisual() {
+    return shouldUsePremiumCarModel(this.carStyle?.id, this.ultraHigh);
+  }
+
+  getExhaustAnchor() {
+    if (this.premiumVisual?.visible && this.carStyle?.premiumModel === 'fennec') {
+      return { x: 0.34, z: 1.62 };
+    }
+    const style = this.carStyle || getCarStyle();
+    return { x: style.exhaustX, z: style.exhaustZ };
+  }
+
+  updatePremiumVisualState() {
+    const usePremium = Boolean(this.premiumVisual && this.wantsPremiumCarVisual());
+    if (this.premiumVisual) this.premiumVisual.visible = usePremium;
+    if (this.proceduralRoot) this.proceduralRoot.visible = !usePremium;
+
+    const anchor = this.getExhaustAnchor();
+    for (let index = 0; index < this.exhaust.length; index++) {
+      const side = index === 0 ? -1 : 1;
+      this.exhaust[index].position.set(side * anchor.x, -0.03, anchor.z);
+    }
+    if (this.boostLight) this.boostLight.position.set(0, 0.02, anchor.z - 0.04);
+  }
+
+  ensurePremiumCarVisual() {
+    if (!this.wantsPremiumCarVisual()) {
+      this.updatePremiumVisualState();
+      return;
+    }
+    if (this.premiumVisual || this.premiumVisualLoad) {
+      this.updatePremiumVisualState();
+      return;
+    }
+
+    // The GLB is requested only when this car is actually FENNEC and the
+    // renderer is running ULTRA HIGH. NORMAL/ULTRA LOW never download it.
+    this.premiumVisualLoad = createFennecPremiumVisual(this.paintColor)
+      .then(({ root, wheelGroups, wheelMeshes }) => {
+        this.premiumVisual = root;
+        this.premiumWheelGroups = wheelGroups;
+        this.premiumWheelMeshes = wheelMeshes;
+        root.visible = false;
+        this.group.add(root);
+        this.updatePremiumVisualState();
+        return root;
+      })
+      .catch((error) => {
+        console.warn('FENNEC 3D model could not be loaded; using the lightweight fallback.', error);
+        return null;
+      })
+      .finally(() => {
+        this.premiumVisualLoad = null;
+      });
+  }
+
   setCarStyle(value) {
     const normalized = normalizeCarStyle(value);
     if (this.carStyle?.id === normalized) return;
     this.carStyle = getCarStyle(normalized);
     this.applyCarStyleVisual();
+    this.updatePremiumVisualState();
+    this.ensurePremiumCarVisual();
   }
 
   getCarStyleId() {
@@ -981,6 +1051,11 @@ export class Car {
 
     this.wheelSpin += speedForward * dt / 0.36;
     for (const wheel of this.wheels) wheel.rotation.x = this.wheelSpin;
+    if (this.premiumVisual?.visible) {
+      for (const wheel of this.premiumWheelMeshes) {
+        wheel.rotation.y = (wheel.userData.baseRotationY || 0) + this.wheelSpin;
+      }
+    }
 
     this.boosting = boosting;
   }
@@ -999,8 +1074,8 @@ export class Car {
       }
     }
     if (this.boostTrail) {
-      const carStyle = this.carStyle || getCarStyle();
-      this.boostTrail.update(dt, active, carStyle.exhaustX, carStyle.exhaustZ);
+      const anchor = this.getExhaustAnchor();
+      this.boostTrail.update(dt, active, anchor.x, anchor.z);
     }
   }
 

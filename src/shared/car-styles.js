@@ -75,8 +75,9 @@ export const CAR_STYLES = Object.freeze([
   }),
   Object.freeze({
     id: 'razor',
-    name: 'RAZOR',
-    description: 'Lang & keilförmig',
+    name: 'FENNEC',
+    description: 'Ultra High: echtes 3D-Modell · sonst Lite-Fallback',
+    premiumModel: 'fennec',
     bodyScale: [0.98, 0.76, 1.12],
     bodyY: -0.04,
     hoodScale: [0.98, 0.62, 1.38],
@@ -108,3 +109,9 @@ export function getCarStyle(value) {
   const id = normalizeCarStyle(value);
   return CAR_STYLES.find((style) => style.id === id) || CAR_STYLES[0];
 }
+
+export function shouldUsePremiumCarModel(value, ultraHigh = false) {
+  if (!ultraHigh) return false;
+  return Boolean(getCarStyle(value)?.premiumModel);
+}
+
