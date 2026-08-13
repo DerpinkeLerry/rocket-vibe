@@ -1,4 +1,4 @@
-# Rocket Vibe 1.10.15 – Analog Mobile Controls
+# Rocket Vibe 1.10.16 – Responsive Analog Mobile Controls
 
 Browser-Spiel fuer bis zu vier Spieler mit Three.js-Rendering, lokaler Client-Prediction und einem autoritativen Go-Server. Frontend und Server werden auf Railway als **ein Service** betrieben. Dadurch verwendet der Browser dieselbe HTTPS-Domain fuer Seite und WebSocket (`/lan`); eine separate Backend-URL oder CORS-Konfiguration ist nicht erforderlich.
 
@@ -21,6 +21,12 @@ Die Serverphysik rechnet intern mit `float64`. Fuer das Netzwerk werden Position
 
 
 
+
+## Mobile Analog-Tuning v1.10.16
+
+Die analoge Smartphone-Steuerung reagiert jetzt deutlich direkter, ohne wieder auf digitale An/Aus-Eingaben zurueckzufallen. Der alte relative Axis-Lock konnte bei Vollgas einen absichtlich gesetzten mittleren Lenkeinschlag massiv reduzieren; jetzt werden nur noch sehr kleine Querbewegungen als Fingerzittern gefiltert. Etwa 50 % Stickweg liefern wieder ungefaehr 50 % Lenkeinschlag, waehrend voller Ausschlag unveraendert 100 % erreicht. Die Hochgeschwindigkeitsdaempfung reduziert den mittleren Lenkeinschlag nur noch minimal.
+
+Gas und Bremse verwenden eine progressivere Analogkurve: mittlerer Stickweg liefert bereits deutlich mehr als die Haelfte der moeglichen Eingabe, bleibt aber weiterhin stufenlos. Die interne Glattung reagiert ebenfalls ungefaehr doppelt so schnell, damit Einlenken, Beschleunigen und Bremsen nicht mehr verzoegert wirken. Desktop-WASD und die serverseitigen Fahrwerte bleiben unveraendert.
 
 ## Boost-Cosmetics
 

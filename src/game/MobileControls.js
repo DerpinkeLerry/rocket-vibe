@@ -1,6 +1,6 @@
 import { canRequestFullscreen, isFullscreenActive, toggleGameFullscreen } from './Fullscreen.js';
 
-const MICRO_DEAD_ZONE = 0.025;
+const MICRO_DEAD_ZONE = 0.018;
 const ANALOG_SOURCE = 'mobile-stick-analog';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -23,17 +23,21 @@ export function curveSteering(rawX, options = {}) {
   const magnitude = Math.abs(normalized);
   if (magnitude === 0) return 0;
 
-  // Normal driving deliberately has a long precision region: roughly 25 % of
-  // thumb travel is only ~9 % steering. Drift makes the curve more aggressive.
-  const exponent = drift ? 1.22 : 1.65;
+  // v1.10.16: keep fine control around center, but get to useful steering much
+  // sooner. The previous 1.65 exponent made normal driving feel like a very long
+  // steering rack: ~50 % thumb travel produced only ~30 % steering before the
+  // speed filter. This curve is close to linear while still preserving a soft
+  // center. Drift deliberately becomes even more eager.
+  const exponent = drift ? 0.72 : 0.96;
   let curved = magnitude ** exponent;
 
-  // At speed, soften only the center/mid stick. Full thumb travel always reaches
-  // 100 %, so emergency corrections and wall recoveries remain available.
+  // High-speed precision is now deliberately subtle. We only soften the middle
+  // of the stick by at most 6 %, and restore full authority well before the
+  // outer edge. Full travel always remains exactly 100 %.
   if (!drift) {
-    const speedBlend = clamp((speedKmh - 35) / 85, 0, 1);
-    const precisionScale = 1 - speedBlend * 0.28;
-    const outerRestore = smoothstep(0.72, 0.98, magnitude);
+    const speedBlend = clamp((speedKmh - 55) / 75, 0, 1);
+    const precisionScale = 1 - speedBlend * 0.06;
+    const outerRestore = smoothstep(0.58, 0.90, magnitude);
     curved *= precisionScale + (1 - precisionScale) * outerRestore;
   }
 
@@ -45,9 +49,10 @@ export function curveThrottle(rawY) {
   const normalized = applyMicroDeadZone(-rawY);
   const magnitude = Math.abs(normalized);
   if (magnitude === 0) return 0;
-  // More linear than steering: throttle remains controllable but reaches useful
-  // acceleration without needing the full physical travel of the large stick.
-  return Math.sign(normalized) * (magnitude ** 1.18);
+  // A mildly progressive curve gives useful acceleration/braking early in the
+  // thumb travel while remaining truly analog. Half-stick is intentionally more
+  // than half command now, so mobile no longer feels underpowered.
+  return Math.sign(normalized) * (magnitude ** 0.68);
 }
 
 export function resolveAnalogStick(x, y, options = {}) {
@@ -56,11 +61,16 @@ export function resolveAnalogStick(x, y, options = {}) {
   const absX = Math.abs(rawX);
   const absY = Math.abs(rawY);
 
-  // Soft axis lock filters diagonal finger wobble without destroying deliberate
-  // combined throttle + steering. A clearly dominant axis attenuates only the
-  // tiny accidental component instead of snapping it to zero.
-  if (absX > 0.14 && absX > absY * 2.15) rawY *= 0.24;
-  else if (absY > 0.14 && absY > absX * 2.15) rawX *= 0.30;
+  // Only suppress *tiny* cross-axis finger wobble. The old relative axis lock
+  // treated full throttle + moderate steering as "mostly throttle" and could
+  // crush 30 % steering down to ~9 %. Deliberate combined steering/throttle is
+  // now left untouched. The attenuation below is smooth and disappears by 12 %.
+  if (absY > 0.24 && absX < 0.12) {
+    rawX *= smoothstep(0.02, 0.12, absX);
+  }
+  if (absX > 0.24 && absY < 0.12) {
+    rawY *= smoothstep(0.02, 0.12, absY);
+  }
 
   return {
     throttle: curveThrottle(rawY),
@@ -272,8 +282,8 @@ export class MobileControls {
 
       const steerReturning = Math.abs(this.targetSteer) < Math.abs(this.currentSteer);
       const throttleReturning = Math.abs(this.targetThrottle) < Math.abs(this.currentThrottle);
-      this.currentSteer = damp(this.currentSteer, this.targetSteer, steerReturning ? 24 : 16, dt);
-      this.currentThrottle = damp(this.currentThrottle, this.targetThrottle, throttleReturning ? 24 : 18, dt);
+      this.currentSteer = damp(this.currentSteer, this.targetSteer, steerReturning ? 50 : 42, dt);
+      this.currentThrottle = damp(this.currentThrottle, this.targetThrottle, throttleReturning ? 48 : 40, dt);
 
       if (Math.abs(this.currentSteer) < 0.002 && Math.abs(this.targetSteer) < 0.002) this.currentSteer = 0;
       if (Math.abs(this.currentThrottle) < 0.002 && Math.abs(this.targetThrottle) < 0.002) this.currentThrottle = 0;
