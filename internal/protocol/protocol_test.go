@@ -44,8 +44,36 @@ func TestInputPacketDecodeAndSanitize(t *testing.T) {
 	if !ok {
 		t.Fatal("packet was rejected")
 	}
-	if input.Sequence != 9 || input.Mask != 0xff || input.Edges != 0x07 || input.Flags != 0x01 {
+	if input.Sequence != 9 || input.Mask != 0xff || input.Edges != 0x07 || input.Flags != 0x03 {
 		t.Fatalf("unexpected input: %+v", input)
+	}
+}
+
+func TestAnalogInputPacketDecodesSignedAxes(t *testing.T) {
+	packet := []byte{MessageInput, 21, 0, 0, 0, game.InputW | game.InputA, 0, game.InputFlagAnalog | game.InputFlagDrift, 64, 160}
+	input, ok := DecodeInput(packet)
+	if !ok {
+		t.Fatal("analog packet was rejected")
+	}
+	if input.Flags&game.InputFlagAnalog == 0 {
+		t.Fatalf("analog flag missing: %+v", input)
+	}
+	if math.Abs(input.Throttle-64.0/127.0) > 1e-9 {
+		t.Fatalf("throttle decoded as %f", input.Throttle)
+	}
+	if math.Abs(input.Steer-(-96.0/127.0)) > 1e-9 {
+		t.Fatalf("steer decoded as %f", input.Steer)
+	}
+}
+
+func TestEightByteDigitalInputIgnoresAnalogAxes(t *testing.T) {
+	packet := []byte{MessageInput, 5, 0, 0, 0, game.InputA, 0, game.InputFlagDrift}
+	input, ok := DecodeInput(packet)
+	if !ok {
+		t.Fatal("eight-byte packet was rejected")
+	}
+	if input.Throttle != 0 || input.Steer != 0 || input.Flags != game.InputFlagDrift {
+		t.Fatalf("legacy digital input changed meaning: %+v", input)
 	}
 }
 

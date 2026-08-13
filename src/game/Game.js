@@ -16,7 +16,7 @@ import { ARENA_TUNING } from '../shared/arena-tuning.js';
 import { DEFAULT_CAR_STYLE, normalizeCarStyle } from '../shared/car-styles.js';
 import { DEFAULT_BOOST_STYLE, normalizeBoostStyle } from '../shared/boost-styles.js';
 
-const CLIENT_INPUT_HEARTBEAT_HZ = 15;
+const CLIENT_INPUT_HEARTBEAT_HZ = 30;
 
 const PLAYER_CONFIGS = [
   { spawn: { x: -13, y: 0.52, z: 44 }, spawnYaw: 0, color: 0xf45a13, team: 'orange' },
@@ -589,6 +589,16 @@ export class Game {
         steps += 1;
       }
       if (steps === 4 && this.accumulator > this.fixedDt * 2) this.accumulator = this.fixedDt;
+    }
+
+    // Feed current speed back into the mobile response curve. The analog stick
+    // keeps full steering at the edge, but its center becomes more precise as
+    // the car approaches boost speeds. This is visual/input shaping only; the
+    // exact shaped value is what server and predictor both receive.
+    if (this.mobileControls?.enabled && this.car?.body?.linvel) {
+      const mobileVelocity = this.car.body.linvel();
+      const mobileSpeedKmh = Math.hypot(mobileVelocity.x, mobileVelocity.y, mobileVelocity.z) * 3.6;
+      this.mobileControls.setVehicleSpeed?.(mobileSpeedKmh);
     }
 
     if (this.lastRenderTime === 0 || now - this.lastRenderTime >= this.renderInterval - 0.001) {

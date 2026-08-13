@@ -22,6 +22,8 @@ export class LocalCarPredictor {
     this.mask = 0;
     this.edges = 0;
     this.flags = 0;
+    this.analogThrottle = 0;
+    this.analogSteer = 0;
     this.grounded = false;
     this.jumpCount = 0;
     this.jumpHoldTime = 0;
@@ -60,7 +62,14 @@ export class LocalCarPredictor {
   setInput(packet) {
     this.mask = (Number(packet?.mask) || 0) & 0xff;
     this.edges |= (Number(packet?.edges) || 0) & 0x07;
-    this.flags = (Number(packet?.flags) || 0) & 0x01;
+    this.flags = (Number(packet?.flags) || 0) & 0x03;
+    if (this.flags & INPUT_FLAGS.ANALOG) {
+      this.analogThrottle = clamp(Number(packet?.throttle) || 0, -1, 1);
+      this.analogSteer = clamp(Number(packet?.steer) || 0, -1, 1);
+    } else {
+      this.analogThrottle = 0;
+      this.analogSteer = 0;
+    }
   }
 
   resetForKickoff() {
@@ -68,6 +77,8 @@ export class LocalCarPredictor {
     this.mask = 0;
     this.edges = 0;
     this.flags = 0;
+    this.analogThrottle = 0;
+    this.analogSteer = 0;
     this.grounded = false;
     this.jumpCount = 0;
     this.jumpHoldTime = 0;
@@ -140,8 +151,12 @@ export class LocalCarPredictor {
     this.right.copy(VEC_RIGHT).applyQuaternion(this.q).normalize();
     this.up.copy(VEC_UP).applyQuaternion(this.q).normalize();
 
-    const forwardInput = (this.isDown(INPUT_BITS.W) ? 1 : 0) - (this.isDown(INPUT_BITS.S) ? 1 : 0);
-    const sideInput = (this.isDown(INPUT_BITS.A) ? 1 : 0) - (this.isDown(INPUT_BITS.D) ? 1 : 0);
+    let forwardInput = (this.isDown(INPUT_BITS.W) ? 1 : 0) - (this.isDown(INPUT_BITS.S) ? 1 : 0);
+    let sideInput = (this.isDown(INPUT_BITS.A) ? 1 : 0) - (this.isDown(INPUT_BITS.D) ? 1 : 0);
+    if (this.flags & INPUT_FLAGS.ANALOG) {
+      forwardInput = this.analogThrottle;
+      sideInput = this.analogSteer;
+    }
     const rollInput = (this.isDown(INPUT_BITS.Q) ? 1 : 0) - (this.isDown(INPUT_BITS.E) ? 1 : 0);
     const wantsBoost = this.isDown(INPUT_BITS.BOOST);
     const drifting = Boolean(this.flags & INPUT_FLAGS.DRIFT);
@@ -273,15 +288,15 @@ export class LocalCarPredictor {
     let nextForward = speedForward;
     if (opposing) {
       const brakeTarget = throttle < 0 ? reverseTarget : CAR_TUNING.maxGroundSpeed;
-      nextForward = moveTowards(speedForward, brakeTarget, CAR_TUNING.brakeAcceleration * dt);
+      nextForward = moveTowards(speedForward, brakeTarget, CAR_TUNING.brakeAcceleration * Math.abs(throttle) * dt);
     } else if (throttle > 0) {
       // Normal throttle can accelerate to 70 km/h, but it never drags a
       // previously boosted car back down from the 70-120 km/h momentum band.
       if (speedForward < CAR_TUNING.maxGroundSpeed) {
-        nextForward = moveTowards(speedForward, CAR_TUNING.maxGroundSpeed, CAR_TUNING.driveAcceleration * dt);
+        nextForward = moveTowards(speedForward, CAR_TUNING.maxGroundSpeed, CAR_TUNING.driveAcceleration * Math.abs(throttle) * dt);
       }
     } else if (throttle < 0) {
-      nextForward = moveTowards(speedForward, reverseTarget, CAR_TUNING.reverseAcceleration * dt);
+      nextForward = moveTowards(speedForward, reverseTarget, CAR_TUNING.reverseAcceleration * Math.abs(throttle) * dt);
     } else if (speedForward <= CAR_TUNING.maxGroundSpeed + 0.01) {
       // Below normal top speed the familiar coast slowdown remains. Above it,
       // boosted momentum is retained until braking/collision actually slows us.

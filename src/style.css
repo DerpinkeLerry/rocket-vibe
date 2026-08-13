@@ -637,8 +637,8 @@ html, body, #app {
   position: absolute;
   left: calc(env(safe-area-inset-left, 0px) + 6px);
   bottom: calc(env(safe-area-inset-bottom, 0px) + 5px);
-  width: 220px;
-  height: 220px;
+  width: 290px;
+  height: 290px;
   pointer-events: none;
 }
 
@@ -911,8 +911,8 @@ html, body, #app {
   .mobile-controls__left {
     left: calc(env(safe-area-inset-left, 0px) + 4px);
     bottom: calc(env(safe-area-inset-bottom, 0px) + 5px);
-    width: 180px;
-    height: 180px;
+    width: 230px;
+    height: 230px;
   }
 
   .mobile-stick__knob {
@@ -968,8 +968,8 @@ html, body, #app {
 
 @media (orientation: landscape) and (max-height: 430px) and (any-pointer: coarse) {
   .mobile-controls__left {
-    width: 205px;
-    height: 205px;
+    width: 245px;
+    height: 245px;
   }
 
   .mobile-controls__right {

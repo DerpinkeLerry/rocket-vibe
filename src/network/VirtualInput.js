@@ -1,3 +1,5 @@
+import { INPUT_FLAGS } from '../shared/game-tuning.js';
+
 const CODE_BITS = new Map([
   ['KeyW', 1 << 0], ['ArrowUp', 1 << 0],
   ['KeyS', 1 << 1], ['ArrowDown', 1 << 1],
@@ -17,12 +19,16 @@ export class VirtualInput {
   constructor() {
     this.mask = 0;
     this.flags = 0;
+    this.throttle = 0;
+    this.steer = 0;
     this.pressed = new Set();
   }
 
   applyPacket(packet) {
     this.mask = Number(packet?.mask) || 0;
     this.flags = Number(packet?.flags) || 0;
+    this.throttle = Math.max(-1, Math.min(1, Number(packet?.throttle) || 0));
+    this.steer = Math.max(-1, Math.min(1, Number(packet?.steer) || 0));
     const edges = Number(packet?.edges) || 0;
     for (let i = 0; i < EDGE_CODES.length; i++) {
       if (edges & (1 << i)) this.pressed.add(EDGE_CODES[i]);
@@ -38,6 +44,17 @@ export class VirtualInput {
     });
   }
 
+  getDriveAxes() {
+    if (this.flags & INPUT_FLAGS.ANALOG) {
+      return { throttle: this.throttle, steer: this.steer, analog: true };
+    }
+    return {
+      throttle: (this.isDown('KeyW', 'ArrowUp') ? 1 : 0) - (this.isDown('KeyS', 'ArrowDown') ? 1 : 0),
+      steer: (this.isDown('KeyA', 'ArrowLeft') ? 1 : 0) - (this.isDown('KeyD', 'ArrowRight') ? 1 : 0),
+      analog: false
+    };
+  }
+
   consumePressed(code) {
     if (!this.pressed.has(code)) return false;
     this.pressed.delete(code);
@@ -47,6 +64,8 @@ export class VirtualInput {
   clear() {
     this.mask = 0;
     this.flags = 0;
+    this.throttle = 0;
+    this.steer = 0;
     this.pressed.clear();
   }
 }

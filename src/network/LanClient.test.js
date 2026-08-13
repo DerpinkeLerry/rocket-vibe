@@ -188,3 +188,28 @@ test('quick chat limit starts a two second client cooldown after the third messa
   assert.ok(client.quickChatCooldownUntil >= before + 1900);
   assert.ok(client.quickChatCooldownRemaining() > 0);
 });
+
+test('client packs analog throttle and steering into the extended 10-byte input packet', () => {
+  const previousWebSocket = globalThis.WebSocket;
+  globalThis.WebSocket = { OPEN: 1 };
+  try {
+    const client = new LanClient('Analog Pilot');
+    let sent = null;
+    client.connected = true;
+    client.socket = { readyState: 1, send(value) { sent = value; } };
+
+    assert.equal(client.sendInput({ mask: 0b0101, edges: 1, flags: 0b11, throttle: 0.5, steer: -0.25 }), true);
+    assert.ok(sent instanceof ArrayBuffer);
+    assert.equal(sent.byteLength, 10);
+    const view = new DataView(sent);
+    assert.equal(view.getUint8(0), 1);
+    assert.equal(view.getUint8(5), 0b0101);
+    assert.equal(view.getUint8(6), 1);
+    assert.equal(view.getUint8(7), 0b11);
+    assert.equal(view.getInt8(8), 64);
+    assert.equal(view.getInt8(9), -32);
+  } finally {
+    if (previousWebSocket === undefined) delete globalThis.WebSocket;
+    else globalThis.WebSocket = previousWebSocket;
+  }
+});

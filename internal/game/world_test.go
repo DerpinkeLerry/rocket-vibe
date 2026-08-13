@@ -1112,3 +1112,73 @@ func TestKickoffResetAfterReplayPreservesScore(t *testing.T) {
 		t.Fatalf("ball was not reset for kickoff: %+v", world.Ball.Position)
 	}
 }
+
+func TestAnalogInputProvidesProportionalThrottleAndSteering(t *testing.T) {
+	config := DefaultConfig()
+	dt := 1 / float64(config.PhysicsHz)
+
+	runThrottle := func(amount float64) float64 {
+		world := NewWorld(config)
+		world.SetConnected(0, true)
+		if !world.SetInput(0, Input{Sequence: 1, Flags: InputFlagAnalog, Throttle: amount}) {
+			t.Fatal("analog throttle was not accepted")
+		}
+		for range config.PhysicsHz / 2 {
+			world.Step(dt)
+		}
+		return world.Cars[0].Velocity.Length()
+	}
+
+	quarter := runThrottle(0.25)
+	full := runThrottle(1)
+	if quarter <= 0.5 || full <= quarter*2.2 {
+		t.Fatalf("analog throttle is not proportional enough: quarter=%.3f full=%.3f", quarter, full)
+	}
+
+	runSteer := func(amount float64) float64 {
+		world := NewWorld(config)
+		world.SetConnected(0, true)
+		car := &world.Cars[0]
+		car.Velocity = Vec3{Z: -12}
+		car.Grounded = true
+		car.GroundNormal = Vec3{Y: 1}
+		if !world.SetInput(0, Input{Sequence: 1, Flags: InputFlagAnalog, Steer: amount}) {
+			t.Fatal("analog steering was not accepted")
+		}
+		for range 8 {
+			world.Step(dt)
+		}
+		return math.Abs(world.Cars[0].AngularVelocity.Y)
+	}
+
+	softTurn := runSteer(0.25)
+	fullTurn := runSteer(1)
+	if softTurn <= 0.001 || fullTurn <= softTurn*2.2 {
+		t.Fatalf("analog steering is not proportional enough: soft=%.4f full=%.4f", softTurn, fullTurn)
+	}
+}
+
+func TestAnalogAirInputUsesPartialPitchInsteadOfDigitalSnap(t *testing.T) {
+	config := DefaultConfig()
+	dt := 1 / float64(config.PhysicsHz)
+	run := func(amount float64) float64 {
+		world := NewWorld(config)
+		world.SetConnected(0, true)
+		car := &world.Cars[0]
+		car.Position.Y = 8
+		car.GroundLockout = 1
+		car.Grounded = false
+		if !world.SetInput(0, Input{Sequence: 1, Flags: InputFlagAnalog, Throttle: amount}) {
+			t.Fatal("analog air input was not accepted")
+		}
+		for range 10 {
+			world.Step(dt)
+		}
+		return math.Abs(world.Cars[0].AngularVelocity.X)
+	}
+	soft := run(0.25)
+	full := run(1)
+	if soft <= 0 || full <= soft*2.2 {
+		t.Fatalf("analog air pitch snapped like digital input: soft=%.4f full=%.4f", soft, full)
+	}
+}

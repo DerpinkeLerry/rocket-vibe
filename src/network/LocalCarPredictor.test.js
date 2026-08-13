@@ -273,3 +273,31 @@ test('prediction drift turns harder while retaining lateral slip', () => {
   assert.ok(drift.yawTurn > normal.yawTurn + 0.2, JSON.stringify({ normal, drift }));
   assert.ok(drift.slip > normal.slip + 0.1, JSON.stringify({ normal, drift }));
 });
+
+test('prediction consumes continuous analog steering and throttle instead of snapping to digital', () => {
+  function run({ throttle, steer }) {
+    const { body, predictor } = makePredictor();
+    predictor.syncGrounded(true);
+    predictor.setInput({
+      mask: 0,
+      edges: 0,
+      flags: INPUT_FLAGS.ANALOG,
+      throttle,
+      steer
+    });
+    for (let index = 0; index < 45; index++) predictor.step(1 / 120);
+    const q = body.rotation();
+    return {
+      speed: Math.hypot(body.linvel().x, body.linvel().z),
+      yaw: Math.abs(2 * Math.atan2(q.y, q.w))
+    };
+  }
+
+  const softThrottle = run({ throttle: 0.25, steer: 0 });
+  const fullThrottle = run({ throttle: 1, steer: 0 });
+  assert.ok(fullThrottle.speed > softThrottle.speed * 2.2, JSON.stringify({ softThrottle, fullThrottle }));
+
+  const softSteer = run({ throttle: 1, steer: 0.25 });
+  const fullSteer = run({ throttle: 1, steer: 1 });
+  assert.ok(fullSteer.yaw > softSteer.yaw * 1.8, JSON.stringify({ softSteer, fullSteer }));
+});

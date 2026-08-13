@@ -1,4 +1,4 @@
-# Rocket Vibe 1.10.14 – Boost Cosmetics
+# Rocket Vibe 1.10.15 – Analog Mobile Controls
 
 Browser-Spiel fuer bis zu vier Spieler mit Three.js-Rendering, lokaler Client-Prediction und einem autoritativen Go-Server. Frontend und Server werden auf Railway als **ein Service** betrieben. Dadurch verwendet der Browser dieselbe HTTPS-Domain fuer Seite und WebSocket (`/lan`); eine separate Backend-URL oder CORS-Konfiguration ist nicht erforderlich.
 
@@ -183,8 +183,11 @@ Die Tests decken Fahrbewegung, 70/120-km/h-Speed-Caps und erhaltenes Boost-Momen
 ### Mobile Bedienung
 - Browser-Zoom, Doppeltipp-Zoom und Pinch-Gesten sind während des Spiels deaktiviert.
 - UI-Texte und Touch-Buttons sind nicht auswählbar; das Namensfeld bleibt normal editierbar.
-- Der linke Joystick besitzt eine große unsichtbare Touch-Fläche und nur einen kleinen transparenten Thumb-Punkt.
-- Die seitliche Lenk-Deadzone ist größer als die Gas/Brems-Deadzone für feinere Smartphone-Lenkung.
+- Der linke Joystick besitzt eine sehr große unsichtbare Touch-Fläche und nur einen kleinen transparenten Thumb-Punkt. Der Nullpunkt ist floating: Wo der Daumen aufsetzt, beginnt die neutrale Position.
+- Der Fahrstick ist vollständig analog: keine harte Lenk-Schwelle mehr, sondern kontinuierliche Werte von -1 bis +1 für Lenkung und Gas/Bremse.
+- Die Stickmitte besitzt nur eine winzige Micro-Deadzone. Danach steigt die Lenkung kontinuierlich an; bei hohem Tempo wird nur der mittlere Bereich weicher, voller Ausschlag bleibt 100 %.
+- Ein weicher Axis-Lock filtert kleine unbeabsichtigte Querbewegungen des Daumens. Drift macht dieselbe Stickbewegung absichtlich aggressiver.
+- Die Analogwerte werden zeitlich geglaettet und online mit 30 Hz gesendet; Server und Client-Prediction verwenden exakt dieselben `throttle`-/`steer`-Werte.
 
 ## Visual Palette v1.10.1
 

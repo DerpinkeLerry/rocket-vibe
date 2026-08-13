@@ -22,6 +22,8 @@ type InputPacket struct {
 	Mask     uint8
 	Edges    uint8
 	Flags    uint8
+	Throttle float64
+	Steer    float64
 }
 
 func DecodeInput(data []byte) (InputPacket, bool) {
@@ -34,9 +36,28 @@ func DecodeInput(data []byte) (InputPacket, bool) {
 		Edges:    data[6] & 0x07,
 	}
 	if len(data) >= 8 {
-		packet.Flags = data[7] & 0x01
+		packet.Flags = data[7] & (game.InputFlagDrift | game.InputFlagAnalog)
+	}
+	// v1.10.15 analog extension. Signed bytes preserve enough precision for a
+	// phone thumbstick while keeping held-input traffic tiny. Legacy 7/8-byte
+	// packets simply remain digital.
+	if len(data) >= 10 && packet.Flags&game.InputFlagAnalog != 0 {
+		packet.Throttle = decodeAxis(data[8])
+		packet.Steer = decodeAxis(data[9])
 	}
 	return packet, true
+}
+
+func decodeAxis(value byte) float64 {
+	signed := int8(value)
+	axis := float64(signed) / 127.0
+	if axis < -1 {
+		return -1
+	}
+	if axis > 1 {
+		return 1
+	}
+	return axis
 }
 
 func EncodeState(snapshot game.Snapshot) []byte {

@@ -657,8 +657,12 @@ export class Car {
     // Context-sensitive Rocket-League-style controls:
     // GROUND: W/S = throttle/reverse, A/D = steering.
     // AIR:    W/S = pitch, A/D = yaw, Q/E = roll.
-    const forwardInput = (this.input.isDown('KeyW', 'ArrowUp') ? 1 : 0) - (this.input.isDown('KeyS', 'ArrowDown') ? 1 : 0);
-    const sideInput = (this.input.isDown('KeyA', 'ArrowLeft') ? 1 : 0) - (this.input.isDown('KeyD', 'ArrowRight') ? 1 : 0);
+    const driveAxes = this.input.getDriveAxes?.() ?? {
+      throttle: (this.input.isDown('KeyW', 'ArrowUp') ? 1 : 0) - (this.input.isDown('KeyS', 'ArrowDown') ? 1 : 0),
+      steer: (this.input.isDown('KeyA', 'ArrowLeft') ? 1 : 0) - (this.input.isDown('KeyD', 'ArrowRight') ? 1 : 0)
+    };
+    const forwardInput = driveAxes.throttle;
+    const sideInput = driveAxes.steer;
     const rollInput = (this.input.isDown('KeyQ') ? 1 : 0) - (this.input.isDown('KeyE') ? 1 : 0);
     const wantsBoost = this.input.isDown('ShiftLeft', 'ShiftRight');
     const drifting = this.input.isDown('ControlLeft', 'ControlRight');
@@ -769,15 +773,15 @@ export class Car {
     let nextForward = speedForward;
     if (opposing) {
       const brakeTarget = throttle < 0 ? reverseTarget : CAR_TUNING.maxGroundSpeed;
-      nextForward = moveTowards(speedForward, brakeTarget, CAR_TUNING.brakeAcceleration * dt);
+      nextForward = moveTowards(speedForward, brakeTarget, CAR_TUNING.brakeAcceleration * Math.abs(throttle) * dt);
     } else if (throttle > 0) {
       // Normal throttle can accelerate to 70 km/h, but it never drags a
       // previously boosted car back down from the 70-120 km/h momentum band.
       if (speedForward < CAR_TUNING.maxGroundSpeed) {
-        nextForward = moveTowards(speedForward, CAR_TUNING.maxGroundSpeed, CAR_TUNING.driveAcceleration * dt);
+        nextForward = moveTowards(speedForward, CAR_TUNING.maxGroundSpeed, CAR_TUNING.driveAcceleration * Math.abs(throttle) * dt);
       }
     } else if (throttle < 0) {
-      nextForward = moveTowards(speedForward, reverseTarget, CAR_TUNING.reverseAcceleration * dt);
+      nextForward = moveTowards(speedForward, reverseTarget, CAR_TUNING.reverseAcceleration * Math.abs(throttle) * dt);
     } else if (speedForward <= CAR_TUNING.maxGroundSpeed + 0.01) {
       // Below normal top speed the familiar coast slowdown remains. Above it,
       // boosted momentum is retained until braking/collision actually slows us.
@@ -806,7 +810,7 @@ export class Car {
     const ang = this.body.angvel();
     const spin = ang.x * this.groundNormal.x + ang.y * this.groundNormal.y + ang.z * this.groundNormal.z;
     const tangentDamping = Math.exp(-CAR_TUNING.angularGroundDamping * dt);
-    const yaw = damp(spin, targetYaw, CAR_TUNING.steerResponse, dt);
+    const yaw = damp(spin, targetYaw, steerResponse, dt);
     this.body.setAngvel({
       x: (ang.x - this.groundNormal.x * spin) * tangentDamping + this.groundNormal.x * yaw,
       y: (ang.y - this.groundNormal.y * spin) * tangentDamping + this.groundNormal.y * yaw,

@@ -14,7 +14,8 @@ const (
 	InputBoost uint8 = 1 << 6
 	InputJump  uint8 = 1 << 7
 
-	InputFlagDrift uint8 = 1 << 0
+	InputFlagDrift  uint8 = 1 << 0
+	InputFlagAnalog uint8 = 1 << 1
 
 	EdgeJump      uint8 = 1 << 0
 	EdgeReset     uint8 = 1 << 1
@@ -31,6 +32,8 @@ type Input struct {
 	Mask     uint8
 	Edges    uint8
 	Flags    uint8
+	Throttle float64
+	Steer    float64
 }
 
 type Body struct {
@@ -227,6 +230,8 @@ func (world *World) ClearInputs() {
 		car.Input.Mask = 0
 		car.Input.Edges = 0
 		car.Input.Flags = 0
+		car.Input.Throttle = 0
+		car.Input.Steer = 0
 		car.LastInputTick = world.Tick
 	}
 }
@@ -241,7 +246,19 @@ func (world *World) SetInput(slot int, input Input) bool {
 	}
 	input.Mask &= 0xff
 	input.Edges &= 0x07
-	input.Flags &= InputFlagDrift
+	input.Flags &= InputFlagDrift | InputFlagAnalog
+	if !isFinite(input.Throttle) {
+		input.Throttle = 0
+	}
+	if !isFinite(input.Steer) {
+		input.Steer = 0
+	}
+	input.Throttle = clamp(input.Throttle, -1, 1)
+	input.Steer = clamp(input.Steer, -1, 1)
+	if input.Flags&InputFlagAnalog == 0 {
+		input.Throttle = 0
+		input.Steer = 0
+	}
 	input.Edges |= car.Input.Edges
 	car.Input = input
 	car.LastInputTick = world.Tick
@@ -331,9 +348,13 @@ func (world *World) stepCar(car *Car, dt float64) {
 	car.GroundLockout = math.Max(0, car.GroundLockout-dt)
 	inputMask := car.Input.Mask
 	inputFlags := car.Input.Flags
+	analogThrottle := car.Input.Throttle
+	analogSteer := car.Input.Steer
 	if world.Tick-car.LastInputTick > uint64(world.Config.PhysicsHz) {
 		inputMask = 0
 		inputFlags = 0
+		analogThrottle = 0
+		analogSteer = 0
 	}
 
 	config := world.Config.Car
@@ -349,6 +370,10 @@ func (world *World) stepCar(car *Car, dt float64) {
 
 	forwardInput := boolValue(inputMask&InputW != 0) - boolValue(inputMask&InputS != 0)
 	steerInput := boolValue(inputMask&InputA != 0) - boolValue(inputMask&InputD != 0)
+	if inputFlags&InputFlagAnalog != 0 {
+		forwardInput = analogThrottle
+		steerInput = analogSteer
+	}
 	rollInput := boolValue(inputMask&InputQ != 0) - boolValue(inputMask&InputE != 0)
 	boosting := inputMask&InputBoost != 0 && car.Boost > 0.001
 	drifting := inputFlags&InputFlagDrift != 0
@@ -540,15 +565,15 @@ func (world *World) applyGroundDrive(car *Car, forward, right Vec3, throttle, st
 		if throttle < 0 {
 			brakeTarget = reverseTarget
 		}
-		nextForward = moveTowards(forwardSpeed, brakeTarget, config.BrakeAcceleration*dt)
+		nextForward = moveTowards(forwardSpeed, brakeTarget, config.BrakeAcceleration*math.Abs(throttle)*dt)
 	} else if throttle > 0 {
 		// Normal throttle accelerates to 70 km/h but intentionally preserves
 		// any speed already earned with boost up to the 120 km/h hard cap.
 		if forwardSpeed < config.MaxGroundSpeed {
-			nextForward = moveTowards(forwardSpeed, config.MaxGroundSpeed, config.DriveAcceleration*dt)
+			nextForward = moveTowards(forwardSpeed, config.MaxGroundSpeed, config.DriveAcceleration*math.Abs(throttle)*dt)
 		}
 	} else if throttle < 0 {
-		nextForward = moveTowards(forwardSpeed, reverseTarget, config.ReverseAcceleration*dt)
+		nextForward = moveTowards(forwardSpeed, reverseTarget, config.ReverseAcceleration*math.Abs(throttle)*dt)
 	} else if forwardSpeed <= config.MaxGroundSpeed+0.01 {
 		// Ordinary coasting still slows the car below cruise speed. Once boost
 		// has pushed it past cruise speed, momentum stays until something else

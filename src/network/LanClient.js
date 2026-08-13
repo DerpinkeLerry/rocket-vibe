@@ -393,13 +393,19 @@ export class LanClient {
   sendInput(input) {
     if (!this.connected || this.socket?.readyState !== WebSocket.OPEN) return false;
     const seq = ++this.inputSeq;
-    const buffer = new ArrayBuffer(8);
+    // Two signed axis bytes extend the old packet without changing its header.
+    // Legacy servers can still read the first 8 bytes; v1.10.15+ consumes the
+    // exact analog throttle/steer values when INPUT_FLAGS.ANALOG is set.
+    const buffer = new ArrayBuffer(10);
     const view = new DataView(buffer);
+    const clampAxis = (value) => Math.max(-1, Math.min(1, Number(value) || 0));
     view.setUint8(0, MSG_INPUT);
     view.setUint32(1, seq, true);
     view.setUint8(5, (Number(input?.mask) || 0) & 0xff);
     view.setUint8(6, (Number(input?.edges) || 0) & 0x07);
-    view.setUint8(7, (Number(input?.flags) || 0) & 0x01);
+    view.setUint8(7, (Number(input?.flags) || 0) & 0x03);
+    view.setInt8(8, Math.round(clampAxis(input?.throttle) * 127));
+    view.setInt8(9, Math.round(clampAxis(input?.steer) * 127));
     this.socket.send(buffer);
     return true;
   }

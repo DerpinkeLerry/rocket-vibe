@@ -1,16 +1,82 @@
 import { canRequestFullscreen, isFullscreenActive, toggleGameFullscreen } from './Fullscreen.js';
 
-const STICK_CODES = ['KeyW', 'KeyS', 'KeyA', 'KeyD'];
+const MICRO_DEAD_ZONE = 0.025;
+const ANALOG_SOURCE = 'mobile-stick-analog';
 
-export function resolveStickCodes(x, y, throttleDeadZone = 0.22, steeringDeadZone = 0.34) {
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+const damp = (current, target, lambda, dt) => current + (target - current) * (1 - Math.exp(-lambda * dt));
+const smoothstep = (a, b, value) => {
+  const t = clamp((value - a) / Math.max(1e-6, b - a), 0, 1);
+  return t * t * (3 - 2 * t);
+};
+
+export function applyMicroDeadZone(value, deadZone = MICRO_DEAD_ZONE) {
+  const magnitude = Math.abs(Number(value) || 0);
+  if (magnitude <= deadZone) return 0;
+  return Math.sign(value) * clamp((magnitude - deadZone) / (1 - deadZone), 0, 1);
+}
+
+export function curveSteering(rawX, options = {}) {
+  const drift = Boolean(options.drift);
+  const speedKmh = Math.max(0, Number(options.speedKmh) || 0);
+  const normalized = applyMicroDeadZone(rawX);
+  const magnitude = Math.abs(normalized);
+  if (magnitude === 0) return 0;
+
+  // Normal driving deliberately has a long precision region: roughly 25 % of
+  // thumb travel is only ~9 % steering. Drift makes the curve more aggressive.
+  const exponent = drift ? 1.22 : 1.65;
+  let curved = magnitude ** exponent;
+
+  // At speed, soften only the center/mid stick. Full thumb travel always reaches
+  // 100 %, so emergency corrections and wall recoveries remain available.
+  if (!drift) {
+    const speedBlend = clamp((speedKmh - 35) / 85, 0, 1);
+    const precisionScale = 1 - speedBlend * 0.28;
+    const outerRestore = smoothstep(0.72, 0.98, magnitude);
+    curved *= precisionScale + (1 - precisionScale) * outerRestore;
+  }
+
+  // Physics uses +1 for left (A) and -1 for right (D), opposite screen X.
+  return -Math.sign(normalized) * clamp(curved, 0, 1);
+}
+
+export function curveThrottle(rawY) {
+  const normalized = applyMicroDeadZone(-rawY);
+  const magnitude = Math.abs(normalized);
+  if (magnitude === 0) return 0;
+  // More linear than steering: throttle remains controllable but reaches useful
+  // acceleration without needing the full physical travel of the large stick.
+  return Math.sign(normalized) * (magnitude ** 1.18);
+}
+
+export function resolveAnalogStick(x, y, options = {}) {
+  let rawX = clamp(Number(x) || 0, -1, 1);
+  let rawY = clamp(Number(y) || 0, -1, 1);
+  const absX = Math.abs(rawX);
+  const absY = Math.abs(rawY);
+
+  // Soft axis lock filters diagonal finger wobble without destroying deliberate
+  // combined throttle + steering. A clearly dominant axis attenuates only the
+  // tiny accidental component instead of snapping it to zero.
+  if (absX > 0.14 && absX > absY * 2.15) rawY *= 0.24;
+  else if (absY > 0.14 && absY > absX * 2.15) rawX *= 0.30;
+
+  return {
+    throttle: curveThrottle(rawY),
+    steer: curveSteering(rawX, options)
+  };
+}
+
+// Compatibility helper kept for old tests/tools. Unlike the old implementation
+// this is not used for gameplay; it merely describes the signs of analog axes.
+export function resolveStickCodes(x, y) {
+  const axes = resolveAnalogStick(x, y);
   const codes = [];
-  // Steering intentionally needs more thumb travel than throttle/brake. This
-  // makes small corrections on a phone much less twitchy while preserving
-  // quick acceleration and braking.
-  if (x <= -steeringDeadZone) codes.push('KeyA');
-  if (x >= steeringDeadZone) codes.push('KeyD');
-  if (y <= -throttleDeadZone) codes.push('KeyW');
-  if (y >= throttleDeadZone) codes.push('KeyS');
+  if (axes.steer > 0.025) codes.push('KeyA');
+  if (axes.steer < -0.025) codes.push('KeyD');
+  if (axes.throttle > 0.025) codes.push('KeyW');
+  if (axes.throttle < -0.025) codes.push('KeyS');
   return codes;
 }
 
@@ -37,7 +103,19 @@ export class MobileControls {
     this.enabled = options.enabled ?? prefersMobileControls();
     this.stickPointerId = null;
     this.stickRect = null;
-    this.activeStickCodes = new Set();
+    this.stickOriginX = 0;
+    this.stickOriginY = 0;
+    this.stickRadius = 128;
+    this.knobTravel = 78;
+    this.rawStickX = 0;
+    this.rawStickY = 0;
+    this.targetThrottle = 0;
+    this.targetSteer = 0;
+    this.currentThrottle = 0;
+    this.currentSteer = 0;
+    this.vehicleSpeedKmh = 0;
+    this.analogFrame = 0;
+    this.analogLastTime = 0;
     this.buttonPointers = new Map();
     this.fullscreenButton = null;
     this.quickChatButton = null;
@@ -56,10 +134,8 @@ export class MobileControls {
     this.el.setAttribute('aria-label', 'Touch-Steuerung');
     this.el.innerHTML = `
       <div class="mobile-controls__left">
-        <div class="mobile-stick" data-stick aria-label="Virtueller Steuerstick">
-          <div class="mobile-stick__ring"></div>
+        <div class="mobile-stick" data-stick aria-label="Analoger virtueller Steuerstick">
           <div class="mobile-stick__knob" data-stick-knob></div>
-          <span class="mobile-stick__hint">FAHREN</span>
         </div>
       </div>
 
@@ -102,15 +178,28 @@ export class MobileControls {
     this.updateFullscreenAvailability();
   }
 
+  setVehicleSpeed(speedKmh = 0) {
+    this.vehicleSpeedKmh = Math.max(0, Number(speedKmh) || 0);
+  }
+
   bindStick() {
     const onDown = (event) => {
       if (this.stickPointerId !== null) return;
       event.preventDefault();
       this.stickPointerId = event.pointerId;
       this.stickRect = this.stick.getBoundingClientRect();
+      this.stickRadius = Math.max(92, Math.min(138, Math.min(this.stickRect.width, this.stickRect.height) * 0.46));
+      this.knobTravel = Math.min(82, this.stickRadius * 0.64);
+
+      // Floating origin: wherever the thumb lands becomes neutral. This removes
+      // the need to hunt for one fixed center while looking at the match.
+      this.stickOriginX = event.clientX;
+      this.stickOriginY = event.clientY;
       this.stick.setPointerCapture?.(event.pointerId);
       this.stick.classList.add('is-active');
+      this.positionKnob(0, 0, true);
       this.updateStick(event.clientX, event.clientY);
+      this.startAnalogLoop();
     };
 
     const onMove = (event) => {
@@ -122,7 +211,7 @@ export class MobileControls {
     const onUp = (event) => {
       if (event.pointerId !== this.stickPointerId) return;
       event.preventDefault();
-      this.releaseStick();
+      this.releaseStick(false);
     };
 
     this.stick.addEventListener('pointerdown', onDown, { passive: false });
@@ -137,38 +226,92 @@ export class MobileControls {
     });
   }
 
+  positionKnob(dx, dy, atOrigin = false) {
+    if (!this.stickKnob || !this.stickRect) return;
+    const localX = this.stickOriginX - this.stickRect.left;
+    const localY = this.stickOriginY - this.stickRect.top;
+    const visualX = atOrigin ? 0 : dx * this.knobTravel;
+    const visualY = atOrigin ? 0 : dy * this.knobTravel;
+    this.stickKnob.style.left = `${localX.toFixed(1)}px`;
+    this.stickKnob.style.top = `${localY.toFixed(1)}px`;
+    this.stickKnob.style.transform = `translate(${visualX.toFixed(1)}px, ${visualY.toFixed(1)}px)`;
+  }
+
   updateStick(clientX, clientY) {
-    const rect = this.stickRect || this.stick.getBoundingClientRect();
-    const cx = rect.left + rect.width * 0.5;
-    const cy = rect.top + rect.height * 0.5;
-    const radius = Math.max(1, Math.min(rect.width, rect.height) * 0.44);
-    let dx = (clientX - cx) / radius;
-    let dy = (clientY - cy) / radius;
+    let dx = (clientX - this.stickOriginX) / Math.max(1, this.stickRadius);
+    let dy = (clientY - this.stickOriginY) / Math.max(1, this.stickRadius);
     const length = Math.hypot(dx, dy);
     if (length > 1) {
       dx /= length;
       dy /= length;
     }
-
-    this.stickKnob.style.transform = `translate(${(dx * radius * 0.78).toFixed(1)}px, ${(dy * radius * 0.78).toFixed(1)}px)`;
-
-    const nextCodes = new Set(resolveStickCodes(dx, dy));
-    for (const code of STICK_CODES) {
-      const wasDown = this.activeStickCodes.has(code);
-      const shouldBeDown = nextCodes.has(code);
-      if (wasDown === shouldBeDown) continue;
-      this.input.setVirtualKey(code, shouldBeDown, 'mobile-stick');
-    }
-    this.activeStickCodes = nextCodes;
+    this.rawStickX = dx;
+    this.rawStickY = dy;
+    this.positionKnob(dx, dy);
+    this.recalculateTargets();
   }
 
-  releaseStick() {
-    for (const code of STICK_CODES) this.input.setVirtualKey(code, false, 'mobile-stick');
-    this.activeStickCodes.clear();
+  recalculateTargets() {
+    const axes = resolveAnalogStick(this.rawStickX, this.rawStickY, {
+      speedKmh: this.vehicleSpeedKmh,
+      drift: this.input.isDown('ControlLeft', 'ControlRight')
+    });
+    this.targetThrottle = axes.throttle;
+    this.targetSteer = axes.steer;
+  }
+
+  startAnalogLoop() {
+    if (this.analogFrame || typeof requestAnimationFrame !== 'function') return;
+    this.analogLastTime = performance.now();
+    const tick = (now) => {
+      this.analogFrame = 0;
+      const dt = clamp((now - this.analogLastTime) / 1000, 1 / 240, 0.05);
+      this.analogLastTime = now;
+
+      if (this.stickPointerId !== null) this.recalculateTargets();
+
+      const steerReturning = Math.abs(this.targetSteer) < Math.abs(this.currentSteer);
+      const throttleReturning = Math.abs(this.targetThrottle) < Math.abs(this.currentThrottle);
+      this.currentSteer = damp(this.currentSteer, this.targetSteer, steerReturning ? 24 : 16, dt);
+      this.currentThrottle = damp(this.currentThrottle, this.targetThrottle, throttleReturning ? 24 : 18, dt);
+
+      if (Math.abs(this.currentSteer) < 0.002 && Math.abs(this.targetSteer) < 0.002) this.currentSteer = 0;
+      if (Math.abs(this.currentThrottle) < 0.002 && Math.abs(this.targetThrottle) < 0.002) this.currentThrottle = 0;
+
+      const stillActive = this.stickPointerId !== null || this.currentSteer !== 0 || this.currentThrottle !== 0;
+      if (stillActive) {
+        this.input.setAnalogDrive(this.currentThrottle, this.currentSteer, true, ANALOG_SOURCE);
+        this.analogFrame = requestAnimationFrame(tick);
+      } else {
+        this.input.clearAnalogDrive(ANALOG_SOURCE);
+      }
+    };
+    this.analogFrame = requestAnimationFrame(tick);
+  }
+
+  releaseStick(immediate = false) {
     this.stickPointerId = null;
     this.stickRect = null;
+    this.rawStickX = 0;
+    this.rawStickY = 0;
+    this.targetThrottle = 0;
+    this.targetSteer = 0;
     this.stick?.classList.remove('is-active');
-    if (this.stickKnob) this.stickKnob.style.transform = 'translate(0px, 0px)';
+    if (this.stickKnob) {
+      this.stickKnob.style.left = '50%';
+      this.stickKnob.style.top = '50%';
+      this.stickKnob.style.transform = 'translate(0px, 0px)';
+    }
+
+    if (immediate) {
+      if (this.analogFrame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(this.analogFrame);
+      this.analogFrame = 0;
+      this.currentThrottle = 0;
+      this.currentSteer = 0;
+      this.input.clearAnalogDrive(ANALOG_SOURCE);
+    } else {
+      this.startAnalogLoop();
+    }
   }
 
   bindButtons() {
@@ -184,13 +327,14 @@ export class MobileControls {
         button.classList.add('is-active');
         this.input.setVirtualKey(code, true, `mobile-button-${event.pointerId}`);
         if (tapOnly) {
-          // Camera/reset are edge actions. Releasing in the same turn prevents
-          // them from becoming a held key while keeping the pressed edge alive.
           this.input.setVirtualKey(code, false, `mobile-button-${event.pointerId}`);
         }
         if (code === 'Space') vibrate(10);
         else if (code === 'ShiftLeft') vibrate(5);
-        else if (code === 'ControlLeft') vibrate(6);
+        else if (code === 'ControlLeft') {
+          vibrate(6);
+          this.recalculateTargets();
+        }
       };
 
       const onUp = (event) => {
@@ -200,6 +344,7 @@ export class MobileControls {
         this.buttonPointers.delete(event.pointerId);
         button.classList.remove('is-active');
         this.input.setVirtualKey(code, false, `mobile-button-${event.pointerId}`);
+        if (code === 'ControlLeft') this.recalculateTargets();
       };
 
       button.addEventListener('pointerdown', onDown, { passive: false });
@@ -301,9 +446,6 @@ export class MobileControls {
     if (!this.fullscreenButton) return;
     const active = isFullscreenActive();
     const supported = canRequestFullscreen(document.documentElement);
-    // Keep the control available on mobile Safari as well. If the browser does
-    // not expose the Fullscreen API, the helper still performs its best-effort
-    // visual-viewport fallback instead of making the button mysteriously vanish.
     this.fullscreenButton.hidden = false;
     this.fullscreenButton.textContent = active ? '×' : '⛶';
     this.fullscreenButton.setAttribute(
@@ -313,13 +455,14 @@ export class MobileControls {
   }
 
   releaseAll() {
-    this.releaseStick();
+    this.releaseStick(true);
     for (const [pointerId, held] of this.buttonPointers) {
       held.button.classList.remove('is-active');
       this.input.setVirtualKey(held.code, false, `mobile-button-${pointerId}`);
     }
     this.buttonPointers.clear();
     this.input.clearVirtualKeys?.();
+    this.input.clearAnalogDrive?.(ANALOG_SOURCE);
   }
 
   destroy() {

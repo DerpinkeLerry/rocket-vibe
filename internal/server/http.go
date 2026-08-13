@@ -36,9 +36,11 @@ type textInputMessage struct {
 	Type  string `json:"type"`
 	Seq   uint32 `json:"seq"`
 	Input struct {
-		Mask  uint8 `json:"mask"`
-		Edges uint8 `json:"edges"`
-		Flags uint8 `json:"flags"`
+		Mask     uint8   `json:"mask"`
+		Edges    uint8   `json:"edges"`
+		Flags    uint8   `json:"flags"`
+		Throttle float64 `json:"throttle"`
+		Steer    float64 `json:"steer"`
 	} `json:"input"`
 }
 
@@ -167,7 +169,10 @@ func (server *HTTPServer) webSocket(writer http.ResponseWriter, request *http.Re
 		case websocket.MessageBinary:
 			packet, ok := protocol.DecodeInput(payload)
 			if ok {
-				server.match.SubmitInput(clientID, game.Input{Sequence: packet.Sequence, Mask: packet.Mask, Edges: packet.Edges, Flags: packet.Flags})
+				server.match.SubmitInput(clientID, game.Input{
+					Sequence: packet.Sequence, Mask: packet.Mask, Edges: packet.Edges, Flags: packet.Flags,
+					Throttle: packet.Throttle, Steer: packet.Steer,
+				})
 			}
 		case websocket.MessageText:
 			server.handleTextMessage(connected, payload)
@@ -201,6 +206,7 @@ func (server *HTTPServer) handleTextMessage(connected *client, payload []byte) {
 		if json.Unmarshal(payload, &message) == nil {
 			server.match.SubmitInput(connected.id, game.Input{
 				Sequence: message.Seq, Mask: message.Input.Mask, Edges: message.Input.Edges, Flags: message.Input.Flags,
+				Throttle: message.Input.Throttle, Steer: message.Input.Steer,
 			})
 		}
 	case "replay-skip":

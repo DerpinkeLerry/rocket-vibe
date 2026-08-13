@@ -18,7 +18,8 @@ export const INPUT_EDGES = Object.freeze({
 // Held controls that do not fit in the original 8-bit movement mask. Kept in
 // a separate byte so drift can be held independently from air-roll bindings.
 export const INPUT_FLAGS = Object.freeze({
-  DRIFT: 1 << 0
+  DRIFT: 1 << 0,
+  ANALOG: 1 << 1
 });
 
 // Arcade handling tuned around Rocket-League-style behaviour.  The server and
