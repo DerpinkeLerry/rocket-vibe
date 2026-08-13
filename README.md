@@ -1,4 +1,4 @@
-# Rocket Vibe 1.10.16 – Responsive Analog Mobile Controls
+# Rocket Vibe 1.10.17 – Circular Boost HUD
 
 Browser-Spiel fuer bis zu vier Spieler mit Three.js-Rendering, lokaler Client-Prediction und einem autoritativen Go-Server. Frontend und Server werden auf Railway als **ein Service** betrieben. Dadurch verwendet der Browser dieselbe HTTPS-Domain fuer Seite und WebSocket (`/lan`); eine separate Backend-URL oder CORS-Konfiguration ist nicht erforderlich.
 
@@ -18,9 +18,15 @@ Die Arena besitzt eine geschlossene, transparente Einfassung mit abgerundeten Ec
 Beim Start werden Spielername und eine von vier rein optischen, Rocket-League-inspirierten Karosserien mit Vorschau ausgewaehlt. Alle vier Varianten verwenden dieselbe Hitbox und dieselben Fahrwerte. Der Server bereinigt und begrenzt ihn, verteilt feste Orange-/Blau-Teams und sendet die Spielerliste an alle Browser. Namensschilder erscheinen ueber den Autos. Das orange Tor liegt auf +Z, das blaue auf -Z; ein Treffer zaehlt fuer das gegnerische Team, aktualisiert den zentralen Spielstand und startet alle Fahrzeuge sowie den Ball neu.
 
 Die Serverphysik rechnet intern mit `float64`. Fuer das Netzwerk werden Position, Quaternion, lineare und Winkelgeschwindigkeit als `float32` uebertragen. Bei vier Spielern sind das grob 16 KB/s je Client bzw. rund 64 KB/s Server-Ausgang plus WebSocket-Overhead.
+## Circular Boost HUD v1.10.17
 
-
-
+- Die bisherige Geschwindigkeitsbox wurde vollständig durch eine runde, segmentierte Boost-Anzeige ersetzt.
+- Die alte längliche Boost-Bar unten in der Mitte ist entfernt.
+- Desktop: Boost-Anzeige unten rechts.
+- Smartphone: Boost-Anzeige oben links an der bisherigen Speedometer-Position.
+- 42 Segmente zeigen den aktuellen Booststand von 0 bis 100 an; die Mitte zeigt den numerischen Wert.
+- Ultra High behält den Boost-Energieeffekt als dezente Funken rund um die neue Anzeige.
+- Gameplay, Boostverbrauch und Geschwindigkeiten bleiben unverändert.
 
 ## Mobile Analog-Tuning v1.10.16
 
@@ -30,7 +36,7 @@ Gas und Bremse verwenden eine progressivere Analogkurve: mittlerer Stickweg lief
 
 ## Boost-Cosmetics
 
-Im Startmenue kann neben Auto und Grafikprofil einer von vier rein optischen Boost-Trails gewaehlt werden: **SOLAR**, **ION**, **PLASMA** und **STARFALL**. Die Auswahl wird lokal gespeichert und ueber die Lobby-Roster-Daten an alle Spieler verteilt, damit jeder die gewaehlte Spur der anderen sieht. In Ultra High wird hinter jedem boostenden Auto ein gepoolter Partikel-Trail mit Additive-Blending gerendert; Normal verwendet weiterhin nur die leichte Auspuffflamme und Ultra Low verzichtet auf die Partikelspur. Die vier Varianten aendern keinerlei Schub, Verbrauch oder Geschwindigkeit. Die Boost-Leiste besitzt in Ultra High waehrend aktivem Boost zusaetzlich einen kleinen Energie-/Spark-Effekt am aktuellen Fuellstand.
+Im Startmenue kann neben Auto und Grafikprofil einer von vier rein optischen Boost-Trails gewaehlt werden: **SOLAR**, **ION**, **PLASMA** und **STARFALL**. Die Auswahl wird lokal gespeichert und ueber die Lobby-Roster-Daten an alle Spieler verteilt, damit jeder die gewaehlte Spur der anderen sieht. In Ultra High wird hinter jedem boostenden Auto ein gepoolter Partikel-Trail mit Additive-Blending gerendert; Normal verwendet weiterhin nur die leichte Auspuffflamme und Ultra Low verzichtet auf die Partikelspur. Die vier Varianten aendern keinerlei Schub, Verbrauch oder Geschwindigkeit. Die runde Boost-Anzeige besitzt in Ultra High waehrend aktivem Boost zusaetzlich einen kleinen Energie-/Spark-Effekt am Segmentring.
 
 ## Quick Chat
 

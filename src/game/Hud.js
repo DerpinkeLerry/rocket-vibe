@@ -12,7 +12,7 @@ export class Hud {
     this.el = document.createElement('div');
     this.el.className = 'hud';
     this.el.innerHTML = `
-      <div class="hud__title">ROCKET VIBE // ONLINE 1.10.16 <span class="hud__perf" data-perf>${profile}</span></div>
+      <div class="hud__title">ROCKET VIBE // ONLINE 1.10.17 <span class="hud__perf" data-perf>${profile}</span></div>
       <div class="hud__scoreboard" aria-label="Spielstand Orange gegen Blau">
         <div class="hud__score-team hud__score-team--orange"><span>ORANGE</span><strong data-orange-score>0</strong></div>
         <div class="hud__score-separator">:</div>
@@ -56,19 +56,24 @@ export class Hud {
         <kbd>B</kbd><span>Ball Reset</span>
         <kbd>R</kbd><span>Eigenes Auto Reset</span>
       </div>
-      <div class="hud__boost" aria-label="Boost Anzeige">
-        <div class="hud__boost-head"><span>BOOST</span><strong data-boost-value>100</strong></div>
-        <div class="hud__boost-track" data-boost-track><div class="hud__boost-fill" data-boost-fill></div><div class="hud__boost-sparks" aria-hidden="true"><i class="hud__boost-spark" style="--spark-delay:-0ms;--spark-x:-18px;--spark-y:-15px"></i><i class="hud__boost-spark" style="--spark-delay:-53ms;--spark-x:-11px;--spark-y:11px"></i><i class="hud__boost-spark" style="--spark-delay:-106ms;--spark-x:-6px;--spark-y:-8px"></i><i class="hud__boost-spark" style="--spark-delay:-159ms;--spark-x:8px;--spark-y:-13px"></i><i class="hud__boost-spark" style="--spark-delay:-212ms;--spark-x:14px;--spark-y:9px"></i><i class="hud__boost-spark" style="--spark-delay:-265ms;--spark-x:20px;--spark-y:4px"></i><i class="hud__boost-spark" style="--spark-delay:-318ms;--spark-x:-15px;--spark-y:15px"></i><i class="hud__boost-spark" style="--spark-delay:-371ms;--spark-x:5px;--spark-y:-17px"></i><i class="hud__boost-spark" style="--spark-delay:-424ms;--spark-x:12px;--spark-y:16px"></i><i class="hud__boost-spark" style="--spark-delay:-477ms;--spark-x:-8px;--spark-y:6px"></i></div></div>
-      </div>
-      <div class="hud__speed">
-        <div class="hud__speed-number" data-speed>000</div>
-        <div class="hud__speed-label">km/h</div>
-        <div class="hud__state" data-state>GROUND</div>
+      <div class="hud__boost-gauge" data-boost-gauge role="meter" aria-label="Boost" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100">
+        <div class="hud__boost-gauge-glow" aria-hidden="true"></div>
+        <div class="hud__boost-segments" data-boost-segments aria-hidden="true"></div>
+        <div class="hud__boost-core">
+          <strong data-boost-value>100</strong>
+          <span>BOOST</span>
+        </div>
+        <div class="hud__boost-gauge-sparks" aria-hidden="true">
+          <i style="--spark-delay:-0ms;--spark-angle:-118deg"></i>
+          <i style="--spark-delay:-78ms;--spark-angle:-72deg"></i>
+          <i style="--spark-delay:-156ms;--spark-angle:-24deg"></i>
+          <i style="--spark-delay:-234ms;--spark-angle:24deg"></i>
+          <i style="--spark-delay:-312ms;--spark-angle:72deg"></i>
+          <i style="--spark-delay:-390ms;--spark-angle:118deg"></i>
+        </div>
       </div>
     `;
     root.appendChild(this.el);
-    this.speed = this.el.querySelector('[data-speed]');
-    this.state = this.el.querySelector('[data-state]');
     this.network = this.el.querySelector('[data-network]');
     this.playerCount = this.el.querySelector('[data-player-count]');
     this.ping = this.el.querySelector('[data-ping]');
@@ -77,8 +82,11 @@ export class Hud {
     this.identity = this.el.querySelector('[data-identity]');
     this.cameraMode = this.el.querySelector('[data-camera-mode]');
     this.boostValue = this.el.querySelector('[data-boost-value]');
-    this.boostFill = this.el.querySelector('[data-boost-fill]');
-    this.boostTrack = this.el.querySelector('[data-boost-track]');
+    this.boostGauge = this.el.querySelector('[data-boost-gauge]');
+    this.boostSegmentsRoot = this.el.querySelector('[data-boost-segments]');
+    this.boostSegments = [];
+    this.lastBoostSegmentCount = -1;
+    this.buildBoostGaugeSegments();
     this.identity.textContent = playerName;
     this.orangeScore = this.el.querySelector('[data-orange-score]');
     this.blueScore = this.el.querySelector('[data-blue-score]');
@@ -256,13 +264,60 @@ export class Hud {
     ], { duration: 300, easing: 'cubic-bezier(.2,.8,.2,1)' });
   }
 
+  buildBoostGaugeSegments() {
+    if (!this.boostSegmentsRoot) return;
+    const count = 42;
+    const startAngle = -138;
+    const endAngle = 138;
+    const span = endAngle - startAngle;
+
+    for (let i = 0; i < count; i += 1) {
+      const t = count <= 1 ? 0 : i / (count - 1);
+      const angle = startAngle + span * t;
+      const segment = document.createElement('i');
+      segment.className = 'hud__boost-segment';
+      segment.style.setProperty('--segment-angle', `${angle}deg`);
+      segment.style.setProperty('--segment-color', this.boostSegmentColor(t));
+      this.boostSegmentsRoot.appendChild(segment);
+      this.boostSegments.push(segment);
+    }
+  }
+
+  boostSegmentColor(t) {
+    // Warm RL-inspired sweep: deep orange near the gap, bright yellow on top,
+    // then pale warm-white toward the far side.
+    if (t < 0.52) {
+      const u = t / 0.52;
+      const hue = 25 + 28 * u;
+      const light = 58 + 14 * u;
+      return `hsl(${hue.toFixed(1)} 100% ${light.toFixed(1)}%)`;
+    }
+    const u = (t - 0.52) / 0.48;
+    const hue = 53 - 43 * u;
+    const saturation = 100 - 26 * u;
+    const light = 72 + 12 * u;
+    return `hsl(${hue.toFixed(1)} ${saturation.toFixed(1)}% ${light.toFixed(1)}%)`;
+  }
+
+  updateBoostGauge(boost) {
+    const normalized = Math.max(0, Math.min(100, Number(boost) || 0));
+    if (this.boostValue) this.boostValue.textContent = String(Math.round(normalized));
+    if (this.boostGauge) {
+      this.boostGauge.setAttribute('aria-valuenow', String(Math.round(normalized)));
+      this.boostGauge.style.setProperty('--boost-strength', (normalized / 100).toFixed(3));
+    }
+
+    const activeCount = Math.round((normalized / 100) * this.boostSegments.length);
+    if (activeCount === this.lastBoostSegmentCount) return;
+    this.lastBoostSegmentCount = activeCount;
+    this.boostSegments.forEach((segment, index) => {
+      segment.classList.toggle('is-empty', index >= activeCount);
+    });
+  }
+
   update(car) {
-    this.speed.textContent = String(Math.round(car.getSpeedKmh())).padStart(3, '0');
-    this.state.textContent = car.grounded ? 'GROUND' : 'AIR';
     const boost = Math.max(0, Math.min(100, Number(car.getBoost?.() ?? car.boost) || 0));
-    if (this.boostValue) this.boostValue.textContent = String(Math.round(boost));
-    if (this.boostFill) this.boostFill.style.transform = `scaleX(${boost / 100})`;
-    if (this.boostTrack) this.boostTrack.style.setProperty('--boost-level', `${boost}%`);
+    this.updateBoostGauge(boost);
     this.el.classList.toggle('hud--boost-low', boost <= 20);
     this.el.classList.toggle('hud--boosting', Boolean(car.boosting) && boost > 0.01);
   }

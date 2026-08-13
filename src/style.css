@@ -1467,3 +1467,289 @@ html, body, #app {
   .perf-ultra-high .hud--boosting .hud__boost-fill { animation: none; }
   .perf-ultra-high .hud--boosting .hud__boost-spark { display: none; }
 }
+
+/* v1.10.17 — Rocket-style circular boost gauge ------------------------- */
+.hud__boost-gauge {
+  --boost-strength: 1;
+  --gauge-radius: 78px;
+  --segment-w: 7px;
+  --segment-h: 24px;
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  width: 190px;
+  height: 190px;
+  filter: drop-shadow(0 12px 26px rgba(0, 0, 0, 0.34));
+  pointer-events: none;
+}
+
+.hud__boost-gauge-glow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 148px;
+  height: 148px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 48%, rgba(255, 77, 44, 0.27), rgba(168, 25, 29, 0.16) 44%, rgba(10, 12, 17, 0.14) 68%, transparent 74%);
+  opacity: calc(0.48 + var(--boost-strength) * 0.36);
+  box-shadow:
+    0 0 24px rgba(255, 74, 34, 0.13),
+    0 0 56px rgba(255, 122, 24, 0.08);
+}
+
+.hud__boost-segments {
+  position: absolute;
+  inset: 0;
+}
+
+.hud__boost-segment {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--segment-w);
+  height: var(--segment-h);
+  border-radius: 2px;
+  background: var(--segment-color);
+  transform:
+    translate(-50%, -50%)
+    rotate(var(--segment-angle))
+    translateY(calc(0px - var(--gauge-radius)));
+  box-shadow:
+    0 0 4px color-mix(in srgb, var(--segment-color) 68%, transparent),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+  opacity: 0.98;
+  transition: opacity 85ms linear, filter 85ms linear;
+  will-change: opacity;
+}
+
+.hud__boost-segment.is-empty {
+  opacity: 0.11;
+  filter: saturate(0.25) brightness(0.62);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.hud__boost-core {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 124px;
+  height: 124px;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 48% 42%, rgba(205, 48, 52, 0.92), rgba(107, 22, 30, 0.87) 53%, rgba(13, 15, 20, 0.91) 76%);
+  border: 1px solid rgba(255, 219, 180, 0.24);
+  box-shadow:
+    inset 0 0 26px rgba(255, 126, 64, 0.15),
+    0 0 34px rgba(203, 38, 38, 0.13);
+}
+
+.hud__boost-core strong {
+  display: block;
+  min-width: 92px;
+  color: #fff5e9;
+  text-align: center;
+  font: 500 50px/0.82 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: -0.09em;
+  text-shadow:
+    0 0 10px rgba(255, 225, 198, 0.36),
+    0 2px 4px rgba(0, 0, 0, 0.36);
+  transform: translateX(-2px);
+}
+
+.hud__boost-core span {
+  margin-top: 12px;
+  color: rgba(255, 203, 190, 0.48);
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.hud--boost-low .hud__boost-core {
+  background:
+    radial-gradient(circle at 48% 42%, rgba(206, 48, 37, 0.90), rgba(105, 20, 24, 0.90) 51%, rgba(12, 14, 19, 0.93) 76%);
+}
+
+.hud--boost-low .hud__boost-core strong {
+  color: #ffd9c8;
+}
+
+.hud__boost-gauge-sparks {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.hud__boost-gauge-sparks i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  border-radius: 50%;
+  background: #fff5bd;
+  box-shadow: 0 0 5px #fff, 0 0 11px #ff9e29;
+  opacity: 0;
+}
+
+.hud--boosting .hud__boost-segment:not(.is-empty) {
+  filter: saturate(1.08) brightness(1.1);
+}
+
+.perf-ultra-high .hud--boosting .hud__boost-gauge-sparks {
+  opacity: 1;
+}
+
+.perf-ultra-high .hud--boosting .hud__boost-gauge-sparks i {
+  animation: boost-gauge-spark 520ms cubic-bezier(.12,.72,.25,1) infinite;
+  animation-delay: var(--spark-delay);
+}
+
+.perf-ultra-high .hud__boost-gauge {
+  filter: drop-shadow(0 13px 30px rgba(0, 0, 0, 0.38));
+}
+
+.perf-ultra-high .hud__boost-core {
+  backdrop-filter: blur(8px);
+  border-color: rgba(255, 225, 191, 0.30);
+}
+
+@keyframes boost-gauge-spark {
+  0% {
+    opacity: 0;
+    transform:
+      translate(-50%, -50%)
+      rotate(var(--spark-angle))
+      translateY(calc(0px - var(--gauge-radius) - 11px))
+      scale(.35);
+  }
+  18% { opacity: 1; }
+  70% { opacity: .78; }
+  100% {
+    opacity: 0;
+    transform:
+      translate(-50%, -50%)
+      rotate(var(--spark-angle))
+      translateY(calc(0px - var(--gauge-radius) - 26px))
+      scale(.08);
+  }
+}
+
+/* Speedometer and the former horizontal boost bar are intentionally gone.
+   The circular gauge owns their HUD real estate now. */
+
+@media (max-width: 700px) {
+  .hud__boost-gauge {
+    right: 14px;
+    bottom: 14px;
+    width: 154px;
+    height: 154px;
+    --gauge-radius: 63px;
+    --segment-w: 6px;
+    --segment-h: 19px;
+  }
+
+  .hud__boost-core {
+    width: 101px;
+    height: 101px;
+  }
+
+  .hud__boost-core strong {
+    min-width: 72px;
+    font-size: 40px;
+  }
+
+  .hud__boost-core span {
+    margin-top: 9px;
+    font-size: 9px;
+  }
+
+  .hud__boost-gauge-glow {
+    width: 120px;
+    height: 120px;
+  }
+}
+
+.mobile-active .hud__boost-gauge {
+  left: calc(env(safe-area-inset-left, 0px) + 7px);
+  right: auto;
+  top: calc(env(safe-area-inset-top, 0px) + 5px);
+  bottom: auto;
+  width: 128px;
+  height: 128px;
+  --gauge-radius: 52px;
+  --segment-w: 5px;
+  --segment-h: 16px;
+  filter: drop-shadow(0 8px 17px rgba(0, 0, 0, 0.28));
+}
+
+.mobile-active .hud__boost-core {
+  width: 83px;
+  height: 83px;
+  border-color: rgba(255, 226, 195, 0.21);
+}
+
+.mobile-active .hud__boost-core strong {
+  min-width: 60px;
+  font-size: 33px;
+}
+
+.mobile-active .hud__boost-core span {
+  margin-top: 7px;
+  font-size: 8px;
+  letter-spacing: 0.11em;
+}
+
+.mobile-active .hud__boost-gauge-glow {
+  width: 99px;
+  height: 99px;
+}
+
+.mobile-active .hud__boost-gauge-sparks i {
+  width: 3px;
+  height: 3px;
+  margin: -1.5px 0 0 -1.5px;
+}
+
+@media (orientation: portrait) and (any-pointer: coarse) {
+  .mobile-active .hud__boost-gauge {
+    width: 112px;
+    height: 112px;
+    --gauge-radius: 45px;
+    --segment-w: 4px;
+    --segment-h: 14px;
+  }
+
+  .mobile-active .hud__boost-core {
+    width: 72px;
+    height: 72px;
+  }
+
+  .mobile-active .hud__boost-core strong {
+    min-width: 52px;
+    font-size: 28px;
+  }
+
+  .mobile-active .hud__boost-core span {
+    margin-top: 6px;
+    font-size: 7px;
+  }
+
+  .mobile-active .hud__boost-gauge-glow {
+    width: 86px;
+    height: 86px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .perf-ultra-high .hud--boosting .hud__boost-gauge-sparks i { display: none; }
+}
