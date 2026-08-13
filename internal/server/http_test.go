@@ -158,3 +158,34 @@ func TestFourPlayerCapacityAndFifthPlayerRejection(t *testing.T) {
 		t.Fatalf("unexpected capacity response: %s", payload)
 	}
 }
+
+func TestLobbyDeleteEndpointIsAvailableWithoutOwnership(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	manager := NewLobbyManager(ctx)
+	defer manager.Stop()
+
+	lobby, err := manager.Create(manager.Defaults())
+	if err != nil {
+		t.Fatal(err)
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	app := NewLobbyHTTPServer(manager, HTTPOptions{StaticDirectory: t.TempDir(), Version: "test"}, logger)
+
+	request := httptest.NewRequest(http.MethodDelete, "/api/lobbies/"+lobby.ID, nil)
+	response := httptest.NewRecorder()
+	app.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("delete returned %d: %s", response.Code, response.Body.String())
+	}
+	if _, ok := manager.Get(lobby.ID); ok {
+		t.Fatal("lobby still exists after DELETE")
+	}
+
+	request = httptest.NewRequest(http.MethodDelete, "/api/lobbies/"+lobby.ID, nil)
+	response = httptest.NewRecorder()
+	app.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("second delete returned %d, want 404", response.Code)
+	}
+}

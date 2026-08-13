@@ -17,3 +17,9 @@ test('lobby create form uses explicit visible validation', () => {
   assert.match(source, /data-lobby-create-form novalidate/);
   assert.match(source, /validateLobbyCreationForm\(form, error\)/);
 });
+
+test('lobby browser exposes public delete action', () => {
+  assert.match(source, /data-delete-lobby=/);
+  assert.match(source, /method: 'DELETE'/);
+  assert.match(source, /\/api\/lobbies\/\$\{encodeURIComponent\(lobby\.id\)\}/);
+});

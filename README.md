@@ -1,4 +1,16 @@
-# Rocket Vibe 1.11.2 – Lobbies, Custom Rules & Physics Mutators
+# Rocket Vibe 1.11.4 – Lobbies, Custom Rules & Physics Mutators
+
+## v1.11.4
+
+- Lobbies können direkt im Lobby-Browser gelöscht werden; dafür ist bewusst keine Besitzer-/Admin-Prüfung aktiv, sodass jeder Client jede Lobby löschen kann.
+- Beim Löschen einer belegten Lobby werden die zugehörige autoritative Match-Instanz und alle verbundenen WebSocket-Clients sauber beendet.
+- Vor dem Löschen gibt es eine Sicherheitsabfrage; die Lobby-Liste aktualisiert sich danach sofort.
+
+## v1.11.3
+
+- Fix: Online-Clients laden `Game.js` nicht mehr erst **nach** dem erfolgreichen Lobby-Join als separaten Dynamic-Import-Chunk. Dadurch kann ein zweiter Spieler nicht mehr bereits serverseitig verbunden sein und anschließend an `Importing a module script failed` hängen bleiben.
+- `Arena.js` besitzt jetzt einen expliziten Runtime-Refresh für gecachte Geometriewerte. Dadurch bleiben lobby-spezifische Arena-Mutatoren korrekt, obwohl der Game-Code schon im Entry-Bundle steckt.
+- Der Vite-Production-Build zielt nicht mehr auf `esnext`, sondern auf ES2019/Safari 13.1/iOS 13.4. Neuere Syntax wird damit für ältere/mobile Browser kompatibel heruntertranspiliert.
 
 ## v1.11.2
 

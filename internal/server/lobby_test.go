@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"rocket-vibe/internal/game"
@@ -116,5 +117,31 @@ func TestLobbyManagerCreatesIndependentMatches(t *testing.T) {
 	}
 	if len(manager.List()) != 2 {
 		t.Fatalf("expected two lobbies, got %d", len(manager.List()))
+	}
+}
+
+func TestLobbyManagerDeleteRemovesAndStopsLobby(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	manager := NewLobbyManager(ctx)
+	defer manager.Stop()
+
+	lobby, err := manager.Create(manager.Defaults())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Delete(lobby.ID); err != nil {
+		t.Fatalf("delete lobby: %v", err)
+	}
+	if _, ok := manager.Get(lobby.ID); ok {
+		t.Fatal("deleted lobby is still available")
+	}
+	select {
+	case <-lobby.Match.ctx.Done():
+	default:
+		t.Fatal("deleted lobby match was not stopped")
+	}
+	if err := manager.Delete(lobby.ID); !errors.Is(err, ErrLobbyNotFound) {
+		t.Fatalf("second delete = %v, want ErrLobbyNotFound", err)
 	}
 }

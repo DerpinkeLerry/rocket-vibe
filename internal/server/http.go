@@ -193,21 +193,33 @@ func (server *HTTPServer) lobbyByID(writer http.ResponseWriter, request *http.Re
 		writeJSON(writer, http.StatusNotFound, map[string]string{"error": "lobbies are disabled"})
 		return
 	}
-	if request.Method != http.MethodGet && request.Method != http.MethodHead {
-		writeJSON(writer, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-		return
-	}
 	id := strings.Trim(strings.TrimPrefix(request.URL.Path, "/api/lobbies/"), "/")
 	if id == "" {
 		writeJSON(writer, http.StatusNotFound, map[string]string{"error": "lobby not found"})
 		return
 	}
-	lobby, ok := server.manager.Get(id)
-	if !ok {
-		writeJSON(writer, http.StatusNotFound, map[string]string{"error": "lobby not found"})
-		return
+
+	switch request.Method {
+	case http.MethodGet, http.MethodHead:
+		lobby, ok := server.manager.Get(id)
+		if !ok {
+			writeJSON(writer, http.StatusNotFound, map[string]string{"error": "lobby not found"})
+			return
+		}
+		writeJSON(writer, http.StatusOK, lobbySummary(lobby))
+	case http.MethodDelete:
+		if err := server.manager.Delete(id); err != nil {
+			if errors.Is(err, ErrLobbyNotFound) {
+				writeJSON(writer, http.StatusNotFound, map[string]string{"error": "lobby not found"})
+				return
+			}
+			writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(writer, http.StatusOK, map[string]any{"deleted": true, "id": id})
+	default:
+		writeJSON(writer, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
-	writeJSON(writer, http.StatusOK, lobbySummary(lobby))
 }
 
 func (server *HTTPServer) matchForRequest(request *http.Request) (*Match, bool) {

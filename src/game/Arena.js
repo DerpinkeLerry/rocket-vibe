@@ -2,24 +2,44 @@ import * as THREE from 'three';
 import { ARENA_TUNING } from '../shared/arena-tuning.js';
 import { BOOST_PADS } from '../shared/boost-tuning.js';
 
-const FIELD_W = ARENA_TUNING.width;
-const FIELD_L = ARENA_TUNING.length;
-const WALL_H = ARENA_TUNING.wallHeight;
-const WALL_T = ARENA_TUNING.wallThickness;
-const CORNER_R = ARENA_TUNING.cornerRadius;
-const RAMP_R = ARENA_TUNING.rampRadius;
-const CEILING_R = ARENA_TUNING.ceilingRampRadius;
-const RAMP_SEGMENTS = ARENA_TUNING.rampSegments;
-const GOAL_W = ARENA_TUNING.goalWidth;
-const GOAL_H = ARENA_TUNING.goalHeight;
-const GOAL_D = ARENA_TUNING.goalDepth;
-const GOAL_R = ARENA_TUNING.goalRampRadius;
-const GOAL_MOUTH_R = ARENA_TUNING.goalMouthRadius;
+let FIELD_W = ARENA_TUNING.width;
+let FIELD_L = ARENA_TUNING.length;
+let WALL_H = ARENA_TUNING.wallHeight;
+let WALL_T = ARENA_TUNING.wallThickness;
+let CORNER_R = ARENA_TUNING.cornerRadius;
+let RAMP_R = ARENA_TUNING.rampRadius;
+let CEILING_R = ARENA_TUNING.ceilingRampRadius;
+let RAMP_SEGMENTS = ARENA_TUNING.rampSegments;
+let GOAL_W = ARENA_TUNING.goalWidth;
+let GOAL_H = ARENA_TUNING.goalHeight;
+let GOAL_D = ARENA_TUNING.goalDepth;
+let GOAL_R = ARENA_TUNING.goalRampRadius;
+let GOAL_MOUTH_R = ARENA_TUNING.goalMouthRadius;
 const CORNER_SEGMENTS = 10;
 // A compact quarter-pipe plus a short solid kick-wall makes the glass begin
 // much earlier than in the previous seven-metre ramp layout.
 const LOWER_WALL_HEIGHT = 0.46;
-const GLASS_START_Y = RAMP_R + LOWER_WALL_HEIGHT;
+let GLASS_START_Y = RAMP_R + LOWER_WALL_HEIGHT;
+
+// The online entry bundle is evaluated before a player selects a lobby. Refresh
+// these cached values after applyServerArenaConfig() and before constructing
+// Arena so custom lobby geometry remains authoritative and visually correct.
+export function refreshArenaRuntimeTuning() {
+  FIELD_W = ARENA_TUNING.width;
+  FIELD_L = ARENA_TUNING.length;
+  WALL_H = ARENA_TUNING.wallHeight;
+  WALL_T = ARENA_TUNING.wallThickness;
+  CORNER_R = ARENA_TUNING.cornerRadius;
+  RAMP_R = ARENA_TUNING.rampRadius;
+  CEILING_R = ARENA_TUNING.ceilingRampRadius;
+  RAMP_SEGMENTS = ARENA_TUNING.rampSegments;
+  GOAL_W = ARENA_TUNING.goalWidth;
+  GOAL_H = ARENA_TUNING.goalHeight;
+  GOAL_D = ARENA_TUNING.goalDepth;
+  GOAL_R = ARENA_TUNING.goalRampRadius;
+  GOAL_MOUTH_R = ARENA_TUNING.goalMouthRadius;
+  GLASS_START_Y = RAMP_R + LOWER_WALL_HEIGHT;
+}
 
 function roundedRectGeometry(width, length, radius, segments) {
   const halfWidth = width * 0.5;

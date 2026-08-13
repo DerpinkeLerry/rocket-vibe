@@ -93,6 +93,28 @@ func (manager *LobbyManager) Get(id string) (*Lobby, bool) {
 	return lobby, ok
 }
 
+func (manager *LobbyManager) Delete(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ErrLobbyNotFound
+	}
+
+	manager.mu.Lock()
+	lobby, ok := manager.items[id]
+	if ok {
+		delete(manager.items, id)
+	}
+	manager.mu.Unlock()
+	if !ok {
+		return ErrLobbyNotFound
+	}
+
+	// Stop outside the manager lock: stopping a populated match closes all
+	// connected clients and waits for its simulation goroutine to exit.
+	lobby.Match.Stop()
+	return nil
+}
+
 func (manager *LobbyManager) List() []LobbySummary {
 	manager.mu.RLock()
 	defer manager.mu.RUnlock()

@@ -6,6 +6,8 @@ import { canRequestFullscreen, isFullscreenActive, requestGameFullscreen } from 
 import { canUseUltraHigh, getRememberedPerformanceMode, setPerformancePreference } from './game/PerformanceProfile.js';
 import { applyServerPhysicsConfig } from './shared/game-tuning.js';
 import { applyServerArenaConfig, applyServerHitboxConfig } from './shared/arena-tuning.js';
+import { Game } from './game/Game.js';
+import { refreshArenaRuntimeTuning } from './game/Arena.js';
 import './style.css';
 
 function installMobileBrowserGuards() {
@@ -486,15 +488,40 @@ function requestLobby(root, notice = '') {
         list.innerHTML = lobbies.map((lobby) => {
           const full = Number(lobby.players) >= Number(lobby.maxPlayers);
           return `
-            <button type="button" class="lobby-row${full ? ' is-full' : ''}" data-join-lobby="${escapeHtml(lobby.id)}" ${full ? 'disabled' : ''}>
-              <span class="lobby-row__main"><strong>${escapeHtml(lobby.name)}</strong><small>${escapeHtml(lobbyRuleSummary(lobby))}</small></span>
-              <span class="lobby-row__players"><b>${Number(lobby.players) || 0}/${Number(lobby.maxPlayers) || 4}</b><small>${full ? 'VOLL' : 'BEITRETEN'}</small></span>
-            </button>`;
+            <div class="lobby-row-wrap" data-lobby-id="${escapeHtml(lobby.id)}">
+              <button type="button" class="lobby-row${full ? ' is-full' : ''}" data-join-lobby="${escapeHtml(lobby.id)}" ${full ? 'disabled' : ''}>
+                <span class="lobby-row__main"><strong>${escapeHtml(lobby.name)}</strong><small>${escapeHtml(lobbyRuleSummary(lobby))}</small></span>
+                <span class="lobby-row__players"><b>${Number(lobby.players) || 0}/${Number(lobby.maxPlayers) || 4}</b><small>${full ? 'VOLL' : 'BEITRETEN'}</small></span>
+              </button>
+              <button type="button" class="lobby-delete-button" data-delete-lobby="${escapeHtml(lobby.id)}" aria-label="Lobby ${escapeHtml(lobby.name)} löschen" title="Lobby löschen">LÖSCHEN</button>
+            </div>`;
         }).join('');
         for (const button of list.querySelectorAll('[data-join-lobby]')) {
           button.addEventListener('click', () => {
             const lobby = lobbies.find((entry) => entry.id === button.dataset.joinLobby);
             if (lobby) finish(lobby);
+          });
+        }
+        for (const button of list.querySelectorAll('[data-delete-lobby]')) {
+          button.addEventListener('click', async () => {
+            const lobby = lobbies.find((entry) => entry.id === button.dataset.deleteLobby);
+            if (!lobby) return;
+            const players = Number(lobby.players) || 0;
+            const warning = players > 0
+              ? `Lobby „${lobby.name}“ wirklich löschen? ${players} verbundene${players === 1 ? 'r Spieler wird' : ' Spieler werden'} getrennt.`
+              : `Lobby „${lobby.name}“ wirklich löschen?`;
+            if (!window.confirm(warning)) return;
+
+            button.disabled = true;
+            button.textContent = '…';
+            try {
+              await fetchLobbyJSON(`/api/lobbies/${encodeURIComponent(lobby.id)}`, { method: 'DELETE' });
+              await refreshList();
+            } catch (deleteError) {
+              button.disabled = false;
+              button.textContent = 'LÖSCHEN';
+              window.alert(`Lobby konnte nicht gelöscht werden: ${deleteError.message}`);
+            }
           });
         }
       } catch (error) {
@@ -743,10 +770,11 @@ async function boot() {
     await RAPIER.init();
   }
 
-  // Load the arena/game only after lobby physics arrived. Arena.js derives
-  // geometry constants at module evaluation time, so this keeps rendering and
-  // authoritative server collision dimensions in lockstep.
-  const { Game } = await import('./game/Game.js');
+  // Keep the production game code in the entry bundle. Joining a lobby must
+  // not depend on a second JavaScript module request after the websocket has
+  // already accepted the player. Arena.js caches geometry values, so refresh
+  // them only after the server lobby config has been applied.
+  refreshArenaRuntimeTuning();
   const game = new Game(app, RAPIER, network, identity);
   game.start();
 }
