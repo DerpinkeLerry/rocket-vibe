@@ -1,4 +1,12 @@
-# Rocket Vibe 1.10.24 – Whole-Ball Goals, Stable Goal Camera & Mobile HQ
+# Rocket Vibe 1.10.25 – Hardwood Pitch & Team-Line Fix
+
+## v1.10.25
+
+- Die gespiegelte Z-zu-Canvas-Abbildung der Feldgrafik ist korrigiert. Vor dem blauen Tor liegen wieder blaue Linien, vor dem orangenen Tor orangene; Boost-Pad-Locators und alle kuenftigen Feldgrafiken verwenden dieselbe logisch korrekte Weltkoordinate.
+- Die gruene Turf-Oberflaeche wurde komplett durch eine prozedurale, hochaufgeloeste Smoked-Oak-/Hardwood-Flaeche ersetzt. Unterschiedliche Bretttoene, lange Maserungen, dezente Fugen und wenige weiche Aststellen sorgen fuer Variation ohne Pixelrauschen.
+- Ultra High verwendet eine eigene Wood-Bump-Map mit feinen Brettfugen und breiten Maserungen sowie eine satinierte Materialantwort, damit Mond-/Stadionlicht sichtbar auf dem Holz arbeitet, ohne spiegelig zu wirken.
+- Normal und Ultra Low verwenden dieselbe Holzsprache in abgestufter Aufloesung; das 3D-Gras bleibt weiterhin vollstaendig entfernt.
+- Die vorhandenen sauberen Team-, Tor-, Boost- und Mittelfeldlinien bleiben als separates hochaufgeloestes Overlay erhalten und liegen unveraendert ueber der neuen Holzoberflaeche.
 
 ## v1.10.24
 
@@ -83,7 +91,7 @@ Das Feld verwendet 34 Boost-Pads nach dem Soccar-Referenzlayout: sechs grosse 10
 
 In v1.10.12 wurden die UV-Koordinaten der abgerundeten Feldgeometrie explizit auf 0..1 normiert. Dadurch spannt die grosse Turf-/Markierungs-Textur jetzt wirklich ueber das komplette Spielfeld, statt an weiten Stellen nur Randpixel abzutasten. Das Grundgras ist satter und besitzt groessere Maehzonen, waehrend dunkle Gras-Sprenkel deutlich reduziert wurden.
 
-Die sichtbaren Feldgrafiken liegen weiterhin auf einer einzigen unbeleuchteten Overlay-Textur direkt ueber dem Turf. In v1.10.23 wurde das Design jedoch stark vereinfacht: drei klar getrennte innere Rotationsrouten pro Haelfte, zwei saubere Aussenrouten, eine kurze Backline, ein grosser Goal-Halbkreis sowie permanente Locator-Ringe unter den Boost-Pads. Die Linien kreuzen sich nicht mehr quer ueber das Feld und werden in deutlich hoeherer Aufloesung gerendert. Das kostet weiterhin nur einen zusaetzlichen Draw-Call und keine zusaetzlichen Echtzeit-Lichter oder Post-Processing-Paesse.
+Die sichtbaren Feldgrafiken liegen weiterhin auf einer einzigen unbeleuchteten Overlay-Textur direkt ueber dem Hardwood-Boden. In v1.10.23 wurde das Design jedoch stark vereinfacht: drei klar getrennte innere Rotationsrouten pro Haelfte, zwei saubere Aussenrouten, eine kurze Backline, ein grosser Goal-Halbkreis sowie permanente Locator-Ringe unter den Boost-Pads. Die Linien kreuzen sich nicht mehr quer ueber das Feld und werden in deutlich hoeherer Aufloesung gerendert. Das kostet weiterhin nur einen zusaetzlichen Draw-Call und keine zusaetzlichen Echtzeit-Lichter oder Post-Processing-Paesse.
 
 Die unteren Boden-Wand-Rundungen sind nicht mehr schwarz: Die physikalische Wand bleibt unveraendert, wird visuell aber pro Spielfeldhaelfte getrennt gerendert. Die blaue Haelfte verwendet dunkle blaue Technik-Panels mit hellen Cyan-Rails, die orange Haelfte entsprechend Orange. Ein durchgehender heller Team-Rail folgt auch den gekruemmten Ecken am Beginn der Glaswand. Seit v1.10.23 gibt es auf dem Spielfeld gar kein geometrisches 3D-Gras mehr; Boost-Locators und Torboegen bleiben dadurch in jedem Grafikmodus frei und klar lesbar.
 
@@ -190,7 +198,7 @@ Direkt auf dem Startbildschirm kann die Grafikqualitaet gewaehlt werden. Die Aus
 
 - **NORMAL**: bisherige volle Standarddarstellung; auf Smartphone/Tablet automatisch der empfohlene Modus.
 - **ULTRA LOW**: stark reduzierte Renderauflosung und Details fuer schwache PCs/VMs. Weiterhin kompatibel mit `?perf=ultra` bzw. `?perf=ultra-low`.
-- **ULTRA HIGH**: auf Desktop und leistungsstarken Smartphones waehlbar. Desktop startet bei 95 % Render-Skalierung und regelt adaptiv zwischen 68 und 108 %; Mobile startet bei 80 % und regelt zwischen 55 und 92 %. Der Modus verwendet hochaufgeloeste, stark gefilterte Turf-/Feld-/Wandtexturen, ein dezentes Turf-Relief, Relief fuer die Wandplatten, detaillierte Felgen, matte Materialien, eine permanente mondbeleuchtete Abenddaemmerung mit Sternenhimmel sowie gestaffelt aktualisierte 2048-/1024-Schatten. Das ehemalige 3D-Gras ist vollstaendig entfernt. Bloom, PMREM-Reflexionen und eine zweite Fullscreen-Renderpass-Kette bleiben bewusst deaktiviert.
+- **ULTRA HIGH**: auf Desktop und leistungsstarken Smartphones waehlbar. Desktop startet bei 95 % Render-Skalierung und regelt adaptiv zwischen 68 und 108 %; Mobile startet bei 128 % und regelt adaptiv zwischen 96 und 152 %. Der Modus verwendet hochaufgeloeste, stark gefilterte Hardwood-/Feld-/Wandtexturen, ein dezentes Holz- und Wandplatten-Relief, detaillierte Felgen, matte Materialien, eine permanente mondbeleuchtete Abenddaemmerung mit Sternenhimmel sowie gestaffelt aktualisierte 2048-/1024-Schatten. 3D-Gras bleibt vollstaendig entfernt. Bloom, PMREM-Reflexionen und eine zweite Fullscreen-Renderpass-Kette bleiben bewusst deaktiviert.
 
 Direktlinks fuer Tests:
 
@@ -199,7 +207,7 @@ Direktlinks fuer Tests:
 ?perf=ultra-high
 ```
 
-Auf Smartphones bleibt **NORMAL** die empfohlene Einstellung. **ULTRA HIGH** ist aber ebenfalls auswählbar und verwendet dort konservativere Aufloesungs-, Schatten- und Graswerte.
+Auf Smartphones bleibt **NORMAL** die empfohlene Einstellung. **ULTRA HIGH** ist aber ebenfalls auswaehlbar und nutzt dort die schaerfere adaptive 96–152-%-Render-Skalierung sowie die hochaufgeloeste Holzoberflaeche; 3D-Gras gibt es in keinem Profil mehr.
 
 ### Finale Arena-/Performance-Abstimmung
 
@@ -207,7 +215,7 @@ Auf Smartphones bleibt **NORMAL** die empfohlene Einstellung. **ULTRA HIGH** ist
 - Die Boden-Wand-Rundung ist deutlich kuerzer, waehrend die Glasflaeche frueher beginnt.
 - Feldwand und Tortunnel werden ueber einen echten gerundeten Tormund verbunden. Ein schmaler Team-Akzent folgt genau dieser Kurve und kaschiert keine Luecke, sondern markiert die gemeinsame Geometrie.
 - Der Torinnenraum besitzt abgerundete Boden-, Seiten-, Rueckwand- und Deckenuebergaenge. Die gleichen Radien gelten fuer Rendering, Rapier, Client-Prediction und Go-Server.
-- Ultra High erzeugt Gras ueber wenige gekreuzte Alpha-Karten mit vielen gemalten Halmen pro Karte. Zwölf sichtbarkeitsgepruefte Instanz-Chunks liefern deutlich mehr Gras bei weit weniger Geometrie als einzelne modellierte Halme.
+- Das Spielfeld verwendet keine Grasgeometrie mehr. Ultra High investiert die freie GPU-Zeit stattdessen in die hochaufgeloeste Hardwood-Textur, Wood-Bump-Map, anisotrope Filterung und die vorhandene Licht-/Schattenqualitaet.
 - Die dunklen Arena- und Torwaende besitzen im Ultra-High-Modus eine prozedurale Platten-/Steinstruktur plus Bump-Relief, waehrend das Glas neutraler und weniger milchig bleibt.
 - Supersampling, Lichtstaerke und Reflexionen wurden reduziert. Die gewonnene GPU-Zeit fliesst in sichtbare Oberflaechendetails statt in ueberhelles Post-Processing.
 

@@ -187,7 +187,11 @@ export class Arena {
     const lineScale = (scaleX + scaleZ) * 0.5;
     const worldPoint = (x, z) => ({
       x: (x / FIELD_W + 0.5) * width,
-      y: (z / FIELD_L + 0.5) * height
+      // CanvasTexture is uploaded with Three.js' default vertical flip, so
+      // world -Z must be painted at the bottom of the source canvas. Keeping
+      // this conversion explicit prevents the blue/orange halves from being
+      // mirrored when the overlay is sampled on the field geometry.
+      y: (-z / FIELD_L + 0.5) * height
     });
 
     const traceSmoothPath = (points) => {
@@ -361,90 +365,147 @@ export class Arena {
     }
   }
 
-  createTurfTexture(highDetail = false) {
+  createWoodTexture(highDetail = false) {
     const canvas = document.createElement('canvas');
     if (highDetail) {
-      canvas.width = 1536;
-      canvas.height = 2304;
+      canvas.width = 2048;
+      canvas.height = 3072;
     } else if (this.lowDetail) {
       canvas.width = 768;
       canvas.height = 1152;
     } else {
-      canvas.width = 1024;
-      canvas.height = 1536;
+      canvas.width = 1536;
+      canvas.height = 2304;
     }
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
-    // A deliberately clean broadcast-style turf. All former one-pixel blade
-    // noise and random wear dots are gone; detail comes from broad mowing bands
-    // and very soft tonal variation that survives mipmapping without shimmer.
-    const base = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    base.addColorStop(0, '#17613a');
-    base.addColorStop(0.50, '#1b673d');
-    base.addColorStop(1, '#17613a');
-    ctx.fillStyle = base;
+    // A deterministic premium hardwood court replaces the old green turf.
+    // Detail is built from broad plank-to-plank colour variation, long grain
+    // bands and a few soft knots rather than pixel noise, so the floor remains
+    // clean and stable under mipmapping even from the low chase-camera angle.
+    let seed = 0x4f1bbcdc;
+    const random = () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+
+    const background = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    background.addColorStop(0, '#604638');
+    background.addColorStop(0.32, '#8a654a');
+    background.addColorStop(0.68, '#76533d');
+    background.addColorStop(1, '#523a31');
+    ctx.fillStyle = background;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const rows = 10;
-    const rowHeight = canvas.height / rows;
-    for (let row = 0; row < rows; row++) {
-      const light = row % 2 === 0;
-      const band = ctx.createLinearGradient(0, row * rowHeight, canvas.width, row * rowHeight);
-      band.addColorStop(0, light ? 'rgba(91,160,95,0.095)' : 'rgba(4,46,28,0.080)');
-      band.addColorStop(0.50, light ? 'rgba(132,179,104,0.075)' : 'rgba(3,39,24,0.065)');
-      band.addColorStop(1, light ? 'rgba(91,160,95,0.095)' : 'rgba(4,46,28,0.080)');
-      ctx.fillStyle = band;
-      ctx.fillRect(0, row * rowHeight, canvas.width, rowHeight + 1);
-    }
+    const columns = highDetail ? 76 : (this.lowDetail ? 42 : 62);
+    const plankWidth = canvas.width / columns;
+    const basePlankLength = canvas.height / (highDetail ? 18 : 16);
+    const grainPasses = highDetail ? 3 : (this.lowDetail ? 0 : 2);
 
-    // Four broad longitudinal mowing lanes break up the horizontal bands while
-    // keeping every edge soft. This reads as maintained turf rather than a
-    // checkerboard or a noisy procedural texture.
-    const laneWidth = canvas.width / 4;
-    for (let lane = 0; lane < 4; lane++) {
-      const x = lane * laneWidth;
-      const laneGradient = ctx.createLinearGradient(x, 0, x + laneWidth, 0);
-      if (lane % 2 === 0) {
-        laneGradient.addColorStop(0, 'rgba(17,91,51,0.00)');
-        laneGradient.addColorStop(0.50, 'rgba(144,191,111,0.035)');
-        laneGradient.addColorStop(1, 'rgba(17,91,51,0.00)');
-      } else {
-        laneGradient.addColorStop(0, 'rgba(10,56,35,0.00)');
-        laneGradient.addColorStop(0.50, 'rgba(2,39,24,0.032)');
-        laneGradient.addColorStop(1, 'rgba(10,56,35,0.00)');
+    for (let column = 0; column < columns; column++) {
+      const x = column * plankWidth;
+      let y = -basePlankLength * (0.18 + (column % 5) * 0.17);
+      let segmentIndex = 0;
+      while (y < canvas.height) {
+        const length = basePlankLength * (0.82 + random() * 0.42);
+        const hue = 24 + random() * 7;
+        const saturation = 27 + random() * 11;
+        const lightness = 37 + random() * 14;
+        const edgeLight = Math.min(68, lightness + 7 + random() * 4);
+        const edgeDark = Math.max(25, lightness - 8 - random() * 4);
+
+        const plank = ctx.createLinearGradient(x, y, x + plankWidth, y);
+        plank.addColorStop(0, `hsl(${hue}, ${saturation}%, ${edgeDark}%)`);
+        plank.addColorStop(0.13, `hsl(${hue + 1}, ${saturation}%, ${lightness}%)`);
+        plank.addColorStop(0.55, `hsl(${hue + 2}, ${Math.max(22, saturation - 5)}%, ${edgeLight}%)`);
+        plank.addColorStop(0.88, `hsl(${hue}, ${saturation}%, ${lightness - 2}%)`);
+        plank.addColorStop(1, `hsl(${hue}, ${saturation}%, ${edgeDark}%)`);
+        ctx.fillStyle = plank;
+        ctx.fillRect(x, y, plankWidth + 1, length + 1);
+
+        if (grainPasses > 0) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(x + 1, y + 1, Math.max(1, plankWidth - 2), Math.max(1, length - 2));
+          ctx.clip();
+          for (let grain = 0; grain < grainPasses; grain++) {
+            const gx = x + plankWidth * (0.20 + random() * 0.60);
+            const amplitude = plankWidth * (0.05 + random() * 0.09);
+            const phase = random() * Math.PI * 2;
+            ctx.strokeStyle = grain % 2 === 0
+              ? 'rgba(73,37,18,0.16)'
+              : 'rgba(244,196,132,0.075)';
+            ctx.lineWidth = Math.max(0.8, canvas.width / 1850);
+            ctx.beginPath();
+            const steps = 8;
+            for (let step = 0; step <= steps; step++) {
+              const py = y + length * step / steps;
+              const px = gx + Math.sin(phase + step * 0.92 + segmentIndex * 0.27) * amplitude;
+              if (step === 0) ctx.moveTo(px, py);
+              else ctx.lineTo(px, py);
+            }
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+
+        // Fine recessed seams give each board a readable edge without the
+        // thick grid look of parquet tiles.
+        ctx.strokeStyle = 'rgba(42,22,12,0.24)';
+        ctx.lineWidth = Math.max(0.85, canvas.width / 1900);
+        ctx.strokeRect(
+          x + 0.5,
+          y + 0.5,
+          Math.max(1, plankWidth - 1),
+          Math.max(1, length - 1)
+        );
+        ctx.strokeStyle = 'rgba(255,216,160,0.050)';
+        ctx.lineWidth = Math.max(0.7, canvas.width / 2400);
+        ctx.beginPath();
+        ctx.moveTo(x + 1.2, y + 1.2);
+        ctx.lineTo(x + plankWidth - 1.2, y + 1.2);
+        ctx.stroke();
+
+        y += length;
+        segmentIndex++;
       }
-      ctx.fillStyle = laneGradient;
-      ctx.fillRect(x, 0, laneWidth + 1, canvas.height);
     }
 
-    // Team colour is limited to a soft end-zone tint. It provides orientation
-    // but does not fight the crisp team-coloured line overlay above the grass.
-    const blueZone = ctx.createLinearGradient(0, 0, 0, canvas.height * 0.31);
-    blueZone.addColorStop(0, 'rgba(17,117,224,0.18)');
-    blueZone.addColorStop(0.52, 'rgba(12,91,188,0.065)');
-    blueZone.addColorStop(1, 'rgba(12,91,188,0)');
-    ctx.fillStyle = blueZone;
-    ctx.fillRect(0, 0, canvas.width, canvas.height * 0.33);
+    // Sparse, large knots add natural variation. Their soft gradients survive
+    // minification far better than tiny speckles and never compete with field
+    // markings or boost-pad locators.
+    const knotCount = highDetail ? 26 : (this.lowDetail ? 5 : 15);
+    for (let index = 0; index < knotCount; index++) {
+      const x = random() * canvas.width;
+      const y = random() * canvas.height;
+      const radius = plankWidth * (0.20 + random() * 0.34);
+      const squash = 0.52 + random() * 0.24;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(1, squash);
+      const knot = ctx.createRadialGradient(0, 0, radius * 0.12, 0, 0, radius);
+      knot.addColorStop(0, 'rgba(45,21,10,0.42)');
+      knot.addColorStop(0.34, 'rgba(88,43,19,0.24)');
+      knot.addColorStop(0.70, 'rgba(53,27,15,0.10)');
+      knot.addColorStop(1, 'rgba(53,27,15,0)');
+      ctx.fillStyle = knot;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
 
-    const orangeZone = ctx.createLinearGradient(0, canvas.height, 0, canvas.height * 0.69);
-    orangeZone.addColorStop(0, 'rgba(240,91,18,0.17)');
-    orangeZone.addColorStop(0.52, 'rgba(214,74,11,0.062)');
-    orangeZone.addColorStop(1, 'rgba(214,74,11,0)');
-    ctx.fillStyle = orangeZone;
-    ctx.fillRect(0, canvas.height * 0.67, canvas.width, canvas.height * 0.33);
-
-    // One soft centre mowing ring adds depth without introducing another hard
-    // line. It is intentionally broad and low contrast so the real centre
-    // circle remains perfectly clean.
-    ctx.save();
-    ctx.translate(canvas.width * 0.5, canvas.height * 0.5);
-    ctx.strokeStyle = 'rgba(155,204,124,0.050)';
-    ctx.lineWidth = canvas.width * 0.055;
-    ctx.beginPath();
-    ctx.arc(0, 0, canvas.width * 0.20, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
+    // A broad satin variation prevents the large court from reading as one
+    // flat colour while staying subtle beneath the crisp gameplay overlay.
+    const finish = ctx.createLinearGradient(0, 0, canvas.width, 0);
+    finish.addColorStop(0, 'rgba(31,13,7,0.10)');
+    finish.addColorStop(0.24, 'rgba(255,214,151,0.055)');
+    finish.addColorStop(0.54, 'rgba(255,226,175,0.020)');
+    finish.addColorStop(0.78, 'rgba(255,206,136,0.050)');
+    finish.addColorStop(1, 'rgba(35,15,8,0.095)');
+    ctx.fillStyle = finish;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
@@ -453,7 +514,7 @@ export class Arena {
     texture.minFilter = THREE.LinearMipmapLinearFilter;
     texture.magFilter = THREE.LinearFilter;
     texture.generateMipmaps = true;
-    texture.anisotropy = Math.min(highDetail ? 16 : 10, this.maxAnisotropy);
+    texture.anisotropy = Math.min(highDetail ? 16 : 12, this.maxAnisotropy);
     return texture;
   }
 
@@ -485,38 +546,63 @@ export class Arena {
     return texture;
   }
 
-  createUltraTurfBumpTexture() {
+  createUltraWoodBumpTexture() {
     const canvas = document.createElement('canvas');
-    canvas.width = 768;
-    canvas.height = 1024;
+    canvas.width = 1024;
+    canvas.height = 1536;
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
-    // Ultra High keeps only a tiny directional turf relief. Unlike the old
-    // thousands of random blade strokes this produces no visible speckle and
-    // does not attempt to fake 3D grass.
-    ctx.fillStyle = '#7f7f7f';
+    ctx.fillStyle = '#808080';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    for (let y = 0; y < canvas.height; y += 5) {
-      const shade = 118 + ((y / 5) % 3) * 5;
-      ctx.strokeStyle = `rgb(${shade},${shade},${shade})`;
-      ctx.globalAlpha = 0.34;
-      ctx.lineWidth = 1;
+
+    // The bump map only carries long plank seams and broad grain. No random
+    // pixel-height noise is used, so moonlight produces a satin wood response
+    // rather than shimmering micro-detail.
+    const columns = 64;
+    const plankWidth = canvas.width / columns;
+    const plankLength = canvas.height / 18;
+    for (let column = 0; column <= columns; column++) {
+      const x = Math.round(column * plankWidth) + 0.5;
+      ctx.strokeStyle = 'rgba(72,72,72,0.72)';
+      ctx.lineWidth = 1.4;
       ctx.beginPath();
-      ctx.moveTo(0, y + 0.5);
-      ctx.lineTo(canvas.width, y + 0.5);
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, canvas.height);
       ctx.stroke();
+
+      const offset = ((column * 37) % 11) / 11 * plankLength;
+      for (let y = -offset; y < canvas.height; y += plankLength) {
+        ctx.strokeStyle = 'rgba(82,82,82,0.58)';
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.moveTo(column * plankWidth, y);
+        ctx.lineTo((column + 1) * plankWidth, y);
+        ctx.stroke();
+      }
+
+      for (let grain = 0; grain < 2; grain++) {
+        const gx = column * plankWidth + plankWidth * (0.30 + grain * 0.34);
+        ctx.strokeStyle = grain === 0 ? 'rgba(112,112,112,0.30)' : 'rgba(146,146,146,0.23)';
+        ctx.lineWidth = 0.9;
+        ctx.beginPath();
+        for (let step = 0; step <= 24; step++) {
+          const y = canvas.height * step / 24;
+          const x = gx + Math.sin(step * 0.84 + column * 0.43 + grain) * plankWidth * 0.07;
+          if (step === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
     }
-    ctx.globalAlpha = 1;
 
     const texture = new THREE.CanvasTexture(canvas);
-    texture.wrapS = THREE.RepeatWrapping;
-    texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set(1.8, 3.6);
+    texture.wrapS = THREE.ClampToEdgeWrapping;
+    texture.wrapT = THREE.ClampToEdgeWrapping;
     texture.minFilter = THREE.LinearMipmapLinearFilter;
     texture.magFilter = THREE.LinearFilter;
     texture.generateMipmaps = true;
-    texture.anisotropy = Math.min(12, this.maxAnisotropy);
+    texture.anisotropy = Math.min(16, this.maxAnisotropy);
     return texture;
   }
 
@@ -776,33 +862,33 @@ export class Arena {
   }
 
   createField() {
-    const turfTexture = this.lowDetail ? null : this.createTurfTexture(this.ultraHigh);
-    const turfBump = this.ultraHigh ? this.createUltraTurfBumpTexture() : null;
+    const woodTexture = this.createWoodTexture(this.ultraHigh);
+    const woodBump = this.ultraHigh ? this.createUltraWoodBumpTexture() : null;
     const markingsTexture = this.createFieldMarkingsTexture(this.ultraHigh);
-    const turfMat = this.lowDetail
-      ? new THREE.MeshBasicMaterial({ color: 0x2a7746 })
+    const floorMaterial = this.lowDetail
+      ? new THREE.MeshBasicMaterial({ color: 0xffffff, map: woodTexture })
       : (this.ultraHigh
         ? new THREE.MeshStandardMaterial({
             color: 0xffffff,
-            map: turfTexture,
-            bumpMap: turfBump,
-            bumpScale: 0.018,
-            roughness: 0.98,
+            map: woodTexture,
+            bumpMap: woodBump,
+            bumpScale: 0.032,
+            roughness: 0.72,
             metalness: 0.0
           })
         : new THREE.MeshStandardMaterial({
-            color: 0xf8fff9,
-            map: turfTexture,
-            roughness: 0.97,
+            color: 0xffffff,
+            map: woodTexture,
+            roughness: 0.80,
             metalness: 0.0
           }));
-    const turf = new THREE.Mesh(
+    const floor = new THREE.Mesh(
       roundedRectGeometry(FIELD_W, FIELD_L, CORNER_R, this.lowDetail ? 4 : 12),
-      turfMat
+      floorMaterial
     );
-    turf.name = 'arena-turf';
-    turf.userData.shadowRole = 'field';
-    this.group.add(turf);
+    floor.name = 'arena-hardwood-floor';
+    floor.userData.shadowRole = 'field';
+    this.group.add(floor);
 
     // Team graphics and boost routes live on one unlit overlay so they stay
     // saturated from the normal driving camera instead of being dulled by

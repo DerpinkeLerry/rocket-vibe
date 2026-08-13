@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const source = await readFile(new URL('./Arena.js', import.meta.url), 'utf8');
 
-test('clean pitch removes geometric 3D grass and per-frame grass culling', () => {
+test('field has no geometric 3D grass or grass culling', () => {
   assert.doesNotMatch(source, /createUltraGrass\s*\(/);
   assert.doesNotMatch(source, /createGrassTuftTexture\s*\(/);
   assert.doesNotMatch(source, /grassChunks/);
@@ -20,7 +20,18 @@ test('field markings use a high-resolution clean overlay', () => {
   assert.doesNotMatch(source, /side runways/i);
 });
 
-test('turf texture no longer paints thousands of random one-pixel blades', () => {
-  assert.doesNotMatch(source, /bladeCount/);
-  assert.match(source, /broadcast-style turf/);
+test('field marking canvas maps world Z without mirroring the team halves', () => {
+  assert.match(source, /y:\s*\(-z\s*\/\s*FIELD_L\s*\+\s*0\.5\)\s*\*\s*height/);
+  assert.match(source, /const color = sign < 0 \? blue : orange/);
+  assert.match(source, /const isOrange = signZ > 0/);
+});
+
+test('green turf is replaced by deterministic high-resolution hardwood', () => {
+  assert.match(source, /createWoodTexture\s*\(/);
+  assert.match(source, /premium hardwood court/);
+  assert.match(source, /createUltraWoodBumpTexture\s*\(/);
+  assert.match(source, /arena-hardwood-floor/);
+  assert.doesNotMatch(source, /createTurfTexture\s*\(/);
+  assert.doesNotMatch(source, /createUltraTurfBumpTexture\s*\(/);
+  assert.doesNotMatch(source, /broadcast-style turf/);
 });
