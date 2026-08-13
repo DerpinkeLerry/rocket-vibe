@@ -1182,3 +1182,53 @@ func TestAnalogAirInputUsesPartialPitchInsteadOfDigitalSnap(t *testing.T) {
 		t.Fatalf("analog air pitch snapped like digital input: soft=%.4f full=%.4f", soft, full)
 	}
 }
+
+func TestAirRotationSettlesQuicklyWithoutControlInput(t *testing.T) {
+	config := DefaultConfig()
+	world := NewWorld(config)
+	world.SetConnected(0, true)
+	car := &world.Cars[0]
+	car.Position = Vec3{Y: 12}
+	car.Grounded = false
+	car.GroundLockout = 1
+	car.AngularVelocity = Vec3{X: 4.2, Y: -2.8, Z: 3.4}
+	if !world.SetInput(0, Input{Sequence: 1}) {
+		t.Fatal("neutral air input was not accepted")
+	}
+	dt := 1 / float64(config.PhysicsHz)
+	for range 42 {
+		world.Step(dt)
+	}
+	if speed := car.AngularVelocity.Length(); speed > 0.35 {
+		t.Fatalf("air rotation kept too much momentum without input: speed=%.4f angular=%+v", speed, car.AngularVelocity)
+	}
+}
+
+func TestAirRotationTracksInputThenBrakesOnRelease(t *testing.T) {
+	config := DefaultConfig()
+	world := NewWorld(config)
+	world.SetConnected(0, true)
+	car := &world.Cars[0]
+	car.Position = Vec3{Y: 12}
+	car.Grounded = false
+	car.GroundLockout = 1
+	dt := 1 / float64(config.PhysicsHz)
+	if !world.SetInput(0, Input{Sequence: 1, Flags: InputFlagAnalog, Throttle: 1}) {
+		t.Fatal("pitch input was not accepted")
+	}
+	for range 18 {
+		world.Step(dt)
+	}
+	if car.AngularVelocity.X > -2.5 {
+		t.Fatalf("air pitch did not respond strongly enough: %+v", car.AngularVelocity)
+	}
+	if !world.SetInput(0, Input{Sequence: 2, Flags: InputFlagAnalog}) {
+		t.Fatal("air release input was not accepted")
+	}
+	for range 36 {
+		world.Step(dt)
+	}
+	if speed := car.AngularVelocity.Length(); speed > 0.35 {
+		t.Fatalf("released air input did not stabilize the car: speed=%.4f angular=%+v", speed, car.AngularVelocity)
+	}
+}

@@ -19,3 +19,11 @@ test('top-right diagnostics contain only ping fps and player count without a pan
   assert.doesNotMatch(networkMarkup, /data-identity|data-network/);
   assert.match(cssSource, /\.hud__network\s*\{[\s\S]*?background:\s*transparent;/);
 });
+
+
+test('mobile quick chat is compact and anchored to the top-right gameplay lane', () => {
+  assert.match(cssSource, /v1\.10\.22 — unobtrusive mobile quick chat/);
+  assert.match(cssSource, /\.mobile-active \.hud__quickchat\s*\{[\s\S]*?left:\s*auto;[\s\S]*?right:\s*calc\(env\(safe-area-inset-right/);
+  assert.match(cssSource, /\.mobile-active \.hud__quickchat-line\s*\{[\s\S]*?font-size:\s*8px;/);
+  assert.match(cssSource, /nth-last-child\(n \+ 5\)/);
+});

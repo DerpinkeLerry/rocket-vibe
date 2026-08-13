@@ -1919,3 +1919,45 @@ html, body, #app {
   .car-select__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .car-select__grid .car-choice:last-child:nth-child(odd) { grid-column: 1 / -1; }
 }
+
+
+/* v1.10.22 — unobtrusive mobile quick chat --------------------------------
+   Keep chat out of the driving sightline. On touch devices it lives in a tiny
+   top-right lane below the diagnostics instead of underneath the scoreboard. */
+.mobile-active .hud__quickchat {
+  left: auto;
+  right: calc(env(safe-area-inset-right, 0px) + 9px);
+  top: calc(env(safe-area-inset-top, 0px) + 39px);
+  width: min(178px, 24vw);
+  transform: none;
+  align-items: flex-end;
+  gap: 2px;
+  z-index: 5;
+}
+.mobile-active .hud__quickchat-feed { align-items: flex-end; gap: 2px; }
+.mobile-active .hud__quickchat-line {
+  gap: 5px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  border-color: rgba(255,255,255,0.08);
+  background: rgba(5,12,24,0.62);
+  box-shadow: 0 3px 10px rgba(0,0,0,0.16);
+  font-size: 8px;
+  line-height: 1.15;
+}
+.mobile-active .hud__quickchat-line span { max-width: 62px; font-size: 7px; }
+.mobile-active .hud__quickchat-line strong { font-size: 8px; }
+.mobile-active .hud__quickchat-status {
+  align-self: flex-end; padding: 3px 5px; font-size: 6px; background: rgba(5,12,24,0.54);
+}
+.mobile-active .hud__quickchat-line:nth-last-child(n + 5) { display: none; }
+@media (orientation: portrait) and (any-pointer: coarse) {
+  .mobile-active .hud__quickchat {
+    right: calc(env(safe-area-inset-right, 0px) + 8px);
+    top: calc(env(safe-area-inset-top, 0px) + 66px);
+    width: min(164px, 42vw);
+  }
+}
+@media (orientation: landscape) and (max-height: 430px) and (any-pointer: coarse) {
+  .mobile-active .hud__quickchat { top: calc(env(safe-area-inset-top, 0px) + 34px); width: min(168px, 22vw); }
+}

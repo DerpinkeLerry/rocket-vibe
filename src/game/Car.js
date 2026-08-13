@@ -949,28 +949,30 @@ export class Car {
 
   applyAirControl(dt, forwardInput, sideInput, rollInput, boosting) {
     const dodging = this.dodgeAngleRemaining > 1e-6;
-    const controlScale = dodging ? CAR_TUNING.dodgeControlScale : 1;
-    const torque = this.workVec.set(0, 0, 0)
-      .addScaledVector(this.right, -forwardInput * this.airPitchTorque * controlScale)
-      .addScaledVector(this.up, sideInput * this.airYawTorque * controlScale)
-      .addScaledVector(this.forward, rollInput * this.airRollTorque * controlScale);
-
-    if (torque.lengthSq() > 0) {
-      this.body.applyTorqueImpulse({
-        x: torque.x * dt,
-        y: torque.y * dt,
-        z: torque.z * dt
-      }, true);
-    }
-
-    const ang = this.body.angvel();
     const maxAirAngular = dodging
       ? Math.max(CAR_TUNING.maxAirAngular, CAR_TUNING.dodgeAngularSpeed)
       : CAR_TUNING.maxAirAngular;
-    const mag = Math.hypot(ang.x, ang.y, ang.z);
-    if (mag > maxAirAngular) {
-      const scale = maxAirAngular / mag;
-      this.body.setAngvel({ x: ang.x * scale, y: ang.y * scale, z: ang.z * scale }, true);
+
+    if (!dodging) {
+      const ang = this.body.angvel();
+      this.workVec.set(0, 0, 0)
+        .addScaledVector(this.right, -forwardInput * CAR_TUNING.airPitchRate)
+        .addScaledVector(this.up, sideInput * CAR_TUNING.airYawRate)
+        .addScaledVector(this.forward, rollInput * CAR_TUNING.airRollRate);
+      const inputAmount = Math.max(Math.abs(forwardInput), Math.abs(sideInput), Math.abs(rollInput));
+      const response = inputAmount > 0.02
+        ? CAR_TUNING.airControlResponse
+        : CAR_TUNING.airNeutralResponse;
+      const blend = 1 - Math.exp(-Math.max(0, response) * dt);
+      let nextX = THREE.MathUtils.lerp(ang.x, this.workVec.x, blend);
+      let nextY = THREE.MathUtils.lerp(ang.y, this.workVec.y, blend);
+      let nextZ = THREE.MathUtils.lerp(ang.z, this.workVec.z, blend);
+      const mag = Math.hypot(nextX, nextY, nextZ);
+      if (mag > maxAirAngular) {
+        const scale = maxAirAngular / mag;
+        nextX *= scale; nextY *= scale; nextZ *= scale;
+      }
+      this.body.setAngvel({ x: nextX, y: nextY, z: nextZ }, true);
     }
 
     if (boosting) {

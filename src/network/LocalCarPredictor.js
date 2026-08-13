@@ -53,6 +53,7 @@ export class LocalCarPredictor {
     this.pos = new THREE.Vector3();
     this.vel = new THREE.Vector3();
     this.ang = new THREE.Vector3();
+    this.targetAng = new THREE.Vector3();
     this.axis = new THREE.Vector3();
     this.authPos = new THREE.Vector3();
     this.authVel = new THREE.Vector3();
@@ -330,15 +331,24 @@ export class LocalCarPredictor {
 
   applyAirControl(dt, forwardInput, sideInput, rollInput, boosting) {
     const dodging = this.dodgeAngleRemaining > 1e-6;
-    const controlScale = dodging ? CAR_TUNING.dodgeControlScale : 1;
     const maxAngular = dodging
       ? Math.max(CAR_TUNING.maxAirAngular, CAR_TUNING.dodgeAngularSpeed)
       : CAR_TUNING.maxAirAngular;
 
-    this.ang
-      .addScaledVector(this.right, -forwardInput * CAR_TUNING.airPitchAcceleration * controlScale * dt)
-      .addScaledVector(this.up, sideInput * CAR_TUNING.airYawAcceleration * controlScale * dt)
-      .addScaledVector(this.forward, rollInput * CAR_TUNING.airRollAcceleration * controlScale * dt);
+    if (!dodging) {
+      // Match the authoritative Rocket-style aerial assist: controls request
+      // angular velocity directly and releasing them actively removes residual
+      // spin instead of letting old momentum rotate the car indefinitely.
+      this.targetAng.set(0, 0, 0)
+        .addScaledVector(this.right, -forwardInput * CAR_TUNING.airPitchRate)
+        .addScaledVector(this.up, sideInput * CAR_TUNING.airYawRate)
+        .addScaledVector(this.forward, rollInput * CAR_TUNING.airRollRate);
+      const inputAmount = Math.max(Math.abs(forwardInput), Math.abs(sideInput), Math.abs(rollInput));
+      const response = inputAmount > 0.02
+        ? CAR_TUNING.airControlResponse
+        : CAR_TUNING.airNeutralResponse;
+      this.ang.lerp(this.targetAng, 1 - Math.exp(-Math.max(0, response) * dt));
+    }
     const angularLength = this.ang.length();
     if (angularLength > maxAngular) this.ang.multiplyScalar(maxAngular / angularLength);
 

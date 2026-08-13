@@ -52,6 +52,14 @@ export const CAR_TUNING = Object.freeze({
   airPitchAcceleration: 11.0,
   airYawAcceleration: 8.8,
   airRollAcceleration: 10.5,
+  // Aerial orientation uses angular-velocity targets instead of accumulating
+  // torque forever. This keeps the car stable when controls are released while
+  // preserving immediate, analog pitch/yaw/roll authority when the player asks.
+  airPitchRate: 5.2,
+  airYawRate: 4.5,
+  airRollRate: 5.0,
+  airControlResponse: 11.5,
+  airNeutralResponse: 8.5,
   maxAirAngular: 6.6,
   // First jump is intentionally modest. Holding jump continuously adds lift
   // for up to 0.20 s, giving a large and controllable tap-to-full height range.

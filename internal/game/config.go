@@ -44,6 +44,11 @@ type CarConfig struct {
 	AirPitchAcceleration float64 `json:"airPitchAcceleration"`
 	AirYawAcceleration   float64 `json:"airYawAcceleration"`
 	AirRollAcceleration  float64 `json:"airRollAcceleration"`
+	AirPitchRate         float64 `json:"airPitchRate"`
+	AirYawRate           float64 `json:"airYawRate"`
+	AirRollRate          float64 `json:"airRollRate"`
+	AirControlResponse   float64 `json:"airControlResponse"`
+	AirNeutralResponse   float64 `json:"airNeutralResponse"`
 	MaxAirAngular        float64 `json:"maxAirAngular"`
 	JumpSpeed            float64 `json:"jumpSpeed"`
 	JumpHoldAcceleration float64 `json:"jumpHoldAcceleration"`
@@ -125,6 +130,11 @@ func DefaultConfig() Config {
 			AirPitchAcceleration: 11,
 			AirYawAcceleration:   8.8,
 			AirRollAcceleration:  10.5,
+			AirPitchRate:         5.2,
+			AirYawRate:           4.5,
+			AirRollRate:          5.0,
+			AirControlResponse:   11.5,
+			AirNeutralResponse:   8.5,
 			MaxAirAngular:        6.6,
 			JumpSpeed:            10.5,
 			JumpHoldAcceleration: 32,

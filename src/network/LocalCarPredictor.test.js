@@ -301,3 +301,24 @@ test('prediction consumes continuous analog steering and throttle instead of sna
   const fullSteer = run({ throttle: 1, steer: 1 });
   assert.ok(fullSteer.yaw > softSteer.yaw * 1.8, JSON.stringify({ softSteer, fullSteer }));
 });
+
+
+test('prediction arrests inherited aerial spin when controls are released', () => {
+  const { body, predictor } = makePredictor({ x: 0, y: 12, z: 0 });
+  body.setAngvel({ x: 4.2, y: -2.8, z: 3.4 });
+  predictor.setInput({ mask: 0, edges: 0, flags: 0 });
+  for (let index = 0; index < 42; index++) predictor.step(1 / 120);
+  const w = body.angvel();
+  assert.ok(Math.hypot(w.x, w.y, w.z) < 0.35, `neutral aerial spin did not settle: ${JSON.stringify(w)}`);
+});
+
+test('prediction changes aerial orientation through input and brakes after release', () => {
+  const { body, predictor } = makePredictor({ x: 0, y: 12, z: 0 });
+  predictor.setInput({ mask: 0, edges: 0, flags: INPUT_FLAGS.ANALOG, throttle: 1, steer: 0 });
+  for (let index = 0; index < 18; index++) predictor.step(1 / 120);
+  assert.ok(body.angvel().x < -2.5, `pitch response was ${body.angvel().x}`);
+  predictor.setInput({ mask: 0, edges: 0, flags: INPUT_FLAGS.ANALOG, throttle: 0, steer: 0 });
+  for (let index = 0; index < 36; index++) predictor.step(1 / 120);
+  const w = body.angvel();
+  assert.ok(Math.hypot(w.x, w.y, w.z) < 0.35, `released pitch did not stabilize: ${JSON.stringify(w)}`);
+});

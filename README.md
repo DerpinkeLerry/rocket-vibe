@@ -1,4 +1,11 @@
-# Rocket Vibe 1.10.21 – Dusk / HUD / High-Ball Camera
+# Rocket Vibe 1.10.22 – Mobile Chat + Aerial Stability
+
+## v1.10.22
+
+- Smartphone-Quickchat sitzt jetzt klein oben rechts unter den Diagnosewerten statt mitten im Sichtfeld; maximal vier Zeilen bleiben gleichzeitig sichtbar.
+- Aerial-Steuerung verwendet Rocket-artige Winkelgeschwindigkeits-Ziele: Ohne Pitch/Yaw/Roll-Input wird Restrotation schnell abgebremst, statt durch altes Drehmoment weiterzuspinnen.
+- Pitch, Yaw und Air Roll bleiben voll analog steuerbar; Boost selbst veraendert die Fahrzeugausrichtung nicht. Dodge/Flips behalten weiterhin ihre exakt eine kontrollierte 360-Grad-Rotation.
+- Server, Client-Prediction und lokaler Rapier-Modus nutzen dieselben Air-Control-Raten und Stabilisierungswerte.
 
 ## v1.10.21
 
@@ -73,7 +80,7 @@ Der Go-Server ist die einzige Online-Autoritaet und verarbeitet:
 - Fahrtempo ca. 70 km/h normal und maximal 120 km/h mit Boost; einmal aufgebaute Boost-Geschwindigkeit oberhalb 70 km/h bleibt ohne automatisches Zurueckbremsen erhalten, bis gebremst oder anderweitig Tempo verloren wird
 - Sechs grosse 100-%-Boostpads und 28 kleine +12-%-Pads im Soccar-artigen Rotationslayout mit 10/4 Sekunden Respawn
 - Variabler Sprung durch gehaltenes Space, neutraler Doppelsprung und gerichtete Dodge/Flips mit exakt einer kontrollierten 360-Grad-Rotation
-- Pitch/Yaw/Roll in der Luft mit begrenzter, kontrollierbarer Winkelgeschwindigkeit
+- Pitch/Yaw/Roll in der Luft mit analoger Ziel-Winkelgeschwindigkeit; ohne Input wird Restrotation aktiv stabilisiert, damit das Auto nicht durch altes Drehmoment wild weiterspinnt
 - Separater, staerkerer Air-Boost (34 m/s² statt 16 m/s² am Boden), damit ein nach oben ausgerichtetes Auto die 20,5-m/s²-Schwerkraft ueberwinden und kontrolliert Hoehe gewinnen kann
 - Surface-Adhesion: Rampen und senkrechte Waende halten das Auto bis zum aktiven Absprung
 - Auto gegen Auto

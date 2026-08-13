@@ -638,16 +638,29 @@ func surfaceTangentForward(forward, velocity, normal Vec3) Vec3 {
 
 func (world *World) applyAirControl(car *Car, forward, right, up Vec3, pitch, yaw, roll float64, boosting bool, dt float64) {
 	config := world.Config.Car
-	controlScale := 1.0
+	dodging := car.DodgeAngleRemaining > 1e-9
 	maximumAngular := config.MaxAirAngular
-	if car.DodgeAngleRemaining > 1e-9 {
-		controlScale = config.DodgeControlScale
+	if dodging {
+		// A dodge owns its rotation completely. driveDodgeRotation programs the
+		// one finite revolution later in the step, so normal aerial assistance
+		// must not fight or extend it.
 		maximumAngular = math.Max(maximumAngular, config.DodgeAngularSpeed)
+	} else {
+		// Rocket-style aerial assist: input requests a target angular velocity
+		// instead of adding torque forever. Releasing the controls therefore
+		// arrests inherited spin quickly and leaves the current orientation
+		// stable; pitch/yaw/roll only change while the player actually asks.
+		targetAngular := right.Mul(-pitch * config.AirPitchRate).
+			Add(up.Mul(yaw * config.AirYawRate)).
+			Add(forward.Mul(roll * config.AirRollRate))
+		inputAmount := math.Max(math.Abs(pitch), math.Max(math.Abs(yaw), math.Abs(roll)))
+		response := config.AirNeutralResponse
+		if inputAmount > 0.02 {
+			response = config.AirControlResponse
+		}
+		blend := 1 - math.Exp(-math.Max(0, response)*dt)
+		car.AngularVelocity = car.AngularVelocity.Mul(1 - blend).Add(targetAngular.Mul(blend))
 	}
-	car.AngularVelocity = car.AngularVelocity.
-		Add(right.Mul(-pitch * config.AirPitchAcceleration * controlScale * dt)).
-		Add(up.Mul(yaw * config.AirYawAcceleration * controlScale * dt)).
-		Add(forward.Mul(roll * config.AirRollAcceleration * controlScale * dt))
 	car.AngularVelocity = clampMagnitude(car.AngularVelocity, maximumAngular)
 
 	if boosting {
