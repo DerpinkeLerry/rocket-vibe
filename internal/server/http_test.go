@@ -63,7 +63,7 @@ func TestHTTPAndWebSocketIntegration(t *testing.T) {
 		Protocol   int    `json:"protocol"`
 	}
 	if json.Unmarshal(payload, &welcome) != nil || welcome.Type != "welcome" || welcome.PlayerID != 0 ||
-		welcome.Name != "Test Pilot" || welcome.Team != game.TeamOrange || welcome.CarStyle != "apex" || welcome.BoostStyle != "ion" || welcome.Protocol != 3 {
+		welcome.Name != "Test Pilot" || welcome.Team != game.TeamOrange || welcome.CarStyle != "apex" || welcome.BoostStyle != "ion" || welcome.Protocol != protocol.Version {
 		t.Fatalf("unexpected welcome: %s", payload)
 	}
 

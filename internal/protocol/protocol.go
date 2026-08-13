@@ -8,6 +8,10 @@ import (
 )
 
 const (
+	// Version is the WebSocket application protocol version announced in the welcome message.
+	// Keep it here so the server and integration tests share one source of truth.
+	Version = 4
+
 	MessageInput byte = 1
 	MessageState byte = 2
 

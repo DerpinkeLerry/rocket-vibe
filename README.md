@@ -1,4 +1,8 @@
-# Rocket Vibe 1.11.0 – Lobbies, Custom Rules & Physics Mutators
+# Rocket Vibe 1.11.1 – Lobbies, Custom Rules & Physics Mutators
+
+## v1.11.1
+
+- Hotfix: WebSocket protocol version is now defined centrally and shared by server + integration test, fixing the Railway Docker build regression.
 
 ## v1.11.0
 

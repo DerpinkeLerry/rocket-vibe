@@ -428,7 +428,7 @@ func (match *Match) run() {
 			welcome, _ := json.Marshal(map[string]any{
 				"type": "welcome", "playerId": slot, "maxPlayers": match.config.MaxPlayers,
 				"playerName": request.client.name, "team": request.client.team, "carStyle": request.client.carStyle, "boostStyle": request.client.boostStyle,
-				"connectedPlayers": connectedSlots(clients), "players": rosterPlayers(clients), "protocol": 4,
+				"connectedPlayers": connectedSlots(clients), "players": rosterPlayers(clients), "protocol": protocol.Version,
 				"serverHz": match.config.PhysicsHz, "snapshotHz": match.config.SnapshotHz,
 				"config": match.config, "rules": match.rules,
 			})
