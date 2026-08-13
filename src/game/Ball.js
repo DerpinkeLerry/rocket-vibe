@@ -3,38 +3,125 @@ import { TransformBody } from '../network/TransformBody.js';
 import { BALL_TUNING } from '../shared/game-tuning.js';
 import { CAR_HITBOX } from '../shared/arena-tuning.js';
 
-function createAppleBodyGeometry(radius, lowDetail, ultraHigh = false) {
-  // Revolved silhouette: wide shoulders, rounded belly, tapered bottom and a
-  // small top indentation. The widest point stays inside the physics sphere.
-  const r = radius;
-  const profile = [
-    [0.10, -0.96],
-    [0.43, -0.86],
-    [0.73, -0.64],
-    [0.91, -0.34],
-    [0.97,  0.02],
-    [0.95,  0.34],
-    [0.84,  0.61],
-    [0.61,  0.80],
-    [0.30,  0.88],
-    [0.13,  0.82]
-  ];
-
-  const points = profile.map(([radial, y]) => new THREE.Vector2(radial * r, y * r));
-  const geometry = new THREE.LatheGeometry(points, lowDetail ? 12 : (ultraHigh ? 40 : 24));
-  geometry.computeVertexNormals();
-  return geometry;
+function hexPath(ctx, cx, cy, radius) {
+  ctx.beginPath();
+  for (let i = 0; i < 6; i += 1) {
+    const angle = Math.PI / 3 * i + Math.PI / 6;
+    const x = cx + Math.cos(angle) * radius;
+    const y = cy + Math.sin(angle) * radius;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
 }
 
-function createLeafGeometry(radius) {
-  const shape = new THREE.Shape();
-  const s = radius;
-  shape.moveTo(0, 0);
-  shape.quadraticCurveTo(0.34 * s, 0.14 * s, 0.56 * s, 0.06 * s);
-  shape.quadraticCurveTo(0.35 * s, -0.18 * s, 0, 0);
-  const geometry = new THREE.ShapeGeometry(shape, 2);
-  geometry.translate(0.02 * s, 0, 0);
-  return geometry;
+function createSoccarBallTextures(lowDetail, ultraHigh) {
+  const width = lowDetail ? 384 : (ultraHigh ? 1536 : 768);
+  const height = width / 2;
+  const colorCanvas = document.createElement('canvas');
+  const bumpCanvas = document.createElement('canvas');
+  colorCanvas.width = width;
+  colorCanvas.height = height;
+  bumpCanvas.width = width;
+  bumpCanvas.height = height;
+
+  const ctx = colorCanvas.getContext('2d');
+  const bump = bumpCanvas.getContext('2d');
+
+  const base = ctx.createLinearGradient(0, 0, 0, height);
+  base.addColorStop(0, '#7f8790');
+  base.addColorStop(0.48, '#555d66');
+  base.addColorStop(1, '#8b9299');
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, width, height);
+  bump.fillStyle = '#a7a7a7';
+  bump.fillRect(0, 0, width, height);
+
+  const rows = lowDetail ? 5 : 7;
+  const cols = lowDetail ? 10 : 14;
+  const cellW = width / cols;
+  const cellH = height / rows;
+  const radius = Math.min(cellW * 0.52, cellH * 0.62);
+
+  for (let row = -1; row <= rows; row += 1) {
+    for (let col = -1; col <= cols; col += 1) {
+      const cx = (col + 0.5 + (row & 1) * 0.5) * cellW;
+      const cy = (row + 0.5) * cellH;
+      const seed = ((row + 5) * 31 + (col + 7) * 17) & 7;
+      const dark = seed === 0 || seed === 3;
+      const bright = seed === 5;
+
+      hexPath(ctx, cx, cy, radius * 0.9);
+      ctx.fillStyle = dark ? '#22282e' : (bright ? '#aab0b4' : '#666e75');
+      ctx.fill();
+      ctx.lineWidth = Math.max(2, width / 300);
+      ctx.strokeStyle = '#171c21';
+      ctx.stroke();
+
+      hexPath(bump, cx, cy, radius * 0.9);
+      bump.fillStyle = dark ? '#777' : (bright ? '#c7c7c7' : '#aaa');
+      bump.fill();
+      bump.lineWidth = Math.max(4, width / 180);
+      bump.strokeStyle = '#3b3b3b';
+      bump.stroke();
+
+      // Thin inset seam gives the ball a machined, segmented look without
+      // requiring extra panel meshes.
+      hexPath(ctx, cx, cy, radius * 0.72);
+      ctx.lineWidth = Math.max(1, width / 640);
+      ctx.strokeStyle = dark ? 'rgba(147,166,177,0.45)' : 'rgba(218,226,230,0.35)';
+      ctx.stroke();
+
+      if (!lowDetail && (seed === 0 || seed === 5)) {
+        const glowR = radius * (seed === 0 ? 0.16 : 0.11);
+        const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR * 3.3);
+        glow.addColorStop(0, 'rgba(225,247,255,0.95)');
+        glow.addColorStop(0.25, 'rgba(126,218,255,0.78)');
+        glow.addColorStop(1, 'rgba(52,154,205,0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(cx, cy, glowR * 3.3, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#eaf8ff';
+        ctx.beginPath();
+        ctx.arc(cx, cy, glowR, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  // Dark equatorial hardware band. It breaks up the repeated hex pattern and
+  // reads like the reinforced belt on a futuristic arena ball.
+  const bandY = height * 0.5;
+  const bandH = Math.max(6, height * 0.022);
+  ctx.fillStyle = 'rgba(18,23,28,0.72)';
+  ctx.fillRect(0, bandY - bandH / 2, width, bandH);
+  ctx.fillStyle = 'rgba(160,182,192,0.45)';
+  ctx.fillRect(0, bandY - bandH * 0.12, width, Math.max(1, bandH * 0.16));
+  bump.fillStyle = '#595959';
+  bump.fillRect(0, bandY - bandH / 2, width, bandH);
+
+  const map = new THREE.CanvasTexture(colorCanvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.wrapS = THREE.RepeatWrapping;
+  map.wrapT = THREE.ClampToEdgeWrapping;
+  map.anisotropy = ultraHigh ? 8 : 4;
+
+  const bumpMap = new THREE.CanvasTexture(bumpCanvas);
+  bumpMap.wrapS = THREE.RepeatWrapping;
+  bumpMap.wrapT = THREE.ClampToEdgeWrapping;
+  bumpMap.anisotropy = ultraHigh ? 8 : 4;
+
+  return { map, bumpMap };
+}
+
+function createSoccarBallGeometry(radius, lowDetail, ultraHigh) {
+  return new THREE.SphereGeometry(
+    radius,
+    lowDetail ? 20 : (ultraHigh ? 64 : 40),
+    lowDetail ? 14 : (ultraHigh ? 40 : 28)
+  );
 }
 
 export class Ball {
@@ -101,54 +188,47 @@ export class Ball {
   createVisual() {
     this.mesh = new THREE.Group();
 
-    const appleMaterial = this.lowDetail
-      ? new THREE.MeshBasicMaterial({ color: 0xd92b2b })
+    const { map, bumpMap } = createSoccarBallTextures(this.lowDetail, this.ultraHigh);
+    const ballMaterial = this.lowDetail
+      ? new THREE.MeshBasicMaterial({ map, color: 0xe5e7e9 })
       : (this.ultraHigh
         ? new THREE.MeshPhysicalMaterial({
-            color: 0xe8443c,
-            roughness: 0.64,
-            metalness: 0.0,
-            clearcoat: 0.16,
-            clearcoatRoughness: 0.52,
-            envMapIntensity: 0.42
+            map,
+            bumpMap,
+            bumpScale: this.radius * 0.014,
+            color: 0xe4e7ea,
+            roughness: 0.38,
+            metalness: 0.34,
+            clearcoat: 0.08,
+            clearcoatRoughness: 0.48,
+            envMapIntensity: 0.38
           })
         : new THREE.MeshStandardMaterial({
-            color: 0xe53b35,
-            roughness: 0.68,
-            metalness: 0.0
+            map,
+            bumpMap,
+            bumpScale: this.radius * 0.012,
+            color: 0xe1e4e7,
+            roughness: 0.44,
+            metalness: 0.26
           }));
 
-    const body = new THREE.Mesh(createAppleBodyGeometry(this.radius, this.lowDetail, this.ultraHigh), appleMaterial);
+    const body = new THREE.Mesh(
+      createSoccarBallGeometry(this.radius, this.lowDetail, this.ultraHigh),
+      ballMaterial
+    );
+    body.castShadow = this.ultraHigh;
+    body.receiveShadow = this.ultraHigh;
     this.mesh.add(body);
 
-    const stemMaterial = this.lowDetail
-      ? new THREE.MeshBasicMaterial({ color: 0x5f371c })
-      : new THREE.MeshStandardMaterial({ color: 0x5a341c, roughness: 0.95, metalness: 0 });
-    const stem = new THREE.Mesh(
-      new THREE.CylinderGeometry(
-        this.radius * 0.055,
-        this.radius * 0.075,
-        this.radius * 0.43,
-        this.lowDetail ? 6 : (this.ultraHigh ? 16 : 10)
-      ),
-      stemMaterial
-    );
-    stem.position.set(0, this.radius * 1.01, 0);
-    stem.rotation.z = -0.12;
-    this.mesh.add(stem);
-
-    const leafMaterial = this.lowDetail
-      ? new THREE.MeshBasicMaterial({ color: 0x36a84a, side: THREE.DoubleSide })
-      : new THREE.MeshStandardMaterial({
-          color: 0x3ca653,
-          roughness: 0.82,
-          metalness: 0,
-          side: THREE.DoubleSide
-        });
-    const leaf = new THREE.Mesh(createLeafGeometry(this.radius), leafMaterial);
-    leaf.position.set(this.radius * 0.04, this.radius * 1.08, 0);
-    leaf.rotation.set(-0.38, 0.48, 0.24);
-    this.mesh.add(leaf);
+    // A very subtle dark inner shell prevents bright environment light from
+    // washing the ball out and gives the seams more depth in Normal/Ultra High.
+    if (!this.lowDetail) {
+      const inner = new THREE.Mesh(
+        createSoccarBallGeometry(this.radius * 0.986, false, false),
+        new THREE.MeshBasicMaterial({ color: 0x151b20, side: THREE.BackSide })
+      );
+      this.mesh.add(inner);
+    }
 
     this.scene.add(this.mesh);
 

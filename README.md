@@ -1,4 +1,4 @@
-# Rocket Vibe 1.10.9 – Boost Layout / Active Field Visuals
+# Rocket Vibe 1.10.10 – Soccar Ball Visual Rework
 
 Browser-Spiel fuer bis zu vier Spieler mit Three.js-Rendering, lokaler Client-Prediction und einem autoritativen Go-Server. Frontend und Server werden auf Railway als **ein Service** betrieben. Dadurch verwendet der Browser dieselbe HTTPS-Domain fuer Seite und WebSocket (`/lan`); eine separate Backend-URL oder CORS-Konfiguration ist nicht erforderlich.
 
@@ -19,6 +19,11 @@ Beim Start werden Spielername und eine von vier rein optischen, Rocket-League-in
 
 Die Serverphysik rechnet intern mit `float64`. Fuer das Netzwerk werden Position, Quaternion, lineare und Winkelgeschwindigkeit als `float32` uebertragen. Bei vier Spielern sind das grob 16 KB/s je Client bzw. rund 64 KB/s Server-Ausgang plus WebSocket-Overhead.
 
+
+
+## Ball-Optik
+
+Der bisherige Apfel-Platzhalter wurde komplett entfernt. Der Ball ist wieder eine echte Kugel und verwendet jetzt eine prozedurale, Soccar-/Rocket-League-inspirierte Panel-Oberflaeche mit dunklen Segmenten, hellen Metallpanelen, eingelassenen Fugen und dezenten technischen Lichtakzenten. Normal und Ultra High verwenden zusaetzlich eine Bump-Map fuer sichtbare Paneltiefe; Ultra Low behaelt dieselbe Grundoptik mit einer guenstigeren Kugelgeometrie und ohne physikalische Materialeffekte. Die Ball-Physics, Hitbox und Flugwerte bleiben unveraendert.
 
 ## Feld- und Boost-Layout
 
