@@ -587,7 +587,7 @@ func (match *Match) run() {
 				demolitionRespawns[victimClientID] = &demolitionRespawnState{
 					slot: demolition.VictimSlot, choice: choice, endsAt: time.Now().Add(demolitionRespawnDuration),
 				}
-				match.broadcastDemolition(clients, demolition, choice, demolitionRespawnDuration)
+				match.broadcastDemolition(clients, demolition, choice, demolitionRespawnDuration, state.Tick)
 			}
 
 			if loopTick%snapshotEvery == 0 && len(clients) > 0 {
@@ -696,7 +696,7 @@ func (match *Match) sendReplayWaiting(connected *client, scorerSlot int, scorerN
 	connected.offerJSON(message)
 }
 
-func (match *Match) broadcastDemolition(clients map[string]*client, demolition game.DemolitionEvent, choice int, duration time.Duration) {
+func (match *Match) broadcastDemolition(clients map[string]*client, demolition game.DemolitionEvent, choice int, duration time.Duration, stateTick uint64) {
 	points := game.RespawnPointsForSlot(demolition.VictimSlot)
 	spawnPoints := make([]map[string]any, 0, len(points))
 	for _, point := range points {
@@ -709,7 +709,7 @@ func (match *Match) broadcastDemolition(clients map[string]*client, demolition g
 		"attackerName": playerNameForSlot(clients, demolition.AttackerSlot),
 		"victimName":   playerNameForSlot(clients, demolition.VictimSlot),
 		"position":     []float64{demolition.Position.X, demolition.Position.Y, demolition.Position.Z},
-		"durationMs":   duration.Milliseconds(), "selectedIndex": choice, "spawnPoints": spawnPoints,
+		"durationMs":   duration.Milliseconds(), "stateTick": stateTick, "selectedIndex": choice, "spawnPoints": spawnPoints,
 	})
 	for _, connected := range clients {
 		connected.offerJSON(message)

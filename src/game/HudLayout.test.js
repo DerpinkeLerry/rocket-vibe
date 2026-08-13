@@ -50,3 +50,12 @@ test('demolition respawn selection exposes three spawn choices and a four-second
   assert.match(gameSource, /sendRespawnSelection/);
   assert.match(cssSource, /\.demolition-respawn-active \.mobile-controls[\s\S]*pointer-events:\s*none/);
 });
+
+
+test('desktop demolition picker ignores stale pre-demolition snapshots', () => {
+  assert.match(gameSource, /demolitionStartTick/);
+  assert.match(gameSource, /evaluateDemolitionSnapshot/);
+  assert.match(gameSource, /demolitionSnapshotConfirmed/);
+  assert.doesNotMatch(gameSource, /!demolished && this\.demolitionRespawnActive\) this\.endDemolitionRespawn/);
+  assert.match(gameSource, /now - this\.lastRespawnSelectionSentAt >= 0\.55/);
+});

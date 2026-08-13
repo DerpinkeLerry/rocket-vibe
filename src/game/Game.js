@@ -13,6 +13,7 @@ import { LocalCarPredictor } from '../network/LocalCarPredictor.js';
 import { ReplayBuffer, sampleReplayFrames } from './ReplayBuffer.js';
 import { GoalExplosion } from './GoalExplosion.js';
 import { ARENA_TUNING } from '../shared/arena-tuning.js';
+import { evaluateDemolitionSnapshot } from '../shared/demolition-respawn.js';
 import { DEFAULT_CAR_STYLE, normalizeCarStyle } from '../shared/car-styles.js';
 import { DEFAULT_BOOST_STYLE, normalizeBoostStyle } from '../shared/boost-styles.js';
 
@@ -68,6 +69,10 @@ export class Game {
     this.demolishedPlayers = new Set();
     this.demolitionRespawnActive = false;
     this.demolitionRespawnEndsAt = 0;
+    this.demolitionStartTick = -1;
+    this.demolitionSnapshotConfirmed = false;
+    this.lastRespawnSelectionSentAt = 0;
+    this.lastRespawnSelectionSentIndex = -1;
     this.respawnSelectedIndex = 1;
     this.respawnPoints = [];
     this.respawnMarkerGroup = null;
@@ -918,6 +923,12 @@ export class Game {
 
     this.demolitionRespawnActive = true;
     this.demolitionRespawnEndsAt = performance.now() / 1000 + Math.max(0.5, Number(demolition.durationMs) || 4000) / 1000;
+    this.demolitionStartTick = Number.isFinite(Number(demolition.stateTick))
+      ? Math.max(0, Math.floor(Number(demolition.stateTick)))
+      : -1;
+    this.demolitionSnapshotConfirmed = false;
+    this.lastRespawnSelectionSentAt = 0;
+    this.lastRespawnSelectionSentIndex = -1;
     this.respawnSelectedIndex = Math.max(0, Math.min(2, Math.round(Number(demolition.selectedIndex) || 1)));
     this.respawnPoints = Array.isArray(demolition.spawnPoints) && demolition.spawnPoints.length >= 3
       ? demolition.spawnPoints.slice(0, 3)
@@ -963,13 +974,31 @@ export class Game {
     const remainingMs = Math.max(0, (this.demolitionRespawnEndsAt - performance.now() / 1000) * 1000);
     this.hud.setRespawnSelection?.(true, remainingMs, choice);
     this.updateRespawnMarkerSelection();
-    if (send) this.network?.sendRespawnSelection?.(choice);
+    if (send) {
+      const sent = this.network?.sendRespawnSelection?.(choice);
+      if (sent) {
+        this.lastRespawnSelectionSentAt = performance.now() / 1000;
+        this.lastRespawnSelectionSentIndex = choice;
+      }
+    }
     return true;
   }
 
   updateDemolitionRespawn(now) {
     const remainingMs = Math.max(0, (this.demolitionRespawnEndsAt - now) * 1000);
     this.hud.setRespawnSelection?.(true, remainingMs, this.respawnSelectedIndex);
+
+    // Re-affirm the current choice a few times during the four-second window.
+    // WebSocket delivery itself is reliable, but the server deliberately uses
+    // bounded game-loop queues; this makes the selection resilient even if one
+    // application-level enqueue ever happens during a busy tick.
+    const shouldResend = this.networked && remainingMs > 120
+      && (this.lastRespawnSelectionSentIndex !== this.respawnSelectedIndex
+        || now - this.lastRespawnSelectionSentAt >= 0.55);
+    if (shouldResend && this.network?.sendRespawnSelection?.(this.respawnSelectedIndex)) {
+      this.lastRespawnSelectionSentAt = now;
+      this.lastRespawnSelectionSentIndex = this.respawnSelectedIndex;
+    }
   }
 
   createRespawnMarkers() {
@@ -1062,6 +1091,10 @@ export class Game {
     if (!this.demolitionRespawnActive && !this.respawnMarkerGroup) return;
     this.demolitionRespawnActive = false;
     this.demolitionRespawnEndsAt = 0;
+    this.demolitionStartTick = -1;
+    this.demolitionSnapshotConfirmed = false;
+    this.lastRespawnSelectionSentAt = 0;
+    this.lastRespawnSelectionSentIndex = -1;
     this.respawnPoints = [];
     this.root.classList.remove('demolition-respawn-active');
     this.hud.setRespawnSelection?.(false);
@@ -1305,7 +1338,18 @@ export class Game {
       if (demolished) this.demolishedPlayers.add(i);
       else this.demolishedPlayers.delete(i);
       this.setCarVisible(i, this.connectedPlayers.has(i) && !demolished);
-      if (i === this.playerId && !demolished && this.demolitionRespawnActive) this.endDemolitionRespawn();
+
+      if (i === this.playerId && this.demolitionRespawnActive) {
+        const demolitionState = evaluateDemolitionSnapshot({
+          active: true,
+          demolished,
+          snapshotTick: state.tick,
+          demolitionStartTick: this.demolitionStartTick,
+          snapshotConfirmed: this.demolitionSnapshotConfirmed
+        });
+        this.demolitionSnapshotConfirmed = demolitionState.snapshotConfirmed;
+        if (demolitionState.shouldEnd) this.endDemolitionRespawn();
+      }
       if (demolished) continue;
 
       if (i === this.playerId) {

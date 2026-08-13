@@ -86,7 +86,9 @@ export class LanClient {
     this.onGoal = null;
     this.goal = null;
     this.onDemolition = null;
+    this.demolition = null;
     this.onRespawn = null;
+    this.respawn = null;
     this.onDemolitionCancel = null;
     this.onQuickChat = null;
     this.onQuickChatLimit = null;
@@ -180,6 +182,7 @@ export class LanClient {
         }
 
         if (message.type === 'demolition-cancel') {
+          this.demolition = null;
           this.onDemolitionCancel?.({ reason: String(message?.reason || 'cancelled') });
           return;
         }
@@ -297,9 +300,11 @@ export class LanClient {
         ? [Number(message.position[0]) || 0, Number(message.position[1]) || 0, Number(message.position[2]) || 0]
         : [0, 0, 0],
       durationMs: Math.max(500, Number(message?.durationMs) || 4000),
+      stateTick: Number.isFinite(Number(message?.stateTick)) ? Math.max(0, Math.floor(Number(message.stateTick))) : -1,
       selectedIndex: Math.max(0, Math.min(2, Math.round(Number(message?.selectedIndex) || 1))),
       spawnPoints: Array.isArray(message?.spawnPoints) ? message.spawnPoints.slice(0, 3).map(normalizePoint) : []
     };
+    this.demolition = demolition;
     this.onDemolition?.(demolition);
     return demolition;
   }
@@ -315,6 +320,8 @@ export class LanClient {
       yaw: Number(message?.yaw) || 0,
       boost: Math.max(0, Math.min(100, Number(message?.boost) || 0))
     };
+    this.respawn = respawn;
+    if (this.demolition?.victimId === respawn.playerId) this.demolition = null;
     this.onRespawn?.(respawn);
     return respawn;
   }

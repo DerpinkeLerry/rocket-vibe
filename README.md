@@ -1,6 +1,14 @@
-# Rocket Vibe 1.10.27 – Demolition & Tactical Respawn
+# Rocket Vibe 1.10.28 – Reliable Desktop Demolition Respawn
 
-## v1.10.27
+## v1.10.28
+
+### Desktop respawn race fix
+
+- Demolition control messages now carry their authoritative server tick.
+- A stale pre-demolition snapshot can no longer close the PC spawn picker.
+- Legacy-server fallback waits until a demolished snapshot was actually observed before treating `d=0` as a respawn.
+- The selected spawn point is re-affirmed every 550 ms during the four-second selection window for extra queue resilience.
+
 
 - Neues serverautoritaeres **Demolition-System**: Ein gegnerisches Auto wird nur bei einem echten Fronttreffer zerstoert, wenn der Angreifer strikt schneller als das normale 70-km/h-Limit ist. Seiten-/Hecktreffer, Teamkontakte und Treffer bei exakt 70 km/h loesen keine Demo aus.
 - Nach einer Demo verschwindet das zerstoerte Auto sofort aus der aktiven Physik und kann weder Ball, Autos noch Boost-Pads beeinflussen.

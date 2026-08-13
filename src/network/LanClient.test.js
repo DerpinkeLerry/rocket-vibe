@@ -230,7 +230,7 @@ test('demolition and respawn control messages carry the spawn-selection data', (
   const demolition = client.applyDemolitionMessage({
     type: 'demolition', attackerId: 0, victimId: 1,
     attackerName: 'Orange', victimName: 'Blue',
-    position: [1, 2, 3], durationMs: 4000, selectedIndex: 1,
+    position: [1, 2, 3], durationMs: 4000, stateTick: 912, selectedIndex: 1,
     spawnPoints: [
       { x: 28, y: 0.52, z: -52, yaw: Math.PI },
       { x: 0, y: 0.52, z: -52, yaw: Math.PI },
@@ -238,6 +238,8 @@ test('demolition and respawn control messages carry the spawn-selection data', (
     ]
   });
   assert.equal(demolition.durationMs, 4000);
+  assert.equal(demolition.stateTick, 912);
+  assert.equal(client.demolition, demolition);
   assert.equal(demolition.spawnPoints.length, 3);
   assert.equal(demolition.spawnPoints[0].z, -52);
   assert.deepEqual(demolitionReceived, demolition);
@@ -248,6 +250,7 @@ test('demolition and respawn control messages carry the spawn-selection data', (
   });
   assert.equal(respawn.spawnIndex, 2);
   assert.equal(respawn.boost, 33);
+  assert.equal(client.demolition, null);
   assert.deepEqual(respawnReceived, respawn);
 });
 
