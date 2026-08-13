@@ -20,11 +20,12 @@ var (
 )
 
 const (
-	kickoffCountdownSeconds  = 3
-	kickoffCountdownDuration = time.Duration(kickoffCountdownSeconds) * time.Second
-	goalReplayLookback       = 6.25
-	goalReplayDuration       = 6800 * time.Millisecond
-	goalCelebrationDuration  = 1250 * time.Millisecond
+	kickoffCountdownSeconds   = 3
+	kickoffCountdownDuration  = time.Duration(kickoffCountdownSeconds) * time.Second
+	goalReplayLookback        = 6.25
+	goalReplayDuration        = 6800 * time.Millisecond
+	goalCelebrationDuration   = 1250 * time.Millisecond
+	demolitionRespawnDuration = 4 * time.Second
 )
 
 func shouldStartKickoff(playerCount int) bool {
@@ -48,6 +49,17 @@ type inputEvent struct {
 
 type quickChatEvent struct {
 	clientID string
+}
+
+type respawnSelectionEvent struct {
+	clientID string
+	index    int
+}
+
+type demolitionRespawnState struct {
+	slot   int
+	choice int
+	endsAt time.Time
 }
 
 type rosterPlayer struct {
@@ -76,11 +88,12 @@ type Match struct {
 	wait     sync.WaitGroup
 	stopOnce sync.Once
 
-	joins       chan joinRequest
-	leaves      chan string
-	inputs      chan inputEvent
-	replaySkips chan string
-	quickChats  chan quickChatEvent
+	joins             chan joinRequest
+	leaves            chan string
+	inputs            chan inputEvent
+	replaySkips       chan string
+	quickChats        chan quickChatEvent
+	respawnSelections chan respawnSelectionEvent
 
 	playerCount    atomic.Int32
 	lastTick       atomic.Uint64
@@ -92,15 +105,16 @@ type Match struct {
 func NewMatch(parent context.Context, config game.Config) *Match {
 	ctx, cancel := context.WithCancel(parent)
 	match := &Match{
-		config:      config,
-		world:       game.NewWorld(config),
-		ctx:         ctx,
-		cancel:      cancel,
-		joins:       make(chan joinRequest),
-		leaves:      make(chan string, 32),
-		inputs:      make(chan inputEvent, 256),
-		replaySkips: make(chan string, 32),
-		quickChats:  make(chan quickChatEvent, 64),
+		config:            config,
+		world:             game.NewWorld(config),
+		ctx:               ctx,
+		cancel:            cancel,
+		joins:             make(chan joinRequest),
+		leaves:            make(chan string, 32),
+		inputs:            make(chan inputEvent, 256),
+		replaySkips:       make(chan string, 32),
+		quickChats:        make(chan quickChatEvent, 64),
+		respawnSelections: make(chan respawnSelectionEvent, 64),
 	}
 	match.latestState.Store(match.world.Snapshot())
 	match.wait.Add(1)
@@ -162,6 +176,14 @@ func (match *Match) SubmitQuickChat(clientID string) {
 	}
 }
 
+func (match *Match) SubmitRespawnSelection(clientID string, index int) {
+	select {
+	case match.respawnSelections <- respawnSelectionEvent{clientID: clientID, index: index}:
+	case <-match.ctx.Done():
+	default:
+	}
+}
+
 func (match *Match) Stats() Stats {
 	return Stats{
 		Players:        match.playerCount.Load(),
@@ -207,6 +229,7 @@ func (match *Match) run() {
 	replayGoalTick := uint64(0)
 	replayResetScoreAfter := false
 	quickChatLimits := make(map[string]*quickChatLimiter, match.config.MaxPlayers)
+	demolitionRespawns := make(map[string]*demolitionRespawnState, match.config.MaxPlayers)
 
 	participantCount := func() int {
 		return len(replayParticipants)
@@ -221,7 +244,26 @@ func (match *Match) run() {
 		return count
 	}
 
+	clientForSlot := func(slot int) (*client, string) {
+		for id, connected := range clients {
+			if connected.slot == slot {
+				return connected, id
+			}
+		}
+		return nil, ""
+	}
+
+	cancelDemolitionRespawns := func(reason string) {
+		if len(demolitionRespawns) == 0 {
+			return
+		}
+		match.broadcastDemolitionCancel(clients, reason)
+		demolitionRespawns = make(map[string]*demolitionRespawnState, match.config.MaxPlayers)
+	}
+
 	startKickoff := func(resetScore bool) {
+		cancelDemolitionRespawns("kickoff")
+		match.world.SetDemolitionsEnabled(false)
 		if resetScore {
 			match.world.ResetMatch()
 		} else {
@@ -253,6 +295,9 @@ func (match *Match) run() {
 	}
 
 	startGoalCelebration := func() {
+		cancelDemolitionRespawns("goal")
+		match.world.SetDemolitionsEnabled(false)
+		_ = match.world.ConsumeDemolitions()
 		goalCelebrationActive = true
 		goalCelebrationEndsAt = time.Now().Add(goalCelebrationDuration)
 		kickoffEndsAt = time.Time{}
@@ -265,6 +310,7 @@ func (match *Match) run() {
 	}
 
 	startReplay := func() {
+		match.world.SetDemolitionsEnabled(false)
 		goalCelebrationActive = false
 		goalCelebrationEndsAt = time.Time{}
 		replayActive = true
@@ -353,6 +399,7 @@ func (match *Match) run() {
 			}
 			delete(clients, clientID)
 			delete(quickChatLimits, clientID)
+			delete(demolitionRespawns, clientID)
 			match.world.SetConnected(connected.slot, false)
 			match.playerCount.Store(int32(len(clients)))
 			connected.stop()
@@ -369,6 +416,16 @@ func (match *Match) run() {
 				}
 			}
 			match.broadcastRoster(clients)
+
+		case selection := <-match.respawnSelections:
+			state := demolitionRespawns[selection.clientID]
+			if state == nil {
+				continue
+			}
+			if selection.index < 0 || selection.index >= game.DemolitionSpawnCount {
+				continue
+			}
+			state.choice = selection.index
 
 		case event := <-match.quickChats:
 			connected, exists := clients[event.clientID]
@@ -401,6 +458,13 @@ func (match *Match) run() {
 			if !exists {
 				continue
 			}
+			if demolitionRespawns[event.clientID] != nil {
+				event.input.Mask = 0
+				event.input.Edges = 0
+				event.input.Flags = 0
+				event.input.Throttle = 0
+				event.input.Steer = 0
+			}
 			// Held throttle/steer/boost may be queued during replay/countdown so
 			// players can launch on GO. One-shot actions are never buffered.
 			if goalCelebrationActive {
@@ -429,6 +493,22 @@ func (match *Match) run() {
 		case <-ticker.C:
 			started := time.Now()
 			loopTick++
+
+			now := time.Now()
+			if !replayActive && !goalCelebrationActive && kickoffEndsAt.IsZero() {
+				for clientID, respawn := range demolitionRespawns {
+					if now.Before(respawn.endsAt) {
+						continue
+					}
+					point, ok := match.world.RespawnCar(respawn.slot, respawn.choice)
+					if !ok {
+						delete(demolitionRespawns, clientID)
+						continue
+					}
+					delete(demolitionRespawns, clientID)
+					match.broadcastRespawn(clients, respawn.slot, respawn.choice, point, game.DemolitionRespawnBoost)
+				}
+			}
 
 			if replayActive {
 				if !time.Now().Before(replayEndsAt) {
@@ -477,6 +557,7 @@ func (match *Match) run() {
 
 				kickoffEndsAt = time.Time{}
 				kickoffLastAnnounced = 0
+				match.world.SetDemolitionsEnabled(true)
 				match.broadcastKickoff(clients, "go", 0, kickoffResetScore)
 				kickoffResetScore = false
 			}
@@ -495,6 +576,18 @@ func (match *Match) run() {
 				startGoalCelebration()
 				match.lastTickMicros.Store(time.Since(started).Microseconds())
 				continue
+			}
+
+			for _, demolition := range match.world.ConsumeDemolitions() {
+				victim, victimClientID := clientForSlot(demolition.VictimSlot)
+				if victim == nil || victimClientID == "" || demolitionRespawns[victimClientID] != nil {
+					continue
+				}
+				choice := 1
+				demolitionRespawns[victimClientID] = &demolitionRespawnState{
+					slot: demolition.VictimSlot, choice: choice, endsAt: time.Now().Add(demolitionRespawnDuration),
+				}
+				match.broadcastDemolition(clients, demolition, choice, demolitionRespawnDuration)
 			}
 
 			if loopTick%snapshotEvery == 0 && len(clients) > 0 {
@@ -601,6 +694,44 @@ func (match *Match) sendReplayWaiting(connected *client, scorerSlot int, scorerN
 		"orangeScore": orangeScore, "blueScore": blueScore,
 	})
 	connected.offerJSON(message)
+}
+
+func (match *Match) broadcastDemolition(clients map[string]*client, demolition game.DemolitionEvent, choice int, duration time.Duration) {
+	points := game.RespawnPointsForSlot(demolition.VictimSlot)
+	spawnPoints := make([]map[string]any, 0, len(points))
+	for _, point := range points {
+		spawnPoints = append(spawnPoints, map[string]any{
+			"x": point.Position.X, "y": point.Position.Y, "z": point.Position.Z, "yaw": point.Yaw,
+		})
+	}
+	message, _ := json.Marshal(map[string]any{
+		"type": "demolition", "attackerId": demolition.AttackerSlot, "victimId": demolition.VictimSlot,
+		"attackerName": playerNameForSlot(clients, demolition.AttackerSlot),
+		"victimName":   playerNameForSlot(clients, demolition.VictimSlot),
+		"position":     []float64{demolition.Position.X, demolition.Position.Y, demolition.Position.Z},
+		"durationMs":   duration.Milliseconds(), "selectedIndex": choice, "spawnPoints": spawnPoints,
+	})
+	for _, connected := range clients {
+		connected.offerJSON(message)
+	}
+}
+
+func (match *Match) broadcastRespawn(clients map[string]*client, slot, choice int, point game.RespawnPoint, boost float64) {
+	message, _ := json.Marshal(map[string]any{
+		"type": "respawn", "playerId": slot, "spawnIndex": choice,
+		"position": []float64{point.Position.X, point.Position.Y, point.Position.Z},
+		"yaw":      point.Yaw, "boost": boost,
+	})
+	for _, connected := range clients {
+		connected.offerJSON(message)
+	}
+}
+
+func (match *Match) broadcastDemolitionCancel(clients map[string]*client, reason string) {
+	message, _ := json.Marshal(map[string]any{"type": "demolition-cancel", "reason": reason})
+	for _, connected := range clients {
+		connected.offerJSON(message)
+	}
 }
 
 func (match *Match) broadcastQuickChat(clients map[string]*client, sender *client) {

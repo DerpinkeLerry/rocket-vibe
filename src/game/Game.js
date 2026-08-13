@@ -65,6 +65,13 @@ export class Game {
     this.offlineGoalTimeRemaining = 0;
     this.offlineQuickChatUsed = 0;
     this.offlineQuickChatCooldownUntil = 0;
+    this.demolishedPlayers = new Set();
+    this.demolitionRespawnActive = false;
+    this.demolitionRespawnEndsAt = 0;
+    this.respawnSelectedIndex = 1;
+    this.respawnPoints = [];
+    this.respawnMarkerGroup = null;
+    this.respawnMarkers = [];
 
     this.perfElapsed = 0;
     this.perfFrames = 0;
@@ -205,6 +212,7 @@ export class Game {
     this.mobileControls.setCameraMode?.(this.chaseCamera.getMode());
     this.mobileControls.setQuickChatHandler?.(() => this.requestQuickChat());
     this.hud.setReplaySkipHandler(() => this.network?.sendReplaySkip?.());
+    this.hud.setRespawnSelectionHandler?.((index) => this.selectRespawnPoint(index));
 
     if (this.network) {
       this.network.onStatus = (text) => this.hud.setNetworkStatus(text);
@@ -220,6 +228,9 @@ export class Game {
       this.network.onKickoff = (kickoff) => this.handleKickoff(kickoff);
       this.network.onReplay = (replay) => this.handleReplay(replay);
       this.network.onGoal = (goal) => this.handleGoal(goal);
+      this.network.onDemolition = (demolition) => this.handleDemolition(demolition);
+      this.network.onRespawn = (respawn) => this.handleRespawn(respawn);
+      this.network.onDemolitionCancel = () => this.endDemolitionRespawn();
       this.network.onQuickChat = (chat) => this.hud.addQuickChat(chat);
       this.network.onQuickChatLimit = (limit) => {
         const cooldownMs = Math.max(0, Number(limit?.cooldownMs) || 0);
@@ -253,12 +264,14 @@ export class Game {
     this.onPerfToggle = this.onPerfToggle.bind(this);
     this.onQuickChatKeyDown = this.onQuickChatKeyDown.bind(this);
     this.onReplaySkipKeyDown = this.onReplaySkipKeyDown.bind(this);
+    this.onRespawnSelectKeyDown = this.onRespawnSelectKeyDown.bind(this);
     window.addEventListener('resize', this.onResize);
     window.visualViewport?.addEventListener('resize', this.onResize);
     window.addEventListener('orientationchange', this.onResize);
     window.addEventListener('keydown', this.onPerfToggle, { passive: false });
     window.addEventListener('keydown', this.onQuickChatKeyDown, { passive: false });
     window.addEventListener('keydown', this.onReplaySkipKeyDown, { passive: false });
+    window.addEventListener('keydown', this.onRespawnSelectKeyDown, { passive: false });
     this.onResize();
   }
 
@@ -269,6 +282,7 @@ export class Game {
   }
 
   onQuickChatKeyDown(event) {
+    if (this.demolitionRespawnActive) return;
     if ((event.code !== 'Digit1' && event.code !== 'Numpad1') || event.repeat) return;
     event.preventDefault();
     this.requestQuickChat();
@@ -281,6 +295,21 @@ export class Game {
     if (this.mobileControls?.enabled) return;
     event.preventDefault();
     this.hud?.requestReplaySkip?.();
+  }
+
+
+  onRespawnSelectKeyDown(event) {
+    if (!this.demolitionRespawnActive || event.repeat) return;
+    let choice = null;
+    if (event.code === 'Digit1' || event.code === 'Numpad1') choice = 0;
+    else if (event.code === 'Digit2' || event.code === 'Numpad2') choice = 1;
+    else if (event.code === 'Digit3' || event.code === 'Numpad3') choice = 2;
+    else if (event.code === 'ArrowLeft' || event.code === 'KeyA') choice = (this.respawnSelectedIndex + 2) % 3;
+    else if (event.code === 'ArrowRight' || event.code === 'KeyD') choice = (this.respawnSelectedIndex + 1) % 3;
+    if (choice === null) return;
+    event.preventDefault();
+    event.stopPropagation?.();
+    this.selectRespawnPoint(choice);
   }
 
   requestQuickChat() {
@@ -348,7 +377,9 @@ export class Game {
       car?.setBoostStyle(player.boostStyle);
     }
     if (this.networked) {
-      for (let i = 0; i < this.cars.length; i++) this.setCarVisible(i, this.connectedPlayers.has(i));
+      for (let i = 0; i < this.cars.length; i++) {
+        this.setCarVisible(i, this.connectedPlayers.has(i) && !this.demolishedPlayers.has(i));
+      }
     }
     this.hud?.setPlayerCount(this.connectedPlayers.size, maxPlayers);
   }
@@ -712,7 +743,7 @@ export class Game {
         this.updateReplay(now);
       } else {
         this.applyNetworkState(frameDt, now);
-        if (!this.kickoffActive && !this.goalCelebrationActive) this.localPredictor?.step(frameDt);
+        if (!this.kickoffActive && !this.goalCelebrationActive && !this.demolitionRespawnActive) this.localPredictor?.step(frameDt);
       }
     } else {
       this.accumulator += frameDt;
@@ -735,6 +766,8 @@ export class Game {
       this.mobileControls.setVehicleSpeed?.(mobileSpeedKmh);
     }
 
+    if (this.demolitionRespawnActive) this.updateDemolitionRespawn(now);
+
     if (this.lastRenderTime === 0 || now - this.lastRenderTime >= this.renderInterval - 0.001) {
       const renderDt = this.lastRenderTime === 0 ? frameDt : Math.min(now - this.lastRenderTime, 0.08);
       this.lastRenderTime = now;
@@ -745,13 +778,14 @@ export class Game {
         car.updateBoostEffects?.(renderDt);
       }
       this.ball.syncVisual();
-      if (!this.replayActive && this.input.consumePressed('KeyC')) {
+      if (!this.replayActive && !this.demolitionRespawnActive && this.input.consumePressed('KeyC')) {
         const cameraMode = this.chaseCamera.toggleMode();
         this.hud.setCameraMode(cameraMode);
         this.mobileControls.setCameraMode?.(cameraMode);
       }
       this.boostPads.update(renderDt);
       this.goalExplosion?.update(renderDt);
+      this.updateRespawnMarkers(now);
       this.chaseCamera.update(renderDt);
       this.arena.updateVisuals?.(this.camera);
 
@@ -821,15 +855,23 @@ export class Game {
     // Keep held controls warm during kickoff so W/Boost can launch on LOS, but
     // never buffer a jump/reset edge inside local prediction. The server applies
     // the same rule, so prediction and authority unlock from the same state.
-    const predictorPacket = (this.kickoffActive || this.replayActive || this.goalCelebrationActive)
-      ? { ...packet, edges: 0 }
-      : packet;
+    const zeroPacket = { mask: 0, edges: 0, flags: 0, throttle: 0, steer: 0 };
+    const predictorPacket = this.demolitionRespawnActive
+      ? zeroPacket
+      : (this.kickoffActive || this.replayActive || this.goalCelebrationActive)
+        ? { ...packet, edges: 0 }
+        : packet;
+    // During the four-second demolition selection we also transmit zero input.
+    // This consumes one-shot jump/reset edges locally instead of letting a key
+    // pressed in bird view leak into the first authoritative respawn tick.
+    const networkPacket = this.demolitionRespawnActive ? zeroPacket : packet;
     this.localPredictor?.setInput(predictorPacket);
-    this.network.sendInput(packet);
+    this.network.sendInput(networkPacket);
   }
 
   handleGoal(goal) {
     if (!goal) return;
+    this.endDemolitionRespawn();
     const durationMs = Math.max(250, Number(goal.durationMs) || 1250);
     this.goalCelebrationActive = true;
     this.goalCelebrationUntil = performance.now() / 1000 + durationMs / 1000;
@@ -844,9 +886,193 @@ export class Game {
     });
   }
 
+
+  defaultRespawnPoints(team = this.playerTeam) {
+    if (team === 'blue') {
+      return [
+        { x: 28, y: 0.52, z: -52, yaw: Math.PI },
+        { x: 0, y: 0.52, z: -52, yaw: Math.PI },
+        { x: -28, y: 0.52, z: -52, yaw: Math.PI }
+      ];
+    }
+    return [
+      { x: -28, y: 0.52, z: 52, yaw: 0 },
+      { x: 0, y: 0.52, z: 52, yaw: 0 },
+      { x: 28, y: 0.52, z: 52, yaw: 0 }
+    ];
+  }
+
+  handleDemolition(demolition) {
+    if (!demolition) return;
+    const victimId = Number(demolition.victimId);
+    if (!Number.isInteger(victimId) || victimId < 0 || victimId >= this.cars.length) return;
+    this.demolishedPlayers.add(victimId);
+    this.setCarVisible(victimId, false);
+    const victim = this.cars[victimId];
+    if (victim) {
+      victim.boosting = false;
+      victim.boostVisualHold = 0;
+      victim.boostTrail?.clear?.();
+    }
+    if (victimId !== this.playerId) return;
+
+    this.demolitionRespawnActive = true;
+    this.demolitionRespawnEndsAt = performance.now() / 1000 + Math.max(0.5, Number(demolition.durationMs) || 4000) / 1000;
+    this.respawnSelectedIndex = Math.max(0, Math.min(2, Math.round(Number(demolition.selectedIndex) || 1)));
+    this.respawnPoints = Array.isArray(demolition.spawnPoints) && demolition.spawnPoints.length >= 3
+      ? demolition.spawnPoints.slice(0, 3)
+      : this.defaultRespawnPoints(this.playerTeam);
+    this.root.classList.add('demolition-respawn-active');
+    this.mobileControls?.releaseAll?.();
+    this.hud.setRespawnSelection?.(true, Math.max(0, this.demolitionRespawnEndsAt - performance.now() / 1000) * 1000, this.respawnSelectedIndex);
+    this.chaseCamera.beginRespawnSelection?.(this.playerTeam, this.respawnPoints);
+    this.createRespawnMarkers();
+    this.selectRespawnPoint(this.respawnSelectedIndex, false);
+  }
+
+  handleRespawn(respawn) {
+    if (!respawn) return;
+    const playerId = Number(respawn.playerId);
+    if (!Number.isInteger(playerId) || playerId < 0 || playerId >= this.cars.length) return;
+    const position = Array.isArray(respawn.position)
+      ? { x: Number(respawn.position[0]) || 0, y: Number(respawn.position[1]) || 0.52, z: Number(respawn.position[2]) || 0 }
+      : { x: 0, y: 0.52, z: 0 };
+    const yaw = Number(respawn.yaw) || 0;
+    const boost = Math.max(0, Math.min(100, Number(respawn.boost) || 0));
+    const car = this.cars[playerId];
+    const half = yaw * 0.5;
+    car?.body?.setTranslation?.(position, true);
+    car?.body?.setRotation?.({ x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) }, true);
+    car?.body?.setLinvel?.({ x: 0, y: 0, z: 0 }, true);
+    car?.body?.setAngvel?.({ x: 0, y: 0, z: 0 }, true);
+    car?.setBoost?.(boost);
+    this.demolishedPlayers.delete(playerId);
+    this.setCarVisible(playerId, this.connectedPlayers.has(playerId));
+
+    if (playerId === this.playerId) {
+      this.localPredictor?.resetForRespawn?.(position, yaw, boost);
+      this.lastReconciledTick = -1;
+      this.endDemolitionRespawn();
+    }
+  }
+
+  selectRespawnPoint(index, send = true) {
+    if (!this.demolitionRespawnActive) return false;
+    const choice = Math.max(0, Math.min(2, Math.round(Number(index) || 0)));
+    this.respawnSelectedIndex = choice;
+    const remainingMs = Math.max(0, (this.demolitionRespawnEndsAt - performance.now() / 1000) * 1000);
+    this.hud.setRespawnSelection?.(true, remainingMs, choice);
+    this.updateRespawnMarkerSelection();
+    if (send) this.network?.sendRespawnSelection?.(choice);
+    return true;
+  }
+
+  updateDemolitionRespawn(now) {
+    const remainingMs = Math.max(0, (this.demolitionRespawnEndsAt - now) * 1000);
+    this.hud.setRespawnSelection?.(true, remainingMs, this.respawnSelectedIndex);
+  }
+
+  createRespawnMarkers() {
+    this.clearRespawnMarkers();
+    const group = new THREE.Group();
+    group.name = 'DemolitionRespawnMarkers';
+    group.userData.cameraOcclusionIgnore = true;
+    const teamColor = this.playerTeam === 'blue' ? 0x35a6ff : 0xff8a2a;
+    this.respawnMarkers = this.respawnPoints.map((point, index) => {
+      const root = new THREE.Group();
+      root.position.set(Number(point?.x) || 0, 0.045, Number(point?.z) || 0);
+      root.userData.cameraOcclusionIgnore = true;
+
+      const ringMaterial = new THREE.MeshBasicMaterial({
+        color: teamColor,
+        transparent: true,
+        opacity: 0.48,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false
+      });
+      const ring = new THREE.Mesh(new THREE.RingGeometry(2.1, 2.75, 48), ringMaterial);
+      ring.rotation.x = -Math.PI / 2;
+      ring.userData.cameraOcclusionIgnore = true;
+      root.add(ring);
+
+      const coreMaterial = new THREE.MeshBasicMaterial({
+        color: teamColor,
+        transparent: true,
+        opacity: 0.16,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false
+      });
+      const core = new THREE.Mesh(new THREE.CircleGeometry(1.78, 40), coreMaterial);
+      core.rotation.x = -Math.PI / 2;
+      core.position.y = 0.008;
+      core.userData.cameraOcclusionIgnore = true;
+      root.add(core);
+
+      const beaconMaterial = new THREE.MeshBasicMaterial({ color: teamColor, transparent: true, opacity: 0.20, depthWrite: false, toneMapped: false });
+      const beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 1.15, 5.2, 24, 1, true), beaconMaterial);
+      beacon.position.y = 2.6;
+      beacon.userData.cameraOcclusionIgnore = true;
+      root.add(beacon);
+      group.add(root);
+      return { root, ring, core, beacon, ringMaterial, coreMaterial, beaconMaterial, index };
+    });
+    this.scene.add(group);
+    this.respawnMarkerGroup = group;
+    this.updateRespawnMarkerSelection();
+  }
+
+  updateRespawnMarkerSelection() {
+    for (const marker of this.respawnMarkers) {
+      const selected = marker.index === this.respawnSelectedIndex;
+      marker.ringMaterial.opacity = selected ? 0.96 : 0.34;
+      marker.coreMaterial.opacity = selected ? 0.34 : 0.10;
+      marker.beaconMaterial.opacity = selected ? 0.40 : 0.13;
+      marker.root.scale.setScalar(selected ? 1.12 : 0.92);
+    }
+  }
+
+  updateRespawnMarkers(now) {
+    if (!this.demolitionRespawnActive || this.respawnMarkers.length === 0) return;
+    const pulse = 1 + Math.sin(now * 5.2) * 0.055;
+    for (const marker of this.respawnMarkers) {
+      if (marker.index !== this.respawnSelectedIndex) continue;
+      marker.ring.scale.setScalar(pulse);
+      marker.beaconMaterial.opacity = 0.32 + (Math.sin(now * 5.2) * 0.5 + 0.5) * 0.16;
+    }
+  }
+
+  clearRespawnMarkers() {
+    if (!this.respawnMarkerGroup) {
+      this.respawnMarkers = [];
+      return;
+    }
+    this.respawnMarkerGroup.traverse((object) => {
+      if (!object.isMesh) return;
+      object.geometry?.dispose?.();
+      object.material?.dispose?.();
+    });
+    this.scene.remove(this.respawnMarkerGroup);
+    this.respawnMarkerGroup = null;
+    this.respawnMarkers = [];
+  }
+
+  endDemolitionRespawn() {
+    if (!this.demolitionRespawnActive && !this.respawnMarkerGroup) return;
+    this.demolitionRespawnActive = false;
+    this.demolitionRespawnEndsAt = 0;
+    this.respawnPoints = [];
+    this.root.classList.remove('demolition-respawn-active');
+    this.hud.setRespawnSelection?.(false);
+    this.clearRespawnMarkers();
+    this.chaseCamera.endRespawnSelection?.();
+  }
+
   handleKickoff(kickoff) {
     if (!this.networked || !kickoff) return;
     if (kickoff.phase === 'countdown') {
+      this.endDemolitionRespawn();
       const count = Math.max(1, Math.min(3, Math.round(Number(kickoff.count) || 1)));
       const startingFreshCountdown = count === 3 || !this.kickoffActive;
       this.goalCelebrationActive = false;
@@ -867,6 +1093,7 @@ export class Game {
 
   handleReplay(replay) {
     if (!this.networked || !replay) return;
+    if (replay.phase === 'start' || replay.phase === 'wait') this.endDemolitionRespawn();
     if (replay.phase === 'progress') {
       this.replayState = { ...(this.replayState || {}), ...replay };
       this.hud.setReplay(this.replayState);
@@ -937,6 +1164,7 @@ export class Game {
       if (!entity) continue;
       applyEntity(this.cars[i].body, entity);
       this.cars[i].grounded = Boolean(entity.g);
+      this.setCarVisible(i, this.connectedPlayers.has(i) && !Boolean(entity.d));
       this.cars[i].boosting = false;
       this.cars[i].setBoost?.(entity.b);
     }
@@ -953,15 +1181,21 @@ export class Game {
     this.chaseCamera.endReplay();
     this.root.classList.remove('replay-active');
     this.hud.setReplay({ phase: 'end' });
+    for (let i = 0; i < this.cars.length; i++) {
+      this.setCarVisible(i, this.connectedPlayers.has(i) && !this.demolishedPlayers.has(i));
+    }
     this.lastReconciledTick = -1;
   }
 
   resetForNetworkKickoff(resetScore = false) {
+    this.endDemolitionRespawn();
+    this.demolishedPlayers.clear();
     for (let i = 0; i < this.cars.length; i++) {
       if (i === this.playerId) continue;
       this.cars[i]?.reset();
     }
     this.localPredictor?.resetForKickoff();
+    for (let i = 0; i < this.cars.length; i++) this.setCarVisible(i, this.connectedPlayers.has(i));
     this.ball.reset();
     this.boostPads.resetAll();
     if (resetScore) this.hud.setScore(0, 0);
@@ -1066,6 +1300,13 @@ export class Game {
     for (let i = 0; i < this.cars.length; i++) {
       const target = state.cars[i];
       if (!target) continue;
+
+      const demolished = Boolean(target.d);
+      if (demolished) this.demolishedPlayers.add(i);
+      else this.demolishedPlayers.delete(i);
+      this.setCarVisible(i, this.connectedPlayers.has(i) && !demolished);
+      if (i === this.playerId && !demolished && this.demolitionRespawnActive) this.endDemolitionRespawn();
+      if (demolished) continue;
 
       if (i === this.playerId) {
         // Reconcile each authoritative snapshot once. Re-applying the same old

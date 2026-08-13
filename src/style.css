@@ -1999,3 +1999,111 @@ html, body, #app {
 @media (orientation: landscape) and (max-height: 430px) and (any-pointer: coarse) {
   .mobile-active .hud__quickchat { top: calc(env(safe-area-inset-top, 0px) + 34px); width: min(168px, 22vw); }
 }
+
+/* Demolition / respawn selection ----------------------------------------- */
+.hud__respawn {
+  position: absolute;
+  left: 50%;
+  bottom: max(26px, calc(env(safe-area-inset-bottom) + 14px));
+  z-index: 46;
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  transform: translateX(-50%);
+  padding: 10px 13px 12px;
+  border: 1px solid rgba(255, 174, 84, 0.28);
+  border-radius: 14px;
+  background: rgba(5, 10, 19, 0.78);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.32), 0 0 22px rgba(255, 113, 32, 0.10);
+  backdrop-filter: blur(7px);
+  pointer-events: auto;
+}
+.hud__respawn[hidden] { display: none; }
+.hud__respawn-title {
+  color: #ffb04b;
+  font-size: 13px;
+  font-weight: 1000;
+  letter-spacing: 0.18em;
+  text-shadow: 0 0 16px rgba(255, 116, 35, 0.34);
+}
+.hud__respawn-countdown {
+  color: rgba(255,255,255,0.82);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+.hud__respawn-countdown strong {
+  color: #fff4da;
+  font: 950 15px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.hud__respawn-hint {
+  color: rgba(255,255,255,0.46);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.15em;
+}
+.hud__respawn-choices {
+  display: flex;
+  gap: 7px;
+  margin-top: 2px;
+}
+.hud__respawn-choices button {
+  min-width: 76px;
+  min-height: 38px;
+  padding: 5px 9px;
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 9px;
+  color: rgba(255,255,255,0.74);
+  background: rgba(255,255,255,0.055);
+  font: 900 9px/1 inherit;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.hud__respawn-choices button kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  margin-right: 5px;
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 5px;
+  background: rgba(0,0,0,0.20);
+  color: inherit;
+  font: inherit;
+}
+.hud__respawn-choices button.is-selected {
+  border-color: rgba(255, 188, 83, 0.86);
+  color: #fff8e8;
+  background: rgba(255, 139, 43, 0.20);
+  box-shadow: 0 0 18px rgba(255, 133, 40, 0.18), inset 0 0 0 1px rgba(255,255,255,0.06);
+}
+.demolition-respawn-active .mobile-controls {
+  opacity: 0.12;
+  pointer-events: none;
+}
+.demolition-respawn-active .hud__controls-toggle,
+.demolition-respawn-active .hud__controls {
+  opacity: 0.18;
+  pointer-events: none;
+}
+
+@media (max-width: 700px), (pointer: coarse) {
+  .hud__respawn {
+    bottom: max(14px, calc(env(safe-area-inset-bottom) + 8px));
+    gap: 4px;
+    padding: 8px 10px 9px;
+    border-radius: 12px;
+  }
+  .hud__respawn-title { font-size: 11px; }
+  .hud__respawn-countdown { font-size: 9px; }
+  .hud__respawn-hint { font-size: 7px; }
+  .hud__respawn-choices { gap: 5px; }
+  .hud__respawn-choices button {
+    min-width: 68px;
+    min-height: 42px;
+    padding: 6px 7px;
+    font-size: 8px;
+  }
+  .hud__respawn-choices button kbd { display: none; }
+}

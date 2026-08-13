@@ -54,6 +54,11 @@ type quickChatInputMessage struct {
 	ID   string `json:"id"`
 }
 
+type respawnSelectionMessage struct {
+	Type  string `json:"type"`
+	Index int    `json:"index"`
+}
+
 func NewHTTPServer(match *Match, options HTTPOptions, logger *slog.Logger) *HTTPServer {
 	server := &HTTPServer{match: match, options: options, logger: logger}
 	mux := http.NewServeMux()
@@ -215,6 +220,11 @@ func (server *HTTPServer) handleTextMessage(connected *client, payload []byte) {
 		var message quickChatInputMessage
 		if json.Unmarshal(payload, &message) == nil && message.ID == quickChatMessageID {
 			server.match.SubmitQuickChat(connected.id)
+		}
+	case "respawn-select":
+		var message respawnSelectionMessage
+		if json.Unmarshal(payload, &message) == nil {
+			server.match.SubmitRespawnSelection(connected.id, message.Index)
 		}
 	}
 }

@@ -33,6 +33,9 @@ export class ChaseCamera {
     this.replaySavedCar = null;
     this.replaySavedMode = null;
     this.goalCelebrationActive = false;
+    this.respawnSelectionActive = false;
+    this.respawnTeamSign = 1;
+    this.respawnPoints = [];
 
     this.position = new THREE.Vector3(0, 4.4, 8.8);
     this.desired = new THREE.Vector3();
@@ -87,6 +90,31 @@ export class ChaseCamera {
     }
   }
 
+
+  beginRespawnSelection(team = 'orange', points = []) {
+    this.respawnSelectionActive = true;
+    this.respawnTeamSign = team === 'blue' ? -1 : 1;
+    this.respawnPoints = Array.isArray(points) ? points : [];
+    const centerZ = this.respawnPoints.length
+      ? this.respawnPoints.reduce((sum, point) => sum + (Number(point?.z) || 0), 0) / this.respawnPoints.length
+      : this.respawnTeamSign * 52;
+    const portrait = this.camera.aspect < 0.82;
+    const height = portrait ? 86 : 70;
+    this.position.set(0, height, centerZ + this.respawnTeamSign * (portrait ? 33 : 28));
+    this.lookTarget.set(0, 0.5, centerZ - this.respawnTeamSign * 7);
+    this.camera.position.copy(this.position);
+    this.camera.up.set(0, 1, 0);
+    this.camera.lookAt(this.lookTarget);
+    this.restoreOccluders();
+  }
+
+  endRespawnSelection() {
+    if (!this.respawnSelectionActive) return;
+    this.respawnSelectionActive = false;
+    this.respawnPoints = [];
+    this.resetTargetTracking();
+  }
+
   beginReplay(car) {
     if (!car || car === this.car && this.replaySavedCar) return;
     if (!this.replaySavedCar) {
@@ -128,6 +156,11 @@ export class ChaseCamera {
   }
 
   update(dt) {
+    if (this.respawnSelectionActive) {
+      this.updateRespawnSelectionCam(dt);
+      return;
+    }
+
     const p = this.car.body.translation();
     const r = this.car.body.rotation();
     const bp = this.ball.body.translation();
@@ -170,6 +203,27 @@ export class ChaseCamera {
     else this.lookTarget.lerp(this.desiredLookTarget, lookT);
     this.camera.up.set(0, 1, 0);
     this.camera.lookAt(this.lookTarget);
+  }
+
+
+  updateRespawnSelectionCam(dt) {
+    const centerZ = this.respawnPoints.length
+      ? this.respawnPoints.reduce((sum, point) => sum + (Number(point?.z) || 0), 0) / this.respawnPoints.length
+      : this.respawnTeamSign * 52;
+    const portrait = this.camera.aspect < 0.82;
+    const height = portrait ? 86 : 70;
+    const backOffset = portrait ? 33 : 28;
+    this.desired.set(0, height, centerZ + this.respawnTeamSign * backOffset);
+    this.desiredLookTarget.set(0, 0.55, centerZ - this.respawnTeamSign * 7);
+
+    const positionT = 1 - Math.exp(-7.5 * dt);
+    const lookT = 1 - Math.exp(-9 * dt);
+    this.position.lerp(this.desired, positionT);
+    this.lookTarget.lerp(this.desiredLookTarget, lookT);
+    this.camera.position.copy(this.position);
+    this.camera.up.set(0, 1, 0);
+    this.camera.lookAt(this.lookTarget);
+    this.pivot.copy(this.desiredLookTarget);
   }
 
   updateGoalCelebrationCam(speed) {
@@ -259,7 +313,7 @@ export class ChaseCamera {
   // camera pass outside/behind arena walls and through goal/stand geometry.
   prepareRender() {
     this.restoreOccluders();
-    if (!this.scene) return;
+    if (!this.scene || this.respawnSelectionActive) return;
 
     if (!this.occlusionCandidates) {
       this.occlusionCandidates = [];

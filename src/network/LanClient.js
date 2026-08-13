@@ -20,6 +20,7 @@ function makeEntity() {
     v: [0, 0, 0],
     w: [0, 0, 0],
     g: 0,
+    d: 0,
     b: 100
   };
 }
@@ -84,6 +85,9 @@ export class LanClient {
     this.replay = null;
     this.onGoal = null;
     this.goal = null;
+    this.onDemolition = null;
+    this.onRespawn = null;
+    this.onDemolitionCancel = null;
     this.onQuickChat = null;
     this.onQuickChatLimit = null;
     this.quickChatLimit = { remaining: 3, cooldownMs: 0 };
@@ -162,6 +166,21 @@ export class LanClient {
 
         if (message.type === 'goal') {
           this.applyGoalMessage(message);
+          return;
+        }
+
+        if (message.type === 'demolition') {
+          this.applyDemolitionMessage(message);
+          return;
+        }
+
+        if (message.type === 'respawn') {
+          this.applyRespawnMessage(message);
+          return;
+        }
+
+        if (message.type === 'demolition-cancel') {
+          this.onDemolitionCancel?.({ reason: String(message?.reason || 'cancelled') });
           return;
         }
 
@@ -261,6 +280,45 @@ export class LanClient {
     this.onGoal?.(this.goal);
   }
 
+
+  applyDemolitionMessage(message) {
+    const normalizePoint = (point) => ({
+      x: Number(point?.x) || 0,
+      y: Number(point?.y) || 0.52,
+      z: Number(point?.z) || 0,
+      yaw: Number(point?.yaw) || 0
+    });
+    const demolition = {
+      attackerId: Number.isInteger(Number(message?.attackerId)) ? Number(message.attackerId) : -1,
+      victimId: Number.isInteger(Number(message?.victimId)) ? Number(message.victimId) : -1,
+      attackerName: String(message?.attackerName || 'Spieler').slice(0, 16),
+      victimName: String(message?.victimName || 'Spieler').slice(0, 16),
+      position: Array.isArray(message?.position)
+        ? [Number(message.position[0]) || 0, Number(message.position[1]) || 0, Number(message.position[2]) || 0]
+        : [0, 0, 0],
+      durationMs: Math.max(500, Number(message?.durationMs) || 4000),
+      selectedIndex: Math.max(0, Math.min(2, Math.round(Number(message?.selectedIndex) || 1))),
+      spawnPoints: Array.isArray(message?.spawnPoints) ? message.spawnPoints.slice(0, 3).map(normalizePoint) : []
+    };
+    this.onDemolition?.(demolition);
+    return demolition;
+  }
+
+  applyRespawnMessage(message) {
+    const position = Array.isArray(message?.position)
+      ? [Number(message.position[0]) || 0, Number(message.position[1]) || 0.52, Number(message.position[2]) || 0]
+      : [0, 0.52, 0];
+    const respawn = {
+      playerId: Number.isInteger(Number(message?.playerId)) ? Number(message.playerId) : -1,
+      spawnIndex: Math.max(0, Math.min(2, Math.round(Number(message?.spawnIndex) || 1))),
+      position,
+      yaw: Number(message?.yaw) || 0,
+      boost: Math.max(0, Math.min(100, Number(message?.boost) || 0))
+    };
+    this.onRespawn?.(respawn);
+    return respawn;
+  }
+
   applyQuickChatMessage(message) {
     const chat = {
       id: message?.id === 'what-a-save' ? 'what-a-save' : 'what-a-save',
@@ -319,12 +377,15 @@ export class LanClient {
 
     this.state.tick = view.getUint32(1, true);
     const connectedMask = view.getUint8(5);
-    const groundMask = view.getUint8(6);
+    const stateFlags = view.getUint8(6);
+    const groundMask = stateFlags & 0x0f;
+    const demolishedMask = (stateFlags >> 4) & 0x0f;
     this.state.orangeScore = view.getUint16(7, true);
     this.state.blueScore = view.getUint16(9, true);
     for (let i = 0; i < 4; i++) {
       this.state.connected[i] = (connectedMask >> i) & 1;
       this.state.cars[i].g = (groundMask >> i) & 1;
+      this.state.cars[i].d = (demolishedMask >> i) & 1;
       this.state.cars[i].b = modernLayout ? view.getUint8(11 + i) : 100;
     }
     if (extendedLayout) {
@@ -371,6 +432,13 @@ export class LanClient {
 
   emitStatus(text) {
     this.onStatus?.(text);
+  }
+
+  sendRespawnSelection(index) {
+    if (!this.connected || this.socket?.readyState !== WebSocket.OPEN) return false;
+    const choice = Math.max(0, Math.min(2, Math.round(Number(index) || 0)));
+    this.socket.send(JSON.stringify({ type: 'respawn-select', index: choice }));
+    return true;
   }
 
   sendReplaySkip() {

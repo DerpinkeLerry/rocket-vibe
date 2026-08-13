@@ -62,6 +62,8 @@ type Car struct {
 	DodgeYawLock        float64 `json:"-"`
 	Boost               float64 `json:"boost"`
 	GroundNormal        Vec3    `json:"-"`
+	Demolished          bool    `json:"-"`
+	DemoImmunity        float64 `json:"-"`
 }
 
 type BoostPad struct {
@@ -86,15 +88,16 @@ type EntityState struct {
 }
 
 type Snapshot struct {
-	Tick          uint64                  `json:"tick"`
-	ConnectedMask uint8                   `json:"connectedMask"`
-	GroundMask    uint8                   `json:"groundMask"`
-	OrangeScore   uint16                  `json:"orangeScore"`
-	BlueScore     uint16                  `json:"blueScore"`
-	Boost         [MaxPlayers]uint8       `json:"boost"`
-	BoostPadMask  uint64                  `json:"boostPadMask"`
-	Cars          [MaxPlayers]EntityState `json:"cars"`
-	Ball          EntityState             `json:"ball"`
+	Tick           uint64                  `json:"tick"`
+	ConnectedMask  uint8                   `json:"connectedMask"`
+	GroundMask     uint8                   `json:"groundMask"`
+	OrangeScore    uint16                  `json:"orangeScore"`
+	BlueScore      uint16                  `json:"blueScore"`
+	Boost          [MaxPlayers]uint8       `json:"boost"`
+	BoostPadMask   uint64                  `json:"boostPadMask"`
+	DemolishedMask uint8                   `json:"demolishedMask"`
+	Cars           [MaxPlayers]EntityState `json:"cars"`
+	Ball           EntityState             `json:"ball"`
 }
 
 type World struct {
@@ -118,6 +121,9 @@ type World struct {
 	LastGoalPosition    Vec3
 	GoalSequence        uint64
 	GoalLocked          bool
+
+	DemolitionsEnabled bool
+	pendingDemolitions []DemolitionEvent
 }
 
 func TeamForSlot(slot int) string {
@@ -125,6 +131,45 @@ func TeamForSlot(slot int) string {
 		return TeamOrange
 	}
 	return TeamBlue
+}
+
+const (
+	DemolitionRespawnSeconds  = 4.0
+	DemolitionRespawnBoost    = 33.0
+	DemolitionSpawnCount      = 3
+	demolitionFrontDot        = 0.72
+	demolitionMotionDot       = 0.72
+	demolitionMinClosingSpeed = 0.15
+	demolitionRespawnImmunity = 0.75
+)
+
+type DemolitionEvent struct {
+	AttackerSlot int
+	VictimSlot   int
+	Position     Vec3
+}
+
+type RespawnPoint struct {
+	Position Vec3    `json:"position"`
+	Yaw      float64 `json:"yaw"`
+}
+
+func RespawnPointsForSlot(slot int) [DemolitionSpawnCount]RespawnPoint {
+	team := TeamForSlot(slot)
+	if team == TeamBlue {
+		// Order is screen-relative from the blue goal looking toward midfield:
+		// left / middle / right. The X order is therefore mirrored.
+		return [DemolitionSpawnCount]RespawnPoint{
+			{Position: Vec3{X: 28, Y: 0.52, Z: -52}, Yaw: math.Pi},
+			{Position: Vec3{X: 0, Y: 0.52, Z: -52}, Yaw: math.Pi},
+			{Position: Vec3{X: -28, Y: 0.52, Z: -52}, Yaw: math.Pi},
+		}
+	}
+	return [DemolitionSpawnCount]RespawnPoint{
+		{Position: Vec3{X: -28, Y: 0.52, Z: 52}, Yaw: 0},
+		{Position: Vec3{X: 0, Y: 0.52, Z: 52}, Yaw: 0},
+		{Position: Vec3{X: 28, Y: 0.52, Z: 52}, Yaw: 0},
+	}
 }
 
 var playerSpawns = [MaxPlayers]struct {
@@ -178,7 +223,7 @@ var boostPadSpecs = [BoostPadCount]BoostPad{
 }
 
 func NewWorld(config Config) *World {
-	world := &World{Config: config, LastBallTouchSlot: -1, LastGoalScorer: -1}
+	world := &World{Config: config, LastBallTouchSlot: -1, LastGoalScorer: -1, DemolitionsEnabled: true}
 	for slot := range world.Cars {
 		world.Cars[slot].Slot = slot
 		world.resetCar(&world.Cars[slot])
@@ -198,6 +243,42 @@ func (world *World) SetConnected(slot int, connected bool) bool {
 	return true
 }
 
+func (world *World) SetDemolitionsEnabled(enabled bool) {
+	world.DemolitionsEnabled = enabled
+	if !enabled {
+		world.pendingDemolitions = world.pendingDemolitions[:0]
+	}
+}
+
+func (world *World) ConsumeDemolitions() []DemolitionEvent {
+	if len(world.pendingDemolitions) == 0 {
+		return nil
+	}
+	events := append([]DemolitionEvent(nil), world.pendingDemolitions...)
+	world.pendingDemolitions = world.pendingDemolitions[:0]
+	return events
+}
+
+func (world *World) RespawnCar(slot, choice int) (RespawnPoint, bool) {
+	if slot < 0 || slot >= len(world.Cars) {
+		return RespawnPoint{}, false
+	}
+	points := RespawnPointsForSlot(slot)
+	if choice < 0 || choice >= len(points) {
+		choice = 1
+	}
+	point := points[choice]
+	car := &world.Cars[slot]
+	if !car.Connected {
+		return RespawnPoint{}, false
+	}
+	connected := car.Connected
+	world.resetCarAt(car, point.Position, point.Yaw, DemolitionRespawnBoost)
+	car.Connected = connected
+	car.DemoImmunity = demolitionRespawnImmunity
+	return point, true
+}
+
 func (world *World) ResetMatch() {
 	world.OrangeScore = 0
 	world.BlueScore = 0
@@ -207,6 +288,7 @@ func (world *World) ResetMatch() {
 // ResetKickoff returns every gameplay object to a fair kickoff state without
 // touching the score. It is used after a goal replay finishes.
 func (world *World) ResetKickoff() {
+	world.pendingDemolitions = world.pendingDemolitions[:0]
 	for index := range world.Cars {
 		world.resetCar(&world.Cars[index])
 	}
@@ -282,7 +364,7 @@ func (world *World) Step(dt float64) {
 	ballReset := false
 	for index := range world.Cars {
 		car := &world.Cars[index]
-		if !car.Connected {
+		if !car.Connected || car.Demolished {
 			continue
 		}
 		if car.Input.Edges&EdgeBallReset != 0 {
@@ -299,7 +381,7 @@ func (world *World) Step(dt float64) {
 	for iteration := 0; iteration < world.Config.SolverSteps; iteration++ {
 		for index := range world.Cars {
 			car := &world.Cars[index]
-			if car.Connected {
+			if car.Connected && !car.Demolished {
 				resolveCarArena(car, world.Config)
 			}
 		}
@@ -307,14 +389,28 @@ func (world *World) Step(dt float64) {
 
 		for first := 0; first < len(world.Cars); first++ {
 			carA := &world.Cars[first]
-			if !carA.Connected {
+			if !carA.Connected || carA.Demolished {
 				continue
 			}
 			for second := first + 1; second < len(world.Cars); second++ {
-				carB := &world.Cars[second]
-				if carB.Connected {
-					resolveCarCar(carA, carB, world.Config.Car)
+				if carA.Demolished {
+					break
 				}
+				carB := &world.Cars[second]
+				if !carB.Connected || carB.Demolished {
+					continue
+				}
+				contact, hit := carCarContact(carA, carB, world.Config.Car)
+				if !hit {
+					continue
+				}
+				if world.tryCarCarDemolition(carA, carB, contact) {
+					continue
+				}
+				resolveCarCarContact(carA, carB, world.Config.Car, contact)
+			}
+			if carA.Demolished {
+				continue
 			}
 			if resolveCarBall(carA, &world.Ball, world.Config) {
 				world.LastBallTouchSlot = carA.Slot
@@ -327,7 +423,7 @@ func (world *World) Step(dt float64) {
 
 	for index := range world.Cars {
 		car := &world.Cars[index]
-		if !car.Connected {
+		if !car.Connected || car.Demolished {
 			continue
 		}
 		world.finishCarStep(car, dt)
@@ -340,6 +436,7 @@ func (world *World) Step(dt float64) {
 }
 
 func (world *World) stepCar(car *Car, dt float64) {
+	car.DemoImmunity = math.Max(0, car.DemoImmunity-dt)
 	if car.Input.Edges&EdgeReset != 0 {
 		world.resetCar(car)
 		return
@@ -739,7 +836,7 @@ func (world *World) refreshBoostPads() {
 func (world *World) collectBoostPads() {
 	for carIndex := range world.Cars {
 		car := &world.Cars[carIndex]
-		if !car.Connected || car.Position.Y > 2.45 {
+		if !car.Connected || car.Demolished || car.Position.Y > 2.45 {
 			continue
 		}
 		for padIndex := range world.BoostPads {
@@ -775,7 +872,11 @@ func (world *World) collectBoostPads() {
 
 func (world *World) resetCar(car *Car) {
 	spawn := playerSpawns[car.Slot]
-	car.Body = Body{Position: spawn.Position, Rotation: QuatFromYaw(spawn.Yaw)}
+	world.resetCarAt(car, spawn.Position, spawn.Yaw, world.Config.Car.BoostCapacity)
+}
+
+func (world *World) resetCarAt(car *Car, position Vec3, yaw, boost float64) {
+	car.Body = Body{Position: position, Rotation: QuatFromYaw(yaw)}
 	car.Input = Input{}
 	car.LastInputTick = world.Tick
 	car.Grounded = false
@@ -789,8 +890,82 @@ func (world *World) resetCar(car *Car) {
 	car.DodgeAxis = Vec3{}
 	car.DodgePitchLock = 0
 	car.DodgeYawLock = 0
-	car.Boost = world.Config.Car.BoostCapacity
+	car.Boost = clamp(boost, 0, world.Config.Car.BoostCapacity)
 	car.GroundNormal = Vec3{Y: 1}
+	car.Demolished = false
+	car.DemoImmunity = 0
+}
+
+func (world *World) tryCarCarDemolition(first, second *Car, contact carCarContactInfo) bool {
+	if !world.DemolitionsEnabled || TeamForSlot(first.Slot) == TeamForSlot(second.Slot) {
+		return false
+	}
+
+	towardSecond := second.Position.Sub(first.Position)
+	towardSecond.Y = 0
+	if towardSecond.LengthSquared() < 1e-8 {
+		towardSecond = contact.Normal
+	}
+	firstKillsSecond := canDemolishCar(first, second, towardSecond, contact.ClosingSpeed, world.Config.Car)
+	secondKillsFirst := canDemolishCar(second, first, towardSecond.Mul(-1), contact.ClosingSpeed, world.Config.Car)
+	if !firstKillsSecond && !secondKillsFirst {
+		return false
+	}
+
+	position := first.Position.Add(second.Position).Mul(0.5)
+	if firstKillsSecond {
+		world.markDemolished(second)
+		world.pendingDemolitions = append(world.pendingDemolitions, DemolitionEvent{AttackerSlot: first.Slot, VictimSlot: second.Slot, Position: position})
+	}
+	if secondKillsFirst {
+		world.markDemolished(first)
+		world.pendingDemolitions = append(world.pendingDemolitions, DemolitionEvent{AttackerSlot: second.Slot, VictimSlot: first.Slot, Position: position})
+	}
+	return true
+}
+
+func canDemolishCar(attacker, victim *Car, towardVictim Vec3, closingSpeed float64, config CarConfig) bool {
+	if attacker == nil || victim == nil || attacker.Demolished || victim.Demolished || victim.DemoImmunity > 0 {
+		return false
+	}
+	speed := attacker.Velocity.Length()
+	if speed <= config.MaxGroundSpeed+1e-6 || closingSpeed < demolitionMinClosingSpeed {
+		return false
+	}
+
+	_, forward := horizontalCarAxes(attacker.Rotation)
+	direction := towardVictim
+	direction.Y = 0
+	direction = direction.NormalizeOr(forward)
+	if forward.Dot(direction) < demolitionFrontDot {
+		return false
+	}
+
+	motion := attacker.Velocity
+	motion.Y = 0
+	if motion.LengthSquared() < 1e-8 {
+		return false
+	}
+	motion = motion.NormalizeOr(forward)
+	return motion.Dot(direction) >= demolitionMotionDot
+}
+
+func (world *World) markDemolished(car *Car) {
+	car.Demolished = true
+	car.Grounded = false
+	car.Velocity = Vec3{}
+	car.AngularVelocity = Vec3{}
+	car.Input = Input{Sequence: car.Input.Sequence}
+	car.LastInputTick = world.Tick
+	car.JumpCount = 0
+	car.JumpHoldTime = 0
+	car.JumpHoldActive = false
+	car.AirTime = 0
+	car.GroundLockout = 0
+	car.DodgeTime = 0
+	car.DodgeAngleRemaining = 0
+	car.DodgeAxis = Vec3{}
+	car.Boost = 0
 }
 
 func (world *World) resetBall() {
@@ -811,6 +986,9 @@ func (world *World) Snapshot() Snapshot {
 		}
 		if car.Grounded {
 			snapshot.GroundMask |= 1 << index
+		}
+		if car.Demolished {
+			snapshot.DemolishedMask |= 1 << index
 		}
 		snapshot.Cars[index] = stateFromBody(car.Body)
 		snapshot.Boost[index] = uint8(math.Round(clamp(car.Boost, 0, world.Config.Car.BoostCapacity)))
@@ -894,7 +1072,7 @@ func (world *World) applyGoalExplosionKnockback(goalSign int) {
 	}
 	for index := range world.Cars {
 		car := &world.Cars[index]
-		if !car.Connected {
+		if !car.Connected || car.Demolished {
 			continue
 		}
 		away := Vec3{X: car.Position.X - origin.X, Z: car.Position.Z - origin.Z}

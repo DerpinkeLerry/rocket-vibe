@@ -65,7 +65,10 @@ func EncodeState(snapshot game.Snapshot) []byte {
 	buffer[0] = MessageState
 	binary.LittleEndian.PutUint32(buffer[1:5], uint32(snapshot.Tick))
 	buffer[5] = snapshot.ConnectedMask
-	buffer[6] = snapshot.GroundMask
+	// Lower nibble remains the legacy grounded mask. Upper nibble carries the
+	// four demolition flags without growing the packet, so older clients keep
+	// parsing entity floats at the exact same offsets.
+	buffer[6] = (snapshot.GroundMask & 0x0f) | ((snapshot.DemolishedMask & 0x0f) << 4)
 	binary.LittleEndian.PutUint16(buffer[7:9], snapshot.OrangeScore)
 	binary.LittleEndian.PutUint16(buffer[9:11], snapshot.BlueScore)
 	for index := range snapshot.Boost {

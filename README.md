@@ -1,4 +1,13 @@
-# Rocket Vibe 1.10.26 – Predictable Side Dodge & Longer Replay
+# Rocket Vibe 1.10.27 – Demolition & Tactical Respawn
+
+## v1.10.27
+
+- Neues serverautoritaeres **Demolition-System**: Ein gegnerisches Auto wird nur bei einem echten Fronttreffer zerstoert, wenn der Angreifer strikt schneller als das normale 70-km/h-Limit ist. Seiten-/Hecktreffer, Teamkontakte und Treffer bei exakt 70 km/h loesen keine Demo aus.
+- Nach einer Demo verschwindet das zerstoerte Auto sofort aus der aktiven Physik und kann weder Ball, Autos noch Boost-Pads beeinflussen.
+- Der betroffene Spieler bekommt fuer exakt **4 Sekunden eine Vogelperspektive ueber der eigenen Spielhaelfte** und drei klar markierte Respawn-Punkte: links, Mitte, rechts. Ohne Auswahl wird automatisch die Mitte verwendet.
+- Desktop: Spawn mit `1 / 2 / 3` direkt waehlen oder mit `A/D` bzw. Pfeiltasten durchschalten. Mobile: die drei grossen Spawn-Buttons antippen. Die Auswahl wird sofort an den Server uebertragen.
+- Nach Ablauf der vier Sekunden setzt ausschliesslich der Server das Auto am gewaehlten Punkt wieder ein, ausgerichtet Richtung Mittelfeld, mit 33 Boost und einer kurzen 0,75-s-Demo-Immunitaet gegen direkte Spawn-Ketten.
+- Der Demolished-Zustand wird ohne groesseres Snapshot-Paket im oberen Nibble des bisherigen Ground-Bytes synchronisiert; alte Clients ignorieren diese Bits weiterhin.
 
 ## v1.10.26
 
@@ -113,6 +122,7 @@ Der Go-Server ist die einzige Online-Autoritaet und verarbeitet:
 - Pitch/Yaw/Roll in der Luft mit analoger Ziel-Winkelgeschwindigkeit; ohne Input wird Restrotation aktiv stabilisiert, damit das Auto nicht durch altes Drehmoment wild weiterspinnt
 - Separater, staerkerer Air-Boost (34 m/s² statt 16 m/s² am Boden), damit ein nach oben ausgerichtetes Auto die 20,5-m/s²-Schwerkraft ueberwinden und kontrolliert Hoehe gewinnen kann
 - Surface-Adhesion: Rampen und senkrechte Waende halten das Auto bis zum aktiven Absprung
+- Demolition bei gegnerischem Fronttreffer strikt oberhalb 70 km/h inklusive 4-Sekunden-Vogelperspektive und serverseitig ausgewaehltem Respawnpunkt
 - Auto gegen Auto
 - Auto gegen Ball
 - Auto und Ball gegen Boden, Seitenwaende, Endwaende, Torrahmen, Tortunnel und Decke
@@ -182,6 +192,7 @@ Ein Deployment beendet laufende Matches beim Containerwechsel. Fuer spaetere Mat
 - B: Ball resetten (Entwicklungsfunktion)
 - F2: auf PC zwischen Normal / Ultra High / Ultra Low wechseln und Seite neu laden
 - Kamera: `C` schaltet zwischen Ball Cam und Car Cam; das Auto bleibt in beiden Modi zentriert. Hindernisse zwischen Kamera und Auto werden beim Rendern ausgeblendet, und die Kamera darf hinter/außerhalb der Arena stehen.
+- Nach einer Demolition: `1 / 2 / 3` waehlt links / Mitte / rechts; `A/D` oder Pfeiltasten wechseln den markierten Respawnpunkt waehrend der 4-Sekunden-Vogelperspektive.
 
 ### Smartphone / Tablet
 
@@ -195,6 +206,7 @@ Auf Touch-Geraeten wird die Mobile-Steuerung automatisch aktiviert. Fuer die bes
 - `BALL / CAR`: Ball Cam und Car Cam wechseln
 - `↻`: eigenes Auto resetten
 - `⛶`: Vollbild im Match; kompatible Browser versuchen dabei Querformat zu sperren
+- Nach einer Demolition erscheinen fuer vier Sekunden drei grosse Spawn-Buttons fuer links / Mitte / rechts; die normale Touch-Steuerung wird in dieser Auswahlphase deaktiviert.
 - Bereits auf dem Start-/Namensbildschirm gibt es `VOLLBILD STARTEN`, damit das Spiel vor dem Match per echtem User-Tap in den Browser-Fullscreen wechseln kann
 
 Das HUD beruecksichtigt Notch/Home-Bar per Safe-Area und verhindert Pull-to-Refresh/Browser-Gesten im Match. Mobilgeraete verwenden standardmaessig das Profil **NORMAL** mit Antialiasing, voller Arena-/Umgebungsqualitaet und 125–160 % Render-Skalierung; nur bei deutlich zu niedriger Framerate reduziert die adaptive Aufloesung bis minimal 90 %. Browser ohne normale Fullscreen-API erhalten einen Hinweis auf den bereits vorbereiteten Home-Screen/Standalone-Modus. Mit `?mobile=1` kann die Touch-Steuerung zum Testen erzwungen, mit `?mobile=0` deaktiviert werden.

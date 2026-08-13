@@ -97,6 +97,41 @@ export class LocalCarPredictor {
     this.car.boosting = false;
   }
 
+
+  resetForRespawn(spawn = {}, yaw = 0, boost = 33) {
+    const half = (Number(yaw) || 0) * 0.5;
+    this.body.setTranslation({
+      x: Number(spawn?.x) || 0,
+      y: Number(spawn?.y) || 0.52,
+      z: Number(spawn?.z) || 0
+    }, true);
+    this.body.setRotation({ x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) }, true);
+    this.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    this.mask = 0;
+    this.edges = 0;
+    this.flags = 0;
+    this.analogThrottle = 0;
+    this.analogSteer = 0;
+    this.grounded = false;
+    this.jumpCount = 0;
+    this.jumpHoldTime = 0;
+    this.jumpHoldActive = false;
+    this.airTime = 0;
+    this.groundLockout = 0;
+    this.dodgeTime = 0;
+    this.dodgeAngleRemaining = 0;
+    this.dodgeAxis.set(0, 0, 0);
+    this.dodgePitchLock = 0;
+    this.dodgeYawLock = 0;
+    this.groundNormal.set(0, 1, 0);
+    this.boost = clamp(Number(boost) || 0, 0, CAR_TUNING.boostCapacity);
+    this.car.boost = this.boost;
+    this.car.boosting = false;
+    this.car.boostVisualHold = 0;
+    this.car.boostTrail?.clear?.();
+  }
+
   consumeEdge(bit) {
     const had = Boolean(this.edges & bit);
     this.edges &= ~bit;

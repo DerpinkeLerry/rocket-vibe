@@ -9,7 +9,7 @@ import (
 )
 
 func TestStatePacketMatchesBrowserLayout(t *testing.T) {
-	snapshot := game.Snapshot{Tick: 0x11223344, ConnectedMask: 0x05, GroundMask: 0x01, OrangeScore: 7, BlueScore: 9, Boost: [game.MaxPlayers]uint8{100, 55, 20, 0}, BoostPadMask: (uint64(1) << 33) | 0xa55a}
+	snapshot := game.Snapshot{Tick: 0x11223344, ConnectedMask: 0x05, GroundMask: 0x01, DemolishedMask: 0x04, OrangeScore: 7, BlueScore: 9, Boost: [game.MaxPlayers]uint8{100, 55, 20, 0}, BoostPadMask: (uint64(1) << 33) | 0xa55a}
 	snapshot.Cars[0] = game.EntityState{
 		Position: game.Vec3{X: 1.25, Y: -2.5, Z: 3.75},
 		Rotation: game.IdentityQuat(),
@@ -21,8 +21,11 @@ func TestStatePacketMatchesBrowserLayout(t *testing.T) {
 	if packet[0] != MessageState || binary.LittleEndian.Uint32(packet[1:5]) != 0x11223344 {
 		t.Fatalf("invalid packet header: %v", packet[:7])
 	}
-	if packet[5] != 0x05 || packet[6] != 0x01 {
+	if packet[5] != 0x05 || packet[6] != 0x41 {
 		t.Fatalf("invalid masks: %08b %08b", packet[5], packet[6])
+	}
+	if packet[6]&0x0f != 0x01 || (packet[6]>>4)&0x0f != 0x04 {
+		t.Fatalf("ground/demo nibbles were not packed compatibly: %08b", packet[6])
 	}
 	if binary.LittleEndian.Uint16(packet[7:9]) != 7 || binary.LittleEndian.Uint16(packet[9:11]) != 9 {
 		t.Fatalf("invalid score: %v", packet[7:11])

@@ -14,7 +14,7 @@ test('binary state reads the 34-pad mask, scores and entity data from protocol v
   view.setUint8(0, 2);
   view.setUint32(1, 0x11223344, true);
   view.setUint8(5, 0b0101);
-  view.setUint8(6, 0b0001);
+  view.setUint8(6, 0b01010001); // grounded car 0; demolished cars 0 and 2
   view.setUint16(7, 12, true);
   view.setUint16(9, 9, true);
   view.setUint8(11, 73);
@@ -36,6 +36,9 @@ test('binary state reads the 34-pad mask, scores and entity data from protocol v
   assert.equal(client.state.boostPadMask, 2 ** 33 + 0xa55a);
   assert.deepEqual(client.state.connected, [1, 0, 1, 0]);
   assert.equal(client.state.cars[0].g, 1);
+  assert.equal(client.state.cars[0].d, 1);
+  assert.equal(client.state.cars[1].d, 0);
+  assert.equal(client.state.cars[2].d, 1);
   assert.equal(client.state.cars[0].b, 73);
   assert.equal(client.state.cars[1].b, 44);
   assert.equal(client.state.cars[0].p[0], 42.5);
@@ -210,6 +213,55 @@ test('client packs analog throttle and steering into the extended 10-byte input 
     assert.equal(view.getUint8(7), 0b11);
     assert.equal(view.getInt8(8), 64);
     assert.equal(view.getInt8(9), -32);
+  } finally {
+    if (previousWebSocket === undefined) delete globalThis.WebSocket;
+    else globalThis.WebSocket = previousWebSocket;
+  }
+});
+
+
+test('demolition and respawn control messages carry the spawn-selection data', () => {
+  const client = new LanClient('Demo Pilot');
+  let demolitionReceived = null;
+  let respawnReceived = null;
+  client.onDemolition = (message) => { demolitionReceived = message; };
+  client.onRespawn = (message) => { respawnReceived = message; };
+
+  const demolition = client.applyDemolitionMessage({
+    type: 'demolition', attackerId: 0, victimId: 1,
+    attackerName: 'Orange', victimName: 'Blue',
+    position: [1, 2, 3], durationMs: 4000, selectedIndex: 1,
+    spawnPoints: [
+      { x: 28, y: 0.52, z: -52, yaw: Math.PI },
+      { x: 0, y: 0.52, z: -52, yaw: Math.PI },
+      { x: -28, y: 0.52, z: -52, yaw: Math.PI }
+    ]
+  });
+  assert.equal(demolition.durationMs, 4000);
+  assert.equal(demolition.spawnPoints.length, 3);
+  assert.equal(demolition.spawnPoints[0].z, -52);
+  assert.deepEqual(demolitionReceived, demolition);
+
+  const respawn = client.applyRespawnMessage({
+    type: 'respawn', playerId: 1, spawnIndex: 2,
+    position: [-28, 0.52, -52], yaw: Math.PI, boost: 33
+  });
+  assert.equal(respawn.spawnIndex, 2);
+  assert.equal(respawn.boost, 33);
+  assert.deepEqual(respawnReceived, respawn);
+});
+
+test('client sends a clamped demolition respawn selection', () => {
+  const previousWebSocket = globalThis.WebSocket;
+  globalThis.WebSocket = { OPEN: 1 };
+  try {
+    const client = new LanClient('Spawn Pilot');
+    const sent = [];
+    client.connected = true;
+    client.socket = { readyState: 1, send(value) { sent.push(value); } };
+
+    assert.equal(client.sendRespawnSelection(9), true);
+    assert.deepEqual(JSON.parse(sent[0]), { type: 'respawn-select', index: 2 });
   } finally {
     if (previousWebSocket === undefined) delete globalThis.WebSocket;
     else globalThis.WebSocket = previousWebSocket;

@@ -26,6 +26,16 @@ export class Hud {
           <span data-replay-votes>0/0 bereit</span>
         </div>
       </div>
+      <div class="hud__respawn" data-respawn hidden aria-live="polite">
+        <div class="hud__respawn-title">DEMOLISHED</div>
+        <div class="hud__respawn-countdown">RESPAWN IN <strong data-respawn-seconds>4.0</strong>s</div>
+        <div class="hud__respawn-hint">SPAWNPUNKT WÄHLEN</div>
+        <div class="hud__respawn-choices" role="group" aria-label="Spawnpunkt wählen">
+          <button type="button" data-respawn-choice="0"><kbd>1</kbd><span>LINKS</span></button>
+          <button type="button" data-respawn-choice="1"><kbd>2</kbd><span>MITTE</span></button>
+          <button type="button" data-respawn-choice="2"><kbd>3</kbd><span>RECHTS</span></button>
+        </div>
+      </div>
       <div class="hud__quickchat" aria-label="Quick Chat">
         <div class="hud__quickchat-feed" data-quickchat-feed aria-live="polite" aria-relevant="additions"></div>
         <div class="hud__quickchat-status" data-quickchat-status hidden>QUICK CHAT COOLDOWN</div>
@@ -95,6 +105,11 @@ export class Hud {
     this.replayVotes = this.el.querySelector('[data-replay-votes]');
     this.replaySkipHandler = null;
     this.replaySkipRequested = false;
+    this.respawn = this.el.querySelector('[data-respawn]');
+    this.respawnSeconds = this.el.querySelector('[data-respawn-seconds]');
+    this.respawnChoices = [...this.el.querySelectorAll('[data-respawn-choice]')];
+    this.respawnSelectionHandler = null;
+    this.respawnSelectedIndex = 1;
     this.quickChatFeed = this.el.querySelector('[data-quickchat-feed]');
     this.quickChatStatus = this.el.querySelector('[data-quickchat-status]');
     this.quickChatCooldownTimer = null;
@@ -106,6 +121,12 @@ export class Hud {
       this.controlsToggle?.classList.toggle('is-open', open);
     });
     this.replaySkip?.addEventListener('click', () => this.requestReplaySkip());
+    this.respawnChoices.forEach((button) => {
+      button.addEventListener('click', () => {
+        const index = Number(button.dataset.respawnChoice);
+        if (Number.isInteger(index)) this.requestRespawnSelection(index);
+      });
+    });
   }
 
   addQuickChat(chat) {
@@ -213,6 +234,46 @@ export class Hud {
     this.kickoff.classList.remove('hud__kickoff--go');
   }
 
+
+
+  setRespawnSelectionHandler(handler) {
+    this.respawnSelectionHandler = typeof handler === 'function' ? handler : null;
+  }
+
+  requestRespawnSelection(index) {
+    if (!this.respawn || this.respawn.hidden) return false;
+    const choice = Math.max(0, Math.min(2, Math.round(Number(index) || 0)));
+    this.respawnSelectedIndex = choice;
+    this.respawnChoices.forEach((button, buttonIndex) => {
+      const selected = buttonIndex === choice;
+      button.classList.toggle('is-selected', selected);
+      button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+    });
+    this.respawnSelectionHandler?.(choice);
+    return true;
+  }
+
+  setRespawnSelection(active, remainingMs = 0, selectedIndex = 1) {
+    if (!this.respawn) return;
+    if (!active) {
+      this.respawn.hidden = true;
+      return;
+    }
+    this.respawn.hidden = false;
+    if (this.respawnSeconds) {
+      const seconds = Math.max(0, Number(remainingMs) || 0) / 1000;
+      this.respawnSeconds.textContent = seconds.toFixed(1);
+    }
+    const choice = Math.max(0, Math.min(2, Math.round(Number(selectedIndex) || 0)));
+    if (choice !== this.respawnSelectedIndex || !this.respawnChoices.some((button) => button.classList.contains('is-selected'))) {
+      this.respawnSelectedIndex = choice;
+      this.respawnChoices.forEach((button, buttonIndex) => {
+        const selected = buttonIndex === choice;
+        button.classList.toggle('is-selected', selected);
+        button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+      });
+    }
+  }
 
   setReplaySkipHandler(handler) {
     this.replaySkipHandler = typeof handler === 'function' ? handler : null;

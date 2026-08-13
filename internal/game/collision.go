@@ -652,11 +652,17 @@ func setAxisValue(vector *Vec3, axis int, value float64) {
 	}
 }
 
-func resolveCarCar(first, second *Car, config CarConfig) {
+type carCarContactInfo struct {
+	Normal       Vec3
+	Penetration  float64
+	ClosingSpeed float64
+}
+
+func carCarContact(first, second *Car, config CarConfig) (carCarContactInfo, bool) {
 	_, firstExtentY, _ := projectedExtents(first.Rotation, config.HalfExtents)
 	_, secondExtentY, _ := projectedExtents(second.Rotation, config.HalfExtents)
 	if math.Abs(second.Position.Y-first.Position.Y) >= firstExtentY+secondExtentY+0.02 {
-		return
+		return carCarContactInfo{}, false
 	}
 
 	rightA, forwardA := horizontalCarAxes(first.Rotation)
@@ -673,7 +679,7 @@ func resolveCarCar(first, second *Car, config CarConfig) {
 		radiusB := config.HalfExtents.X*math.Abs(rightB.Dot(axis)) + config.HalfExtents.Z*math.Abs(forwardB.Dot(axis))
 		penetration := radiusA + radiusB - distance
 		if penetration <= 0 {
-			return
+			return carCarContactInfo{}, false
 		}
 		if penetration < bestPenetration {
 			bestPenetration = penetration
@@ -684,9 +690,21 @@ func resolveCarCar(first, second *Car, config CarConfig) {
 		}
 	}
 
-	correction := bestNormal.Mul(bestPenetration*0.5 + 0.0005)
+	relativeVelocity := second.Velocity.Sub(first.Velocity)
+	closing := -relativeVelocity.Dot(bestNormal)
+	return carCarContactInfo{
+		Normal:       bestNormal,
+		Penetration:  bestPenetration,
+		ClosingSpeed: math.Max(0, closing),
+	}, true
+}
+
+func resolveCarCarContact(first, second *Car, config CarConfig, contact carCarContactInfo) {
+	bestNormal := contact.Normal.NormalizeOr(Vec3{X: 1})
+	correction := bestNormal.Mul(contact.Penetration*0.5 + 0.0005)
 	first.Position = first.Position.Sub(correction)
 	second.Position = second.Position.Add(correction)
+
 	relativeVelocity := second.Velocity.Sub(first.Velocity)
 	closingSpeed := relativeVelocity.Dot(bestNormal)
 	if closingSpeed >= 0 {

@@ -39,3 +39,14 @@ test('desktop replay advertises a blinking Space shortcut and routes it through 
   assert.match(gameSource, /event\.code !== 'Space'/);
   assert.match(gameSource, /this\.hud\?\.requestReplaySkip\?\.\(\)/);
 });
+
+test('demolition respawn selection exposes three spawn choices and a four-second bird-view flow', () => {
+  assert.match(hudSource, /data-respawn[^>]*hidden/);
+  assert.match(hudSource, /data-respawn-choice="0"[\s\S]*LINKS/);
+  assert.match(hudSource, /data-respawn-choice="1"[\s\S]*MITTE/);
+  assert.match(hudSource, /data-respawn-choice="2"[\s\S]*RECHTS/);
+  assert.match(gameSource, /demolitionRespawnActive/);
+  assert.match(gameSource, /beginRespawnSelection/);
+  assert.match(gameSource, /sendRespawnSelection/);
+  assert.match(cssSource, /\.demolition-respawn-active \.mobile-controls[\s\S]*pointer-events:\s*none/);
+});

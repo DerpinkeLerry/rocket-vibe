@@ -9,6 +9,7 @@ function copyEntity(entity = {}) {
     v: Array.from(entity.v ?? [0, 0, 0], Number),
     w: Array.from(entity.w ?? [0, 0, 0], Number),
     g: Number(entity.g) || 0,
+    d: Number(entity.d) || 0,
     b: Number.isFinite(Number(entity.b)) ? Number(entity.b) : 100
   };
 }
@@ -53,6 +54,7 @@ function interpolateEntity(a, b, t) {
     v: lerpArray(a.v, b.v, t),
     w: lerpArray(a.w, b.w, t),
     g: t < 0.5 ? a.g : b.g,
+    d: t < 0.5 ? a.d : b.d,
     b: a.b + (b.b - a.b) * t
   };
 }
