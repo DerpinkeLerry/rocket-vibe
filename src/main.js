@@ -157,8 +157,8 @@ const LOBBY_PHYSICS_SECTIONS = [
       ['config.car.halfExtents.y', 'Hitbox halbe Höhe', 0.2, 1.5, 0.01, 'm'],
       ['config.car.halfExtents.z', 'Hitbox halbe Länge', 0.5, 3.5, 0.01, 'm'],
       ['config.car.mass', 'Masse', 50, 2500, 10, 'kg'],
-      ['config.car.maxGroundSpeed', 'Max. Bodentempo', 7.2, 288, 1, 'km/h', 3.6],
-      ['config.car.maxBoostSpeed', 'Max. Boosttempo', 7.2, 432, 1, 'km/h', 3.6],
+      ['config.car.maxGroundSpeed', 'Max. Bodentempo', 7.2, 288, 0.1, 'km/h', 3.6],
+      ['config.car.maxBoostSpeed', 'Max. Boosttempo', 7.2, 432, 0.1, 'km/h', 3.6],
       ['config.car.linearDamping', 'Linear Damping', 0, 10, 0.01, ''],
       ['config.car.angularDamping', 'Angular Damping', 0, 10, 0.01, ''],
       ['config.car.restitution', 'Auto-Bounce', 0, 1.5, 0.01, '']
@@ -168,7 +168,7 @@ const LOBBY_PHYSICS_SECTIONS = [
     title: 'Auto · Antrieb, Boost & Grip',
     fields: [
       ['config.car.boostCapacity', 'Boost-Kapazität', 1, 100, 1, ''],
-      ['config.car.boostConsumptionPerSecond', 'Boost-Verbrauch', 0, 200, 1, '/s'],
+      ['config.car.boostConsumptionPerSecond', 'Boost-Verbrauch', 0, 200, 'any', '/s'],
       ['config.car.driveAcceleration', 'Beschleunigung vorwärts', 0, 80, 0.5, 'm/s²'],
       ['config.car.reverseAcceleration', 'Beschleunigung rückwärts', 0, 80, 0.5, 'm/s²'],
       ['config.car.brakeAcceleration', 'Bremskraft', 0, 120, 0.5, 'm/s²'],
@@ -202,8 +202,8 @@ const LOBBY_PHYSICS_SECTIONS = [
       ['config.car.doubleJumpSpeed', 'Double-Jump Speed', 0, 50, 0.1, 'm/s'],
       ['config.car.dodgeImpulse', 'Dodge Impuls', 0, 50, 0.1, ''],
       ['config.car.dodgeLift', 'Dodge Lift', -10, 20, 0.1, ''],
-      ['config.car.dodgeAngularSpeed', 'Dodge Rotationsspeed', 0, 40, 0.1, 'rad/s'],
-      ['config.car.dodgeRotation', 'Dodge Gesamtrotation', 0, 25.1327, 0.01, 'rad'],
+      ['config.car.dodgeAngularSpeed', 'Dodge Rotationsspeed', 0, 40, 'any', 'rad/s'],
+      ['config.car.dodgeRotation', 'Dodge Gesamtrotation', 0, 25.1327, 'any', 'rad'],
       ['config.car.dodgeWindow', 'Dodge-Fenster', 0, 5, 0.01, 's'],
       ['config.car.dodgeDuration', 'Dodge-Dauer', 0.05, 3, 0.01, 's'],
       ['config.car.dodgeControlScale', 'Steuerung während Dodge', 0, 1, 0.01, ''],
@@ -222,7 +222,7 @@ const LOBBY_PHYSICS_SECTIONS = [
       ['config.ball.rollingResistance', 'Rollwiderstand', 0, 4, 0.01, ''],
       ['config.ball.linearDamping', 'Linear Damping', 0, 5, 0.005, ''],
       ['config.ball.angularDamping', 'Angular Damping', 0, 5, 0.005, ''],
-      ['config.ball.maxSpeed', 'Max. Balltempo', 7.2, 576, 1, 'km/h', 3.6],
+      ['config.ball.maxSpeed', 'Max. Balltempo', 7.2, 576, 0.1, 'km/h', 3.6],
       ['config.ball.maxAngularSpeed', 'Max. Ballrotation', 0, 120, 0.5, 'rad/s'],
       ['config.ball.carHitPower', 'Car Hit Power', 0, 3, 0.01, ''],
       ['config.ball.carHitLift', 'Car Hit Lift', -1, 2, 0.01, ''],
@@ -326,7 +326,7 @@ function lobbyCreationMarkup(defaults) {
   const rules = defaults.rules || {};
   const config = defaults.config || {};
   return `
-    <form class="lobby-create-card" data-lobby-create-form>
+    <form class="lobby-create-card" data-lobby-create-form novalidate>
       <div class="lobby-create-card__top">
         <button class="lobby-back" type="button" data-lobby-back>← LOBBIES</button>
         <div>
@@ -425,6 +425,23 @@ function collectLobbySettings(form, defaults) {
   return request;
 }
 
+function validateLobbyCreationForm(form, error) {
+  const invalid = Array.from(form.querySelectorAll('input')).find((input) => !input.checkValidity());
+  if (!invalid) return true;
+
+  const details = invalid.closest('details');
+  if (details) details.open = true;
+  const label = invalid.closest('label')?.querySelector('span')?.childNodes?.[0]?.textContent?.trim() || 'Lobby-Einstellung';
+  const constraints = [];
+  if (invalid.min !== '') constraints.push(`min. ${invalid.min}`);
+  if (invalid.max !== '') constraints.push(`max. ${invalid.max}`);
+  if (invalid.step && invalid.step !== 'any') constraints.push(`Schritt ${invalid.step}`);
+  error.textContent = `Bitte prüfe „${label}“${constraints.length ? ` (${constraints.join(', ')})` : ''}.`;
+  invalid.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+  invalid.focus?.({ preventScroll: true });
+  return false;
+}
+
 function requestLobby(root, notice = '') {
   return new Promise(async (resolve, reject) => {
     const overlay = document.createElement('div');
@@ -500,6 +517,7 @@ function requestLobby(root, notice = '') {
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
         error.textContent = '';
+        if (!validateLobbyCreationForm(form, error)) return;
         const submit = form.querySelector('[type="submit"]');
         submit.disabled = true;
         submit.textContent = 'LOBBY WIRD ERSTELLT …';

@@ -1,4 +1,10 @@
-# Rocket Vibe 1.11.1 – Lobbies, Custom Rules & Physics Mutators
+# Rocket Vibe 1.11.2 – Lobbies, Custom Rules & Physics Mutators
+
+## v1.11.2
+
+- Fix: Lobby-Erstellung wurde im Browser durch HTML-Number-Validation blockiert (km/h-Standardwerte passten nicht zu `step=1`).
+- Speed-Felder verwenden jetzt `0.1 km/h` Schritte und akzeptieren die bestehenden Standardwerte.
+- Die Erstellmaske validiert sichtbar und öffnet den betroffenen Physics-Bereich statt beim Submit scheinbar nichts zu tun.
 
 ## v1.11.1
 
