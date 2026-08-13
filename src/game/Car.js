@@ -5,7 +5,7 @@ import { CAR_TUNING } from '../shared/game-tuning.js';
 import { getCarStyle, normalizeCarStyle, shouldUsePremiumCarModel } from '../shared/car-styles.js';
 import { getBoostStyle, normalizeBoostStyle } from '../shared/boost-styles.js';
 import { BoostTrail } from './BoostTrail.js';
-import { createFennecPremiumVisual } from './PremiumCarModels.js';
+import { createPremiumCarVisual, getPremiumCarExhaustAnchor } from './PremiumCarModels.js';
 
 const VEC3_UP = new THREE.Vector3(0, 1, 0);
 const VEC3_FORWARD = new THREE.Vector3(0, 0, -1);
@@ -44,9 +44,12 @@ export class Car {
     this.visualParts = null;
     this.proceduralRoot = null;
     this.premiumVisual = null;
+    this.premiumVisualModelId = null;
     this.premiumVisualLoad = null;
+    this.premiumVisualLoadModelId = null;
     this.premiumWheelGroups = [];
-    this.premiumWheelMeshes = [];
+    this.premiumSpinQuaternion = new THREE.Quaternion();
+    this.premiumSpinAxis = new THREE.Vector3();
     this.wheelPivots = [];
     this.maxGroundSpeed = CAR_TUNING.maxGroundSpeed;
     this.maxBoostSpeed = CAR_TUNING.maxBoostSpeed;
@@ -492,15 +495,36 @@ export class Car {
   }
 
   getExhaustAnchor() {
-    if (this.premiumVisual?.visible && this.carStyle?.premiumModel === 'fennec') {
-      return { x: 0.34, z: 1.62 };
+    if (this.premiumVisual?.visible && this.premiumVisualModelId === this.carStyle?.premiumModel) {
+      const premiumAnchor = getPremiumCarExhaustAnchor(this.premiumVisualModelId);
+      if (premiumAnchor) return premiumAnchor;
     }
     const style = this.carStyle || getCarStyle();
     return { x: style.exhaustX, z: style.exhaustZ };
   }
 
+  disposePremiumVisual() {
+    if (!this.premiumVisual) return;
+    this.group?.remove(this.premiumVisual);
+    // Geometry/textures come from a shared lazy-loaded template. Only the
+    // per-car cloned materials are owned by this instance.
+    this.premiumVisual.traverse((object) => {
+      if (!object.isMesh) return;
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      for (const material of materials) material?.dispose?.();
+    });
+    this.premiumVisual = null;
+    this.premiumVisualModelId = null;
+    this.premiumWheelGroups = [];
+  }
+
   updatePremiumVisualState() {
-    const usePremium = Boolean(this.premiumVisual && this.wantsPremiumCarVisual());
+    const desiredModelId = this.carStyle?.premiumModel || null;
+    const usePremium = Boolean(
+      this.premiumVisual &&
+      this.wantsPremiumCarVisual() &&
+      this.premiumVisualModelId === desiredModelId
+    );
     if (this.premiumVisual) this.premiumVisual.visible = usePremium;
     if (this.proceduralRoot) this.proceduralRoot.visible = !usePremium;
 
@@ -513,33 +537,55 @@ export class Car {
   }
 
   ensurePremiumCarVisual() {
-    if (!this.wantsPremiumCarVisual()) {
-      this.updatePremiumVisualState();
-      return;
-    }
-    if (this.premiumVisual || this.premiumVisualLoad) {
+    const desiredModelId = this.carStyle?.premiumModel || null;
+    if (!this.wantsPremiumCarVisual() || !desiredModelId) {
       this.updatePremiumVisualState();
       return;
     }
 
-    // The GLB is requested only when this car is actually FENNEC and the
-    // renderer is running ULTRA HIGH. NORMAL/ULTRA LOW never download it.
-    this.premiumVisualLoad = createFennecPremiumVisual(this.paintColor)
-      .then(({ root, wheelGroups, wheelMeshes }) => {
+    if (this.premiumVisual && this.premiumVisualModelId !== desiredModelId) {
+      this.disposePremiumVisual();
+    }
+    if (this.premiumVisual && this.premiumVisualModelId === desiredModelId) {
+      this.updatePremiumVisualState();
+      return;
+    }
+    if (this.premiumVisualLoad && this.premiumVisualLoadModelId === desiredModelId) return;
+
+    // Real GLBs are requested only for cars that are actually visible in
+    // ULTRA HIGH. NORMAL/ULTRA LOW keep the lightweight procedural fallback
+    // and never download these multi-megabyte assets.
+    const requestModelId = desiredModelId;
+    this.premiumVisualLoadModelId = requestModelId;
+    this.premiumVisualLoad = createPremiumCarVisual(requestModelId, this.paintColor)
+      .then(({ root, wheelGroups, modelId }) => {
+        // Style may have changed while the async GLB was loading.
+        if (this.carStyle?.premiumModel !== modelId || !this.wantsPremiumCarVisual()) {
+          root.traverse((object) => {
+            if (!object.isMesh) return;
+            const materials = Array.isArray(object.material) ? object.material : [object.material];
+            for (const material of materials) material?.dispose?.();
+          });
+          return null;
+        }
+        this.disposePremiumVisual();
         this.premiumVisual = root;
+        this.premiumVisualModelId = modelId;
         this.premiumWheelGroups = wheelGroups;
-        this.premiumWheelMeshes = wheelMeshes;
         root.visible = false;
         this.group.add(root);
         this.updatePremiumVisualState();
         return root;
       })
       .catch((error) => {
-        console.warn('FENNEC 3D model could not be loaded; using the lightweight fallback.', error);
+        console.warn(`${String(requestModelId).toUpperCase()} 3D model could not be loaded; using the lightweight fallback.`, error);
         return null;
       })
       .finally(() => {
-        this.premiumVisualLoad = null;
+        if (this.premiumVisualLoadModelId === requestModelId) {
+          this.premiumVisualLoad = null;
+          this.premiumVisualLoadModelId = null;
+        }
       });
   }
 
@@ -1052,8 +1098,13 @@ export class Car {
     this.wheelSpin += speedForward * dt / 0.36;
     for (const wheel of this.wheels) wheel.rotation.x = this.wheelSpin;
     if (this.premiumVisual?.visible) {
-      for (const wheel of this.premiumWheelMeshes) {
-        wheel.rotation.y = (wheel.userData.baseRotationY || 0) + this.wheelSpin;
+      for (const wheel of this.premiumWheelGroups) {
+        const base = wheel.userData.baseQuaternion;
+        if (!base) continue;
+        const axisName = wheel.userData.spinAxis || 'y';
+        this.premiumSpinAxis.set(axisName === 'x' ? 1 : 0, axisName === 'y' ? 1 : 0, axisName === 'z' ? 1 : 0);
+        this.premiumSpinQuaternion.setFromAxisAngle(this.premiumSpinAxis, this.wheelSpin);
+        wheel.quaternion.copy(base).multiply(this.premiumSpinQuaternion);
       }
     }
 

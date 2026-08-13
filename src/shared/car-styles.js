@@ -3,8 +3,9 @@ export const DEFAULT_CAR_STYLE = 'vortex';
 export const CAR_STYLES = Object.freeze([
   Object.freeze({
     id: 'vortex',
-    name: 'VORTEX',
-    description: 'Kompakt & ausgewogen',
+    name: 'OCTANE',
+    description: 'Ultra High: echtes Octane-3D-Modell · sonst Lite-Fallback',
+    premiumModel: 'octane',
     bodyScale: [1.00, 1.00, 1.00],
     bodyY: 0.02,
     hoodScale: [1.00, 1.00, 1.00],
@@ -27,8 +28,9 @@ export const CAR_STYLES = Object.freeze([
   }),
   Object.freeze({
     id: 'titan',
-    name: 'TITAN',
-    description: 'Kantig & robust',
+    name: 'MCLAREN 570S',
+    description: 'Ultra High: echtes McLaren-3D-Modell · sonst Lite-Fallback',
+    premiumModel: 'mclaren',
     bodyScale: [1.05, 1.10, 0.96],
     bodyY: 0.06,
     hoodScale: [1.05, 1.18, 0.82],
@@ -51,8 +53,9 @@ export const CAR_STYLES = Object.freeze([
   }),
   Object.freeze({
     id: 'apex',
-    name: 'APEX',
-    description: 'Flach & breit',
+    name: 'DOMINUS',
+    description: 'Ultra High: echtes Dominus-3D-Modell · sonst Lite-Fallback',
+    premiumModel: 'dominus',
     bodyScale: [1.10, 0.78, 1.07],
     bodyY: -0.03,
     hoodScale: [1.08, 0.72, 1.25],

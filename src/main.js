@@ -93,9 +93,9 @@ function carPreviewSvg(styleId) {
       spoiler: 'M126 33 H153 V38 H127 Z'
     },
     titan: {
-      body: 'M25 65 L34 43 L68 36 L134 38 L154 56 L153 80 L28 80 Z',
-      glass: 'M70 39 L83 22 L123 22 L140 41 L122 46 L75 46 Z',
-      spoiler: 'M126 27 H154 V34 H128 Z'
+      body: 'M20 70 L32 55 L78 45 L139 47 L160 61 L156 78 L25 78 Z',
+      glass: 'M78 46 L100 34 L132 36 L147 50 L118 52 Z',
+      spoiler: ''
     },
     apex: {
       body: 'M23 67 L37 49 L92 41 L143 47 L157 63 L154 78 L25 78 Z',
@@ -161,7 +161,7 @@ function requestPlayerIdentity(root) {
                 <span class="car-choice__desc">${style.description}</span>
               </label>`).join('')}
           </div>
-          <div class="car-select__note">FENNEC nutzt in ULTRA HIGH das echte GLB-Modell. NORMAL und ULTRA LOW verwenden automatisch die leichte Fallback-Karosserie mit identischer Hitbox. <a href="https://sketchfab.com/3d-models/fennec-rocket-league-car-5b43b50b6eeb4a12a29671df3418f57a" target="_blank" rel="noopener noreferrer">3D: Jako/fairlight51 · CC BY 4.0</a></div>
+          <div class="car-select__note">OCTANE, DOMINUS, MCLAREN 570S und FENNEC nutzen in ULTRA HIGH die echten GLB-Modelle. NORMAL und ULTRA LOW verwenden automatisch die leichten Fallback-Karosserien mit identischer Hitbox. Asset-Credits: <code>THIRD_PARTY_ASSETS.md</code>.</div>
         </fieldset>
 
         <fieldset class="boost-select">

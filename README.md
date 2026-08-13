@@ -272,14 +272,16 @@ Während der Wiederholung steht das Live-Match serverseitig still. Jeder Spieler
 
 Nach Replay-Ende werden Ball, Autos und Boost-Pads auf Kickoff zurückgesetzt, der aktuelle Spielstand bleibt bestehen und der bekannte 3-Sekunden-Countdown startet. Falls während des Replays durch einen Join gerade ein neues faires 1v1/2v2 entstanden ist, greift weiterhin die bestehende Regel und der Match-Spielstand wird für dieses neue Duell zurückgesetzt.
 
-## FENNEC Ultra-High Model v1.10.19
+## Premium Rocket League Models v1.10.20
 
-- Die bisherige sichtbare Auswahl `RAZOR` heisst im Startmenue jetzt `FENNEC`. Intern bleibt die ID `razor` fuer Netzwerk-/Server-Kompatibilitaet bestehen.
-- Nur `ULTRA HIGH` laedt und rendert das echte GLB-Modell. `NORMAL` und `ULTRA LOW` verwenden weiterhin automatisch die leichte prozedurale Fallback-Karosserie mit exakt derselben Gameplay-Hitbox.
-- Das GLB wird lazy geladen: Wer nicht Ultra High + FENNEC benutzt, laedt die ca. 8 MB grosse Modelldatei nicht herunter.
-- Geometrien und eingebettete Texturen werden zwischen mehreren FENNEC-Spielern geteilt; Materialien werden pro Auto geklont, damit Orange-/Blau-Lack sauber getrennt bleibt.
-- Physics, Gewicht, Hitbox, Booststaerke und Fahrwerte bleiben rein vom bestehenden Car-System bestimmt und werden vom GLB nicht beeinflusst.
+- Die vier sichtbaren Fahrzeug-Slots heissen jetzt `OCTANE`, `MCLAREN 570S`, `DOMINUS` und `FENNEC`. Die internen IDs `vortex`, `titan`, `apex`, `razor` bleiben fuer Netzwerk-, Save- und Server-Kompatibilitaet bestehen.
+- Nur `ULTRA HIGH` laedt die echten GLB-Modelle. `NORMAL` und `ULTRA LOW` nutzen weiterhin die jeweiligen leichten prozeduralen Fallback-Karosserien mit identischer Gameplay-Hitbox.
+- Alle Premium-GLBs werden lazy geladen: Ein Fahrzeugmodell wird erst angefordert, wenn mindestens ein sichtbarer Spieler genau dieses Auto in Ultra High benutzt.
+- Geometrien und eingebettete Texturen werden zwischen gleichen Fahrzeugen geteilt; Materialien werden pro Auto geklont, damit Teamfarben getrennt bleiben.
+- Der McLaren benutzt `SkeletonUtils.clone`, damit sein skinned Chassis bei mehreren Instanzen keine Skeleton-Referenzen teilt.
+- Das hochgeladene Rocket-League-Ball-GLB wird ebenfalls ausschliesslich in `ULTRA HIGH` geladen. Normal/Ultra Low behalten den bisherigen prozeduralen Soccar-Ball. Ballradius, Collider, Masse, Roll- und Trefferphysik bleiben unveraendert.
+- Physics, Gewicht, Hitbox, Booststaerke und Fahrwerte aller Fahrzeuge bleiben vollstaendig im bestehenden Car-System und werden von den GLBs nicht beeinflusst.
 
 ### 3D-Asset Attribution
 
-`Fennec - Rocket League Car` von **Jako (fairlight51)**, bereitgestellt ueber Sketchfab, Lizenz **CC BY 4.0**. Die hochgeladene GLB-Datei enthaelt die urspruenglichen Asset-Metadaten und die Lizenzangabe. Originalquelle laut GLB-Metadaten: Sketchfab-Modell `5b43b50b6eeb4a12a29671df3418f57a`.
+Alle GLBs wurden vom Benutzer fuer dieses Projekt bereitgestellt und enthalten ihre Original-Metadaten. Vollstaendige Attribution und Quellen stehen in `THIRD_PARTY_ASSETS.md`.

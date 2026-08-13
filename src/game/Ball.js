@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { TransformBody } from '../network/TransformBody.js';
 import { BALL_TUNING } from '../shared/game-tuning.js';
 import { CAR_HITBOX } from '../shared/arena-tuning.js';
+import { createPremiumBallVisual } from './PremiumBallModel.js';
 
 function hexPath(ctx, cx, cy, radius) {
   ctx.beginPath();
@@ -148,6 +149,9 @@ export class Ball {
     this.hitNormal = new THREE.Vector3();
     this.hitQuat = new THREE.Quaternion();
     this.hitInverseQuat = new THREE.Quaternion();
+    this.proceduralVisual = null;
+    this.premiumVisual = null;
+    this.premiumVisualLoad = null;
 
     this.createPhysics();
     this.createVisual();
@@ -187,8 +191,15 @@ export class Ball {
 
   createVisual() {
     this.mesh = new THREE.Group();
+    this.proceduralVisual = new THREE.Group();
+    this.proceduralVisual.name = 'ProceduralSoccarBallVisual';
+    this.mesh.add(this.proceduralVisual);
 
-    const { map, bumpMap } = createSoccarBallTextures(this.lowDetail, this.ultraHigh);
+    // Ultra High replaces this fallback with the real GLB as soon as it is
+    // loaded, so keep the hidden fallback at Normal detail to avoid wasting a
+    // 1536px texture and 64-segment sphere in memory.
+    const fallbackUltraHigh = false;
+    const { map, bumpMap } = createSoccarBallTextures(this.lowDetail, fallbackUltraHigh);
     const ballMaterial = this.lowDetail
       ? new THREE.MeshBasicMaterial({ map, color: 0xe5e7e9 })
       : (this.ultraHigh
@@ -213,12 +224,12 @@ export class Ball {
           }));
 
     const body = new THREE.Mesh(
-      createSoccarBallGeometry(this.radius, this.lowDetail, this.ultraHigh),
+      createSoccarBallGeometry(this.radius, this.lowDetail, fallbackUltraHigh),
       ballMaterial
     );
     body.castShadow = this.ultraHigh;
     body.receiveShadow = this.ultraHigh;
-    this.mesh.add(body);
+    this.proceduralVisual.add(body);
 
     // A very subtle dark inner shell prevents bright environment light from
     // washing the ball out and gives the seams more depth in Normal/Ultra High.
@@ -227,10 +238,11 @@ export class Ball {
         createSoccarBallGeometry(this.radius * 0.986, false, false),
         new THREE.MeshBasicMaterial({ color: 0x151b20, side: THREE.BackSide })
       );
-      this.mesh.add(inner);
+      this.proceduralVisual.add(inner);
     }
 
     this.scene.add(this.mesh);
+    if (this.ultraHigh) this.ensurePremiumBallVisual();
 
     if (this.lowDetail || this.ultraHigh) {
       this.shadow = null;
@@ -365,6 +377,26 @@ export class Ball {
       this.shadow.scale.setScalar(scale);
       this.shadow.material.opacity = THREE.MathUtils.clamp(0.3 - height * 0.016, 0.06, 0.3);
     }
+  }
+
+
+  ensurePremiumBallVisual() {
+    if (!this.ultraHigh || this.premiumVisual || this.premiumVisualLoad) return;
+    this.premiumVisualLoad = createPremiumBallVisual(this.radius)
+      .then((root) => {
+        this.premiumVisual = root;
+        this.mesh.add(root);
+        if (this.proceduralVisual) this.proceduralVisual.visible = false;
+        return root;
+      })
+      .catch((error) => {
+        console.warn('Ultra High Rocket League ball model could not be loaded; using the procedural fallback.', error);
+        if (this.proceduralVisual) this.proceduralVisual.visible = true;
+        return null;
+      })
+      .finally(() => {
+        this.premiumVisualLoad = null;
+      });
   }
 
   reset() {

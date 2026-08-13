@@ -1,15 +1,27 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getCarStyle, normalizeCarStyle, shouldUsePremiumCarModel } from './car-styles.js';
+import { CAR_STYLES, getCarStyle, normalizeCarStyle, shouldUsePremiumCarModel } from './car-styles.js';
 
-test('razor compatibility id is presented as FENNEC', () => {
-  assert.equal(normalizeCarStyle('razor'), 'razor');
-  assert.equal(getCarStyle('razor').name, 'FENNEC');
-  assert.equal(getCarStyle('razor').premiumModel, 'fennec');
+const expectedPremium = {
+  vortex: ['OCTANE', 'octane'],
+  titan: ['MCLAREN 570S', 'mclaren'],
+  apex: ['DOMINUS', 'dominus'],
+  razor: ['FENNEC', 'fennec']
+};
+
+test('all four compatibility ids expose the named premium cars', () => {
+  assert.equal(CAR_STYLES.length, 4);
+  for (const [id, [name, premiumModel]] of Object.entries(expectedPremium)) {
+    assert.equal(normalizeCarStyle(id), id);
+    assert.equal(getCarStyle(id).name, name);
+    assert.equal(getCarStyle(id).premiumModel, premiumModel);
+  }
 });
 
-test('premium FENNEC model is gated to ultra high only', () => {
-  assert.equal(shouldUsePremiumCarModel('razor', false), false);
-  assert.equal(shouldUsePremiumCarModel('razor', true), true);
-  assert.equal(shouldUsePremiumCarModel('vortex', true), false);
+test('all real car models are gated to ultra high only', () => {
+  for (const id of Object.keys(expectedPremium)) {
+    assert.equal(shouldUsePremiumCarModel(id, false), false);
+    assert.equal(shouldUsePremiumCarModel(id, true), true);
+  }
+  assert.equal(normalizeCarStyle('not-a-car'), 'vortex');
 });
