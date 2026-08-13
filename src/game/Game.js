@@ -248,8 +248,11 @@ export class Game {
         this.hud.setQuickChatCooldown(cooldownMs);
         this.mobileControls.setQuickChatCooldown?.(cooldownMs);
       };
+      this.network.onMatchClock = (clock) => this.hud.setMatchClock?.(clock);
+      this.network.onMatchOver = (result) => this.hud.showMatchOver?.(result);
       if (this.network.kickoff) this.handleKickoff(this.network.kickoff);
       if (this.network.replay && this.network.replay.phase !== 'end') this.handleReplay(this.network.replay);
+      if (this.network.matchClock) this.hud.setMatchClock?.(this.network.matchClock);
 
       // Key transitions bypass requestAnimationFrame and go to Railway immediately.
       this.input.setNetworkChangeHandler(() => this.sendNetworkInput());
@@ -884,10 +887,11 @@ export class Game {
   handleGoal(goal) {
     if (!goal) return;
     this.endDemolitionRespawn();
-    const durationMs = Math.max(250, Number(goal.durationMs) || 1250);
-    this.goalCelebrationActive = true;
+    const parsedDurationMs = Number(goal.durationMs);
+    const durationMs = Number.isFinite(parsedDurationMs) ? Math.max(0, parsedDurationMs) : 1250;
+    this.goalCelebrationActive = durationMs > 0;
     this.goalCelebrationUntil = performance.now() / 1000 + durationMs / 1000;
-    this.chaseCamera?.setGoalCelebrationActive?.(true);
+    this.chaseCamera?.setGoalCelebrationActive?.(durationMs > 0);
     this.kickoffActive = false;
     this.hud.setScore(goal.orangeScore, goal.blueScore);
     this.goalExplosion?.trigger({
@@ -930,7 +934,9 @@ export class Game {
     if (victimId !== this.playerId) return;
 
     this.demolitionRespawnActive = true;
-    this.demolitionRespawnEndsAt = performance.now() / 1000 + Math.max(0.5, Number(demolition.durationMs) || 4000) / 1000;
+    const parsedRespawnMs = Number(demolition.durationMs);
+    const respawnMs = Number.isFinite(parsedRespawnMs) ? Math.max(200, parsedRespawnMs) : 4000;
+    this.demolitionRespawnEndsAt = performance.now() / 1000 + respawnMs / 1000;
     this.demolitionStartTick = Number.isFinite(Number(demolition.stateTick))
       ? Math.max(0, Math.floor(Number(demolition.stateTick)))
       : -1;
@@ -1309,9 +1315,9 @@ export class Game {
 
     const durationMs = 1250;
     this.offlineGoalTimeRemaining = durationMs / 1000;
-    this.goalCelebrationActive = true;
+    this.goalCelebrationActive = durationMs > 0;
     this.goalCelebrationUntil = performance.now() / 1000 + this.offlineGoalTimeRemaining;
-    this.chaseCamera?.setGoalCelebrationActive?.(true);
+    this.chaseCamera?.setGoalCelebrationActive?.(durationMs > 0);
     this.goalExplosion?.trigger({
       goalSign,
       scoringTeam,

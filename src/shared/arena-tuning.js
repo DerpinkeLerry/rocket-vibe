@@ -1,4 +1,4 @@
-export const ARENA_TUNING = Object.freeze({
+export const ARENA_TUNING = {
   width: 110,
   length: 160,
   ceiling: 25,
@@ -13,13 +13,33 @@ export const ARENA_TUNING = Object.freeze({
   goalDepth: 14,
   goalRampRadius: 3.4,
   goalMouthRadius: 2.8
-});
+};
 
-export const CAR_HITBOX = Object.freeze({
+export const CAR_HITBOX = {
   x: 0.83,
   y: 0.45,
   z: 1.48
-});
+};
+
+
+export function applyServerArenaConfig(config = {}) {
+  const arena = config?.arena || {};
+  for (const key of [
+    'width', 'length', 'ceiling', 'wallHeight', 'cornerRadius', 'rampRadius',
+    'ceilingRampRadius', 'goalWidth', 'goalHeight', 'goalDepth', 'goalRampRadius', 'goalMouthRadius'
+  ]) {
+    const value = Number(arena[key]);
+    if (Number.isFinite(value) && value > 0) ARENA_TUNING[key] = value;
+  }
+}
+
+export function applyServerHitboxConfig(config = {}) {
+  const hitbox = config?.car?.halfExtents || {};
+  for (const key of ['x', 'y', 'z']) {
+    const value = Number(hitbox[key]);
+    if (Number.isFinite(value) && value > 0) CAR_HITBOX[key] = value;
+  }
+}
 
 // Utility for systems that need a point constrained to the rounded arena.
 // The chase camera deliberately no longer uses this: it may travel outside

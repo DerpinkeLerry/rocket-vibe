@@ -4,6 +4,10 @@ const (
 	PhysicsHz  = 120
 	SnapshotHz = 60
 	MaxPlayers = 4
+
+	DemolitionRespawnSeconds = 4.0
+	DemolitionRespawnBoost   = 33.0
+	DemolitionMinSpeed       = 90.0 / 3.6
 )
 
 type ArenaConfig struct {
@@ -85,15 +89,36 @@ type BallConfig struct {
 	SpawnY            float64 `json:"spawnY"`
 }
 
+type BoostPadConfig struct {
+	FullAmount          float64 `json:"fullAmount"`
+	SmallAmount         float64 `json:"smallAmount"`
+	SmallRespawnSeconds float64 `json:"smallRespawnSeconds"`
+	FullRespawnSeconds  float64 `json:"fullRespawnSeconds"`
+}
+
+type DemolitionConfig struct {
+	Enabled         bool    `json:"enabled"`
+	MinSpeed        float64 `json:"minSpeed"`
+	RespawnSeconds  float64 `json:"respawnSeconds"`
+	RespawnBoost    float64 `json:"respawnBoost"`
+	RespawnImmunity float64 `json:"respawnImmunitySeconds"`
+	FrontDot        float64 `json:"frontDot"`
+	MotionDot       float64 `json:"motionDot"`
+	MinClosingSpeed float64 `json:"minClosingSpeed"`
+	SpeedTieEpsilon float64 `json:"speedTieEpsilon"`
+}
+
 type Config struct {
-	PhysicsHz   int         `json:"physicsHz"`
-	SnapshotHz  int         `json:"snapshotHz"`
-	MaxPlayers  int         `json:"maxPlayers"`
-	SolverSteps int         `json:"solverSteps"`
-	Gravity     float64     `json:"gravity"`
-	Arena       ArenaConfig `json:"arena"`
-	Car         CarConfig   `json:"car"`
-	Ball        BallConfig  `json:"ball"`
+	PhysicsHz   int              `json:"physicsHz"`
+	SnapshotHz  int              `json:"snapshotHz"`
+	MaxPlayers  int              `json:"maxPlayers"`
+	SolverSteps int              `json:"solverSteps"`
+	Gravity     float64          `json:"gravity"`
+	Arena       ArenaConfig      `json:"arena"`
+	Car         CarConfig        `json:"car"`
+	Ball        BallConfig       `json:"ball"`
+	BoostPads   BoostPadConfig   `json:"boostPads"`
+	Demolition  DemolitionConfig `json:"demolition"`
 }
 
 func DefaultConfig() Config {
@@ -168,6 +193,14 @@ func DefaultConfig() Config {
 			CarHitLift:        0.11,
 			CarHitLiftBase:    0.45,
 			SpawnY:            5.5,
+		},
+		BoostPads: BoostPadConfig{
+			FullAmount: 100, SmallAmount: 12, SmallRespawnSeconds: 4, FullRespawnSeconds: 10,
+		},
+		Demolition: DemolitionConfig{
+			Enabled: true, MinSpeed: DemolitionMinSpeed, RespawnSeconds: DemolitionRespawnSeconds,
+			RespawnBoost: DemolitionRespawnBoost, RespawnImmunity: 0.75, FrontDot: 0.72, MotionDot: 0.72,
+			MinClosingSpeed: 0.15, SpeedTieEpsilon: 0.05,
 		},
 	}
 }

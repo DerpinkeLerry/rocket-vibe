@@ -133,17 +133,7 @@ func TeamForSlot(slot int) string {
 	return TeamBlue
 }
 
-const (
-	DemolitionRespawnSeconds  = 4.0
-	DemolitionRespawnBoost    = 33.0
-	DemolitionSpawnCount      = 3
-	DemolitionMinSpeed        = 90.0 / 3.6
-	demolitionFrontDot        = 0.72
-	demolitionMotionDot       = 0.72
-	demolitionMinClosingSpeed = 0.15
-	demolitionSpeedTieEpsilon = 0.05
-	demolitionRespawnImmunity = 0.75
-)
+const DemolitionSpawnCount = 3
 
 type DemolitionEvent struct {
 	AttackerSlot int
@@ -225,7 +215,7 @@ var boostPadSpecs = [BoostPadCount]BoostPad{
 }
 
 func NewWorld(config Config) *World {
-	world := &World{Config: config, LastBallTouchSlot: -1, LastGoalScorer: -1, DemolitionsEnabled: true}
+	world := &World{Config: config, LastBallTouchSlot: -1, LastGoalScorer: -1, DemolitionsEnabled: config.Demolition.Enabled}
 	for slot := range world.Cars {
 		world.Cars[slot].Slot = slot
 		world.resetCar(&world.Cars[slot])
@@ -275,9 +265,9 @@ func (world *World) RespawnCar(slot, choice int) (RespawnPoint, bool) {
 		return RespawnPoint{}, false
 	}
 	connected := car.Connected
-	world.resetCarAt(car, point.Position, point.Yaw, DemolitionRespawnBoost)
+	world.resetCarAt(car, point.Position, point.Yaw, world.Config.Demolition.RespawnBoost)
 	car.Connected = connected
-	car.DemoImmunity = demolitionRespawnImmunity
+	car.DemoImmunity = world.Config.Demolition.RespawnImmunity
 	return point, true
 }
 
@@ -819,6 +809,13 @@ func (world *World) finishBallStep() {
 func (world *World) resetBoostPads() {
 	for index := range world.BoostPads {
 		pad := boostPadSpecs[index]
+		if pad.Full {
+			pad.Amount = world.Config.BoostPads.FullAmount
+			pad.RespawnSeconds = world.Config.BoostPads.FullRespawnSeconds
+		} else {
+			pad.Amount = world.Config.BoostPads.SmallAmount
+			pad.RespawnSeconds = world.Config.BoostPads.SmallRespawnSeconds
+		}
 		pad.Active = true
 		pad.RespawnAtTick = 0
 		world.BoostPads[index] = pad
@@ -909,7 +906,7 @@ func (world *World) tryCarCarDemolition(first, second *Car, contact carCarContac
 	// frontal/supersonic test in the same solver iteration.
 	firstSpeed := first.Velocity.Length()
 	secondSpeed := second.Velocity.Length()
-	if math.Abs(firstSpeed-secondSpeed) <= demolitionSpeedTieEpsilon {
+	if math.Abs(firstSpeed-secondSpeed) <= world.Config.Demolition.SpeedTieEpsilon {
 		return false
 	}
 
@@ -927,7 +924,7 @@ func (world *World) tryCarCarDemolition(first, second *Car, contact carCarContac
 		victim = first
 		direction = towardSecond.Mul(-1)
 	}
-	if !canDemolishCar(attacker, victim, direction, contact.ClosingSpeed) {
+	if !world.canDemolishCar(attacker, victim, direction, contact.ClosingSpeed) {
 		return false
 	}
 
@@ -937,12 +934,13 @@ func (world *World) tryCarCarDemolition(first, second *Car, contact carCarContac
 	return true
 }
 
-func canDemolishCar(attacker, victim *Car, towardVictim Vec3, closingSpeed float64) bool {
+func (world *World) canDemolishCar(attacker, victim *Car, towardVictim Vec3, closingSpeed float64) bool {
 	if attacker == nil || victim == nil || attacker.Demolished || victim.Demolished || victim.DemoImmunity > 0 {
 		return false
 	}
+	config := world.Config.Demolition
 	speed := attacker.Velocity.Length()
-	if speed+1e-6 < DemolitionMinSpeed || speed <= victim.Velocity.Length()+demolitionSpeedTieEpsilon || closingSpeed < demolitionMinClosingSpeed {
+	if speed+1e-6 < config.MinSpeed || speed <= victim.Velocity.Length()+config.SpeedTieEpsilon || closingSpeed < config.MinClosingSpeed {
 		return false
 	}
 
@@ -950,7 +948,7 @@ func canDemolishCar(attacker, victim *Car, towardVictim Vec3, closingSpeed float
 	direction := towardVictim
 	direction.Y = 0
 	direction = direction.NormalizeOr(forward)
-	if forward.Dot(direction) < demolitionFrontDot {
+	if forward.Dot(direction) < config.FrontDot {
 		return false
 	}
 
@@ -960,7 +958,7 @@ func canDemolishCar(attacker, victim *Car, towardVictim Vec3, closingSpeed float
 		return false
 	}
 	motion = motion.NormalizeOr(forward)
-	return motion.Dot(direction) >= demolitionMotionDot
+	return motion.Dot(direction) >= config.MotionDot
 }
 
 func (world *World) markDemolished(car *Car) {

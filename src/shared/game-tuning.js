@@ -31,7 +31,7 @@ export function getDirectionalDodgeLiftScale(forwardAmount) {
   return amount < 0.20 ? 0 : amount;
 }
 
-export const CAR_TUNING = Object.freeze({
+export const CAR_TUNING = {
   // Internal physics units are metres/second. These caps correspond to the
   // HUD targets requested for the slower, more readable game pace.
   maxGroundSpeed: 70 / 3.6,
@@ -93,9 +93,9 @@ export const CAR_TUNING = Object.freeze({
   gravity: 20.5,
   linearDamping: 0.0,
   angularDamping: 0.55
-});
+};
 
-export const BALL_TUNING = Object.freeze({
+export const BALL_TUNING = {
   radius: 2.2,
   spawnY: 5.5,
   // Density compensates for the larger volume to keep mass near the old ball.
@@ -110,4 +110,37 @@ export const BALL_TUNING = Object.freeze({
   carHitLiftBase: 0.45,
   maxSpeed: 60,
   maxAngularSpeed: 34
-});
+};
+
+export function applyServerPhysicsConfig(config = {}) {
+  const car = config?.car || {};
+  const ball = config?.ball || {};
+
+  const carMap = {
+    maxGroundSpeed: 'maxGroundSpeed', maxBoostSpeed: 'maxBoostSpeed', boostCapacity: 'boostCapacity',
+    boostConsumptionPerSecond: 'boostConsumptionPerSecond', driveAcceleration: 'driveAcceleration',
+    reverseAcceleration: 'reverseAcceleration', brakeAcceleration: 'brakeAcceleration', coastDeceleration: 'coastDeceleration',
+    boostAcceleration: 'boostAcceleration', airBoostAcceleration: 'airBoostAcceleration', grip: 'grip', driftGrip: 'driftGrip',
+    steerRate: 'steerRate', driftSteerRate: 'driftSteerRate', steerResponse: 'steerResponse', driftSteerResponse: 'driftSteerResponse',
+    groundAngularDamping: 'angularGroundDamping', airPitchAcceleration: 'airPitchAcceleration', airYawAcceleration: 'airYawAcceleration',
+    airRollAcceleration: 'airRollAcceleration', airPitchRate: 'airPitchRate', airYawRate: 'airYawRate', airRollRate: 'airRollRate',
+    airControlResponse: 'airControlResponse', airNeutralResponse: 'airNeutralResponse', maxAirAngular: 'maxAirAngular',
+    jumpSpeed: 'jumpSpeed', jumpHoldAcceleration: 'jumpHoldAcceleration', jumpHoldDuration: 'jumpHoldDuration',
+    doubleJumpSpeed: 'doubleJumpSpeed', dodgeImpulse: 'dodgeImpulse', dodgeLift: 'dodgeLift', dodgeAngularSpeed: 'dodgeAngularSpeed',
+    dodgeRotation: 'dodgeRotation', dodgeWindow: 'dodgeWindow', dodgeDuration: 'dodgeDuration', dodgeControlScale: 'dodgeControlScale',
+    downAcceleration: 'downAcceleration', wallGravityCancel: 'wallGravityCancel', surfaceAlignResponse: 'surfaceAlignResponse',
+    linearDamping: 'linearDamping', angularDamping: 'angularDamping'
+  };
+  for (const [sourceKey, targetKey] of Object.entries(carMap)) {
+    const value = Number(car[sourceKey]);
+    if (Number.isFinite(value)) CAR_TUNING[targetKey] = value;
+  }
+  const gravity = Number(config?.gravity);
+  if (Number.isFinite(gravity)) CAR_TUNING.gravity = gravity;
+
+  const ballKeys = ['radius', 'spawnY', 'restitution', 'friction', 'rollingResistance', 'linearDamping', 'angularDamping', 'carHitPower', 'carHitLift', 'carHitLiftBase', 'maxSpeed', 'maxAngularSpeed'];
+  for (const key of ballKeys) {
+    const value = Number(ball[key]);
+    if (Number.isFinite(value)) BALL_TUNING[key] = value;
+  }
+}

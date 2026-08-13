@@ -1,10 +1,11 @@
-import { Game } from './game/Game.js';
 import { LanClient } from './network/LanClient.js';
 import { CAR_STYLES, DEFAULT_CAR_STYLE, normalizeCarStyle } from './shared/car-styles.js';
 import { BOOST_STYLES, DEFAULT_BOOST_STYLE, normalizeBoostStyle } from './shared/boost-styles.js';
 import { prefersMobileControls } from './game/MobileControls.js';
 import { canRequestFullscreen, isFullscreenActive, requestGameFullscreen } from './game/Fullscreen.js';
 import { canUseUltraHigh, getRememberedPerformanceMode, setPerformancePreference } from './game/PerformanceProfile.js';
+import { applyServerPhysicsConfig } from './shared/game-tuning.js';
+import { applyServerArenaConfig, applyServerHitboxConfig } from './shared/arena-tuning.js';
 import './style.css';
 
 function installMobileBrowserGuards() {
@@ -122,7 +123,414 @@ function carPreviewSvg(styleId) {
     </svg>`;
 }
 
-function requestPlayerIdentity(root) {
+const LOBBY_PHYSICS_SECTIONS = [
+  {
+    title: 'Welt & Solver',
+    hint: 'Grundlegende Simulationswerte. Negative Gravitation zieht nach oben.',
+    fields: [
+      ['config.gravity', 'Gravitation', -40, 80, 0.5, 'm/s²'],
+      ['config.solverSteps', 'Collision Solver Steps', 1, 8, 1, '']
+    ]
+  },
+  {
+    title: 'Arena-Geometrie',
+    hint: 'Größe und Form des Spielfelds. Boostpads und Standard-Spawns bleiben an ihren bekannten Positionen.',
+    fields: [
+      ['config.arena.width', 'Arena-Breite', 110, 240, 1, 'm'],
+      ['config.arena.length', 'Arena-Länge', 160, 360, 1, 'm'],
+      ['config.arena.ceiling', 'Deckenhöhe', 14, 80, 0.5, 'm'],
+      ['config.arena.wallHeight', 'Wandhöhe', 8, 80, 0.5, 'm'],
+      ['config.arena.cornerRadius', 'Eckenradius', 4, 40, 0.5, 'm'],
+      ['config.arena.rampRadius', 'Boden-Rampenradius', 0.5, 12, 0.1, 'm'],
+      ['config.arena.ceilingRampRadius', 'Decken-Rampenradius', 0.5, 18, 0.1, 'm'],
+      ['config.arena.goalWidth', 'Torbreite', 10, 70, 0.5, 'm'],
+      ['config.arena.goalHeight', 'Torhöhe', 4, 30, 0.5, 'm'],
+      ['config.arena.goalDepth', 'Tortiefe', 4, 35, 0.5, 'm'],
+      ['config.arena.goalRampRadius', 'Tor-Rampenradius', 0.3, 10, 0.1, 'm'],
+      ['config.arena.goalMouthRadius', 'Tor-Mundradius', 0.2, 10, 0.1, 'm']
+    ]
+  },
+  {
+    title: 'Auto · Hitbox & Geschwindigkeit',
+    fields: [
+      ['config.car.halfExtents.x', 'Hitbox halbe Breite', 0.35, 2.5, 0.01, 'm'],
+      ['config.car.halfExtents.y', 'Hitbox halbe Höhe', 0.2, 1.5, 0.01, 'm'],
+      ['config.car.halfExtents.z', 'Hitbox halbe Länge', 0.5, 3.5, 0.01, 'm'],
+      ['config.car.mass', 'Masse', 50, 2500, 10, 'kg'],
+      ['config.car.maxGroundSpeed', 'Max. Bodentempo', 7.2, 288, 1, 'km/h', 3.6],
+      ['config.car.maxBoostSpeed', 'Max. Boosttempo', 7.2, 432, 1, 'km/h', 3.6],
+      ['config.car.linearDamping', 'Linear Damping', 0, 10, 0.01, ''],
+      ['config.car.angularDamping', 'Angular Damping', 0, 10, 0.01, ''],
+      ['config.car.restitution', 'Auto-Bounce', 0, 1.5, 0.01, '']
+    ]
+  },
+  {
+    title: 'Auto · Antrieb, Boost & Grip',
+    fields: [
+      ['config.car.boostCapacity', 'Boost-Kapazität', 1, 100, 1, ''],
+      ['config.car.boostConsumptionPerSecond', 'Boost-Verbrauch', 0, 200, 1, '/s'],
+      ['config.car.driveAcceleration', 'Beschleunigung vorwärts', 0, 80, 0.5, 'm/s²'],
+      ['config.car.reverseAcceleration', 'Beschleunigung rückwärts', 0, 80, 0.5, 'm/s²'],
+      ['config.car.brakeAcceleration', 'Bremskraft', 0, 120, 0.5, 'm/s²'],
+      ['config.car.coastDeceleration', 'Ausroll-Bremse', 0, 40, 0.1, 'm/s²'],
+      ['config.car.boostAcceleration', 'Boost-Beschleunigung Boden', 0, 100, 0.5, 'm/s²'],
+      ['config.car.airBoostAcceleration', 'Boost-Beschleunigung Luft', 0, 140, 0.5, 'm/s²'],
+      ['config.car.grip', 'Grip', 0, 80, 0.1, ''],
+      ['config.car.driftGrip', 'Drift-Grip', 0, 40, 0.1, ''],
+      ['config.car.steerRate', 'Lenkrate', 0, 12, 0.05, ''],
+      ['config.car.driftSteerRate', 'Drift-Lenkrate', 0, 16, 0.05, ''],
+      ['config.car.steerResponse', 'Lenk-Reaktion', 0, 60, 0.1, ''],
+      ['config.car.driftSteerResponse', 'Drift-Lenk-Reaktion', 0, 80, 0.1, ''],
+      ['config.car.groundAngularDamping', 'Boden-Rotationsdämpfung', 0, 50, 0.1, '']
+    ]
+  },
+  {
+    title: 'Auto · Aerials, Jump & Dodge',
+    fields: [
+      ['config.car.airPitchAcceleration', 'Air Pitch Acceleration', 0, 50, 0.1, ''],
+      ['config.car.airYawAcceleration', 'Air Yaw Acceleration', 0, 50, 0.1, ''],
+      ['config.car.airRollAcceleration', 'Air Roll Acceleration', 0, 50, 0.1, ''],
+      ['config.car.airPitchRate', 'Air Pitch Rate', 0, 18, 0.05, 'rad/s'],
+      ['config.car.airYawRate', 'Air Yaw Rate', 0, 18, 0.05, 'rad/s'],
+      ['config.car.airRollRate', 'Air Roll Rate', 0, 18, 0.05, 'rad/s'],
+      ['config.car.airControlResponse', 'Air-Control-Reaktion', 0, 50, 0.1, ''],
+      ['config.car.airNeutralResponse', 'Air-Neutral-Stabilisierung', 0, 50, 0.1, ''],
+      ['config.car.maxAirAngular', 'Max. Luftrotation', 0, 24, 0.1, 'rad/s'],
+      ['config.car.jumpSpeed', 'Jump Speed', 0, 40, 0.1, 'm/s'],
+      ['config.car.jumpHoldAcceleration', 'Jump Hold Acceleration', 0, 120, 0.5, 'm/s²'],
+      ['config.car.jumpHoldDuration', 'Jump Hold Dauer', 0, 2, 0.01, 's'],
+      ['config.car.doubleJumpSpeed', 'Double-Jump Speed', 0, 50, 0.1, 'm/s'],
+      ['config.car.dodgeImpulse', 'Dodge Impuls', 0, 50, 0.1, ''],
+      ['config.car.dodgeLift', 'Dodge Lift', -10, 20, 0.1, ''],
+      ['config.car.dodgeAngularSpeed', 'Dodge Rotationsspeed', 0, 40, 0.1, 'rad/s'],
+      ['config.car.dodgeRotation', 'Dodge Gesamtrotation', 0, 25.1327, 0.01, 'rad'],
+      ['config.car.dodgeWindow', 'Dodge-Fenster', 0, 5, 0.01, 's'],
+      ['config.car.dodgeDuration', 'Dodge-Dauer', 0.05, 3, 0.01, 's'],
+      ['config.car.dodgeControlScale', 'Steuerung während Dodge', 0, 1, 0.01, ''],
+      ['config.car.downAcceleration', 'Anpresskraft', 0, 100, 0.5, 'm/s²'],
+      ['config.car.wallGravityCancel', 'Wall Gravity Cancel', 0, 3, 0.01, ''],
+      ['config.car.surfaceAlignResponse', 'Surface Align Response', 0, 60, 0.1, '']
+    ]
+  },
+  {
+    title: 'Ball',
+    fields: [
+      ['config.ball.radius', 'Radius', 0.5, 6, 0.05, 'm'],
+      ['config.ball.mass', 'Masse', 1, 500, 1, 'kg'],
+      ['config.ball.restitution', 'Bounce / Restitution', 0, 1.5, 0.01, ''],
+      ['config.ball.friction', 'Reibung', 0, 2, 0.01, ''],
+      ['config.ball.rollingResistance', 'Rollwiderstand', 0, 4, 0.01, ''],
+      ['config.ball.linearDamping', 'Linear Damping', 0, 5, 0.005, ''],
+      ['config.ball.angularDamping', 'Angular Damping', 0, 5, 0.005, ''],
+      ['config.ball.maxSpeed', 'Max. Balltempo', 7.2, 576, 1, 'km/h', 3.6],
+      ['config.ball.maxAngularSpeed', 'Max. Ballrotation', 0, 120, 0.5, 'rad/s'],
+      ['config.ball.carHitPower', 'Car Hit Power', 0, 3, 0.01, ''],
+      ['config.ball.carHitLift', 'Car Hit Lift', -1, 2, 0.01, ''],
+      ['config.ball.carHitLiftBase', 'Car Hit Lift Base', -5, 10, 0.05, ''],
+      ['config.ball.spawnY', 'Spawn-Höhe', 0.55, 20, 0.05, 'm']
+    ]
+  },
+  {
+    title: 'Boost-Pads',
+    fields: [
+      ['config.boostPads.fullAmount', '100er Pad · Menge', 0, 100, 1, 'Boost'],
+      ['config.boostPads.smallAmount', 'Kleines Pad · Menge', 0, 100, 1, 'Boost'],
+      ['config.boostPads.smallRespawnSeconds', 'Kleines Pad · Respawn', 0.1, 60, 0.1, 's'],
+      ['config.boostPads.fullRespawnSeconds', '100er Pad · Respawn', 0.1, 60, 0.1, 's']
+    ]
+  },
+  {
+    title: 'Demolition-Physik',
+    fields: [
+      ['config.demolition.minSpeed', 'Mindesttempo', 0, 432, 1, 'km/h', 3.6],
+      ['config.demolition.respawnSeconds', 'Respawn-Dauer', 0.25, 20, 0.05, 's'],
+      ['config.demolition.respawnBoost', 'Boost nach Respawn', 0, 100, 1, ''],
+      ['config.demolition.respawnImmunitySeconds', 'Spawn-Immunität', 0, 10, 0.05, 's'],
+      ['config.demolition.frontDot', 'Fronttreffer-Schwelle', -1, 1, 0.01, 'dot'],
+      ['config.demolition.motionDot', 'Bewegungsrichtungs-Schwelle', -1, 1, 0.01, 'dot'],
+      ['config.demolition.minClosingSpeed', 'Min. Closing Speed', 0, 40, 0.05, 'm/s'],
+      ['config.demolition.speedTieEpsilon', 'Speed-Tie-Toleranz', 0, 20, 0.01, 'm/s']
+    ]
+  }
+];
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+function readPath(object, path) {
+  return path.split('.').reduce((value, key) => value?.[key], object);
+}
+
+function writePath(object, path, value) {
+  const parts = path.split('.');
+  let target = object;
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (!target[parts[i]] || typeof target[parts[i]] !== 'object') target[parts[i]] = {};
+    target = target[parts[i]];
+  }
+  target[parts.at(-1)] = value;
+}
+
+function cloneSettings(value) {
+  if (typeof structuredClone === 'function') return structuredClone(value);
+  return JSON.parse(JSON.stringify(value));
+}
+
+async function fetchLobbyJSON(url, options) {
+  const response = await fetch(url, options);
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {
+    // The status text below is more useful than a JSON parse error.
+  }
+  if (!response.ok) throw new Error(payload?.error || `Serverfehler ${response.status}`);
+  return payload;
+}
+
+function formatLobbyClock(seconds) {
+  if (!seconds) return '∞';
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${String(secs).padStart(2, '0')}`;
+}
+
+function lobbyRuleSummary(lobby) {
+  const rules = lobby?.rules || {};
+  const config = lobby?.config || {};
+  const score = Number(rules.scoreLimit) > 0 ? `${rules.scoreLimit} Tore` : 'kein Scorelimit';
+  const time = Number(rules.matchSeconds) > 0 ? formatLobbyClock(Number(rules.matchSeconds)) : 'ohne Uhr';
+  const gravity = Number(config.gravity);
+  const gravityText = Number.isFinite(gravity) ? `${gravity.toFixed(1)} m/s²` : 'Standard-G';
+  return `${time} · ${score} · ${config?.demolition?.enabled ? 'Demos an' : 'Demos aus'} · G ${gravityText}`;
+}
+
+function renderNumericLobbyField(defaults, field) {
+  const [path, label, min, max, step, unit, scale = 1] = field;
+  const raw = Number(readPath(defaults, path));
+  const value = Number.isFinite(raw) ? raw * scale : 0;
+  return `
+    <label class="lobby-setting">
+      <span>${escapeHtml(label)}${unit ? `<small>${escapeHtml(unit)}</small>` : ''}</span>
+      <input type="number" data-lobby-setting="${path}" data-scale="${scale}" min="${min}" max="${max}" step="${step}" value="${Number(value.toFixed(5))}" />
+    </label>`;
+}
+
+function lobbyCreationMarkup(defaults) {
+  const rules = defaults.rules || {};
+  const config = defaults.config || {};
+  return `
+    <form class="lobby-create-card" data-lobby-create-form>
+      <div class="lobby-create-card__top">
+        <button class="lobby-back" type="button" data-lobby-back>← LOBBIES</button>
+        <div>
+          <div class="join-card__eyebrow">LOBBY ERSTELLEN</div>
+          <h1>Regeln & Physics</h1>
+        </div>
+      </div>
+      <p class="lobby-create-card__intro">Alles hier erzeugt eine eigene serverautoritative Match-Instanz. Die Werte gelten nur in dieser Lobby.</p>
+
+      <div class="lobby-preset-row" role="group" aria-label="Physics-Presets">
+        <button type="button" data-lobby-preset="standard">STANDARD</button>
+        <button type="button" data-lobby-preset="moon">MOONBALL</button>
+        <button type="button" data-lobby-preset="pinball">PINBALL</button>
+        <button type="button" data-lobby-preset="chaos">CHAOS</button>
+      </div>
+
+      <section class="lobby-settings-section lobby-settings-section--open">
+        <h2>Lobby & Spielregeln</h2>
+        <div class="lobby-settings-grid">
+          <label class="lobby-setting lobby-setting--wide"><span>Lobby-Name</span><input name="lobbyName" type="text" maxlength="32" value="${escapeHtml(defaults.name || 'Neue Lobby')}" required /></label>
+          <label class="lobby-setting"><span>Max. Spieler <small>1–4</small></span><input type="number" data-lobby-setting="config.maxPlayers" min="1" max="4" step="1" value="${Number(config.maxPlayers) || 4}" /></label>
+          <label class="lobby-setting"><span>Matchdauer <small>Sekunden · 0 = ∞</small></span><input type="number" data-lobby-setting="rules.matchSeconds" min="0" max="3600" step="15" value="${Number(rules.matchSeconds) || 0}" /></label>
+          <label class="lobby-setting"><span>Scorelimit <small>0 = ∞</small></span><input type="number" data-lobby-setting="rules.scoreLimit" min="0" max="99" step="1" value="${Number(rules.scoreLimit) || 0}" /></label>
+          <label class="lobby-setting"><span>Kickoff Countdown <small>Sekunden</small></span><input type="number" data-lobby-setting="rules.kickoffSeconds" min="0" max="10" step="1" value="${Number(rules.kickoffSeconds) || 0}" /></label>
+          <label class="lobby-setting"><span>Goal Replay <small>Sekunden</small></span><input type="number" data-lobby-setting="rules.goalReplaySeconds" min="0" max="20" step="0.1" value="${Number(rules.goalReplaySeconds) || 0}" /></label>
+          <label class="lobby-setting"><span>Goal Celebration <small>Sekunden</small></span><input type="number" data-lobby-setting="rules.goalCelebrationSeconds" min="0" max="10" step="0.05" value="${Number(rules.goalCelebrationSeconds) || 0}" /></label>
+        </div>
+        <div class="lobby-toggle-grid">
+          <label><input type="checkbox" data-lobby-setting-bool="rules.overtimeOnTie" ${rules.overtimeOnTie ? 'checked' : ''}/><span>Overtime bei Gleichstand</span></label>
+          <label><input type="checkbox" data-lobby-setting-bool="rules.goalReplayEnabled" ${rules.goalReplayEnabled ? 'checked' : ''}/><span>Goal Replays aktiv</span></label>
+          <label><input type="checkbox" data-lobby-setting-bool="rules.allowCarReset" ${rules.allowCarReset ? 'checked' : ''}/><span>Auto-Reset mit R erlauben</span></label>
+          <label><input type="checkbox" data-lobby-setting-bool="rules.allowBallReset" ${rules.allowBallReset ? 'checked' : ''}/><span>Ball-Reset mit B erlauben</span></label>
+          <label><input type="checkbox" data-lobby-setting-bool="config.demolition.enabled" ${config?.demolition?.enabled ? 'checked' : ''}/><span>Demolitions aktiv</span></label>
+        </div>
+      </section>
+
+      ${LOBBY_PHYSICS_SECTIONS.map((section, index) => `
+        <details class="lobby-settings-section" ${index === 0 ? 'open' : ''}>
+          <summary><span>${escapeHtml(section.title)}</span><small>${escapeHtml(section.hint || 'Werte frei anpassen')}</small></summary>
+          <div class="lobby-settings-grid">
+            ${section.fields.map((field) => renderNumericLobbyField(defaults, field)).join('')}
+          </div>
+        </details>`).join('')}
+
+      <div class="join-card__error" data-lobby-create-error aria-live="polite"></div>
+      <button class="lobby-create-submit" type="submit">LOBBY ERSTELLEN & BEITRETEN</button>
+    </form>`;
+}
+
+function applyLobbyPreset(form, defaults, preset) {
+  const values = cloneSettings(defaults);
+  if (preset === 'moon') {
+    values.config.gravity = 6;
+    values.config.car.jumpSpeed = 14;
+    values.config.car.airBoostAcceleration = 48;
+    values.config.ball.mass = 18;
+    values.config.ball.restitution = 0.82;
+  } else if (preset === 'pinball') {
+    values.config.ball.restitution = 1.18;
+    values.config.ball.carHitPower = 0.85;
+    values.config.ball.carHitLift = 0.22;
+    values.config.ball.maxSpeed = 100;
+    values.config.car.maxBoostSpeed = 46;
+  } else if (preset === 'chaos') {
+    values.config.gravity = 12;
+    values.config.car.boostConsumptionPerSecond = 0;
+    values.config.car.maxGroundSpeed = 30;
+    values.config.car.maxBoostSpeed = 55;
+    values.config.car.jumpSpeed = 17;
+    values.config.ball.radius = 3.1;
+    values.config.ball.restitution = 1.05;
+    values.config.demolition.minSpeed = 40 / 3.6;
+    values.rules.kickoffSeconds = 1;
+  }
+  for (const input of form.querySelectorAll('[data-lobby-setting]')) {
+    const scale = Number(input.dataset.scale) || 1;
+    const raw = Number(readPath(values, input.dataset.lobbySetting));
+    if (Number.isFinite(raw)) input.value = String(Number((raw * scale).toFixed(5)));
+  }
+  for (const input of form.querySelectorAll('[data-lobby-setting-bool]')) {
+    input.checked = Boolean(readPath(values, input.dataset.lobbySettingBool));
+  }
+}
+
+function collectLobbySettings(form, defaults) {
+  const request = cloneSettings(defaults);
+  request.name = form.elements.lobbyName.value.trim().replace(/\s+/g, ' ').slice(0, 32) || 'Rocket Lobby';
+  for (const input of form.querySelectorAll('[data-lobby-setting]')) {
+    const scale = Number(input.dataset.scale) || 1;
+    const value = Number(input.value);
+    if (Number.isFinite(value)) writePath(request, input.dataset.lobbySetting, value / scale);
+  }
+  for (const input of form.querySelectorAll('[data-lobby-setting-bool]')) {
+    writePath(request, input.dataset.lobbySettingBool, Boolean(input.checked));
+  }
+  return request;
+}
+
+function requestLobby(root, notice = '') {
+  return new Promise(async (resolve, reject) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'lobby-screen';
+    root.appendChild(overlay);
+    let defaults;
+    let refreshTimer = null;
+    let finished = false;
+
+    const finish = (lobby) => {
+      if (finished) return;
+      finished = true;
+      if (refreshTimer) clearInterval(refreshTimer);
+      overlay.remove();
+      resolve(lobby);
+    };
+
+    const showBrowser = async (message = notice) => {
+      overlay.innerHTML = `
+        <div class="lobby-browser">
+          <header class="lobby-browser__header">
+            <div><div class="join-card__eyebrow">ROCKET VIBE</div><h1>LOBBIES</h1></div>
+            <button type="button" class="lobby-create-button" data-create-lobby>+ LOBBY ERSTELLEN</button>
+          </header>
+          ${message ? `<div class="lobby-browser__notice">${escapeHtml(message)}</div>` : ''}
+          <div class="lobby-list" data-lobby-list><div class="lobby-list__loading">Lobbies werden geladen …</div></div>
+        </div>`;
+      overlay.querySelector('[data-create-lobby]').addEventListener('click', showCreation);
+      await refreshList();
+    };
+
+    const refreshList = async () => {
+      const list = overlay.querySelector('[data-lobby-list]');
+      if (!list || finished) return;
+      try {
+        const payload = await fetchLobbyJSON('/api/lobbies');
+        const lobbies = Array.isArray(payload?.lobbies) ? payload.lobbies : [];
+        if (lobbies.length === 0) {
+          list.innerHTML = `<div class="lobby-list__empty"><strong>Noch keine Lobby.</strong><span>Erstelle die erste und stell Regeln oder Physics-Mutatoren nach Wunsch ein.</span></div>`;
+          return;
+        }
+        list.innerHTML = lobbies.map((lobby) => {
+          const full = Number(lobby.players) >= Number(lobby.maxPlayers);
+          return `
+            <button type="button" class="lobby-row${full ? ' is-full' : ''}" data-join-lobby="${escapeHtml(lobby.id)}" ${full ? 'disabled' : ''}>
+              <span class="lobby-row__main"><strong>${escapeHtml(lobby.name)}</strong><small>${escapeHtml(lobbyRuleSummary(lobby))}</small></span>
+              <span class="lobby-row__players"><b>${Number(lobby.players) || 0}/${Number(lobby.maxPlayers) || 4}</b><small>${full ? 'VOLL' : 'BEITRETEN'}</small></span>
+            </button>`;
+        }).join('');
+        for (const button of list.querySelectorAll('[data-join-lobby]')) {
+          button.addEventListener('click', () => {
+            const lobby = lobbies.find((entry) => entry.id === button.dataset.joinLobby);
+            if (lobby) finish(lobby);
+          });
+        }
+      } catch (error) {
+        list.innerHTML = `<div class="lobby-list__error">Lobby-Liste konnte nicht geladen werden: ${escapeHtml(error.message)}</div>`;
+      }
+    };
+
+    const showCreation = () => {
+      if (refreshTimer) clearInterval(refreshTimer);
+      overlay.innerHTML = lobbyCreationMarkup(defaults);
+      const form = overlay.querySelector('[data-lobby-create-form]');
+      const error = overlay.querySelector('[data-lobby-create-error]');
+      overlay.querySelector('[data-lobby-back]').addEventListener('click', async () => {
+        await showBrowser('');
+        refreshTimer = setInterval(refreshList, 2500);
+      });
+      for (const button of overlay.querySelectorAll('[data-lobby-preset]')) {
+        button.addEventListener('click', () => applyLobbyPreset(form, defaults, button.dataset.lobbyPreset));
+      }
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        error.textContent = '';
+        const submit = form.querySelector('[type="submit"]');
+        submit.disabled = true;
+        submit.textContent = 'LOBBY WIRD ERSTELLT …';
+        try {
+          const request = collectLobbySettings(form, defaults);
+          const created = await fetchLobbyJSON('/api/lobbies', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(request)
+          });
+          finish(created);
+        } catch (creationError) {
+          error.textContent = creationError.message;
+          submit.disabled = false;
+          submit.textContent = 'LOBBY ERSTELLEN & BEITRETEN';
+        }
+      });
+    };
+
+    try {
+      defaults = await fetchLobbyJSON('/api/lobbies/defaults');
+      await showBrowser();
+      refreshTimer = setInterval(refreshList, 2500);
+    } catch (error) {
+      overlay.remove();
+      reject(error);
+    }
+  });
+}
+
+function requestPlayerIdentity(root, lobby = null) {
   return new Promise((resolve) => {
     const selectedStyle = rememberedCarStyle();
     const selectedBoostStyle = rememberedBoostStyle();
@@ -134,8 +542,8 @@ function requestPlayerIdentity(root) {
     overlay.innerHTML = `
       <form class="join-card join-card--wide">
         <div class="join-card__eyebrow">ROCKET VIBE</div>
-        <h1>Fahrer & Auto</h1>
-        <p>Wähle deinen Namen und eine Karosserie. Alle drei Autos haben dieselbe Hitbox und dieselben Fahrwerte.</p>
+        <h1>${lobby ? escapeHtml(lobby.name) : 'Fahrer & Auto'}</h1>
+        <p>${lobby ? `Du trittst <strong>${escapeHtml(lobby.name)}</strong> bei (${Number(lobby.players) || 0}/${Number(lobby.maxPlayers) || 4}). Jetzt wie gewohnt Name, Auto, Boost und Grafik auswählen.` : 'Wähle deinen Namen und eine Karosserie. Alle drei Autos haben dieselbe Hitbox und dieselben Fahrwerte.'}</p>
         ${prefersMobileControls() ? '<div class="join-card__mobile-note">📱 Touch-Steuerung aktiv · Querformat empfohlen</div>' : ''}
         <div class="join-card__fullscreen-row">
           <button class="join-card__fullscreen" type="button" data-start-fullscreen>⛶ VOLLBILD STARTEN</button>
@@ -286,21 +694,41 @@ async function boot() {
   installMobileBrowserGuards();
   const app = document.querySelector('#app');
   const multiplayerEnabled = import.meta.env.MODE === 'lan' || import.meta.env.PROD;
-  const identity = await requestPlayerIdentity(app);
 
   let network = null;
   let RAPIER = null;
+  let identity = null;
 
   if (multiplayerEnabled) {
-    network = new LanClient(identity.playerName, identity.carStyle, identity.boostStyle);
-    await network.connect();
+    let lobbyNotice = '';
+    while (!network) {
+      const lobby = await requestLobby(app, lobbyNotice);
+      identity = await requestPlayerIdentity(app, lobby);
+      const candidate = new LanClient(identity.playerName, identity.carStyle, identity.boostStyle, lobby.id);
+      try {
+        await candidate.connect();
+        network = candidate;
+      } catch (error) {
+        candidate.stopPing?.();
+        candidate.socket?.close?.();
+        lobbyNotice = `Beitritt fehlgeschlagen: ${error.message}`;
+      }
+    }
+    applyServerPhysicsConfig(network.matchConfig);
+    applyServerArenaConfig(network.matchConfig);
+    applyServerHitboxConfig(network.matchConfig);
     // No Rapier import in the browser for online play. Railway owns physics.
   } else {
+    identity = await requestPlayerIdentity(app);
     const rapierModule = await import('@dimforge/rapier3d-compat');
     RAPIER = rapierModule.default;
     await RAPIER.init();
   }
 
+  // Load the arena/game only after lobby physics arrived. Arena.js derives
+  // geometry constants at module evaluation time, so this keeps rendering and
+  // authoritative server collision dimensions in lockstep.
+  const { Game } = await import('./game/Game.js');
   const game = new Game(app, RAPIER, network, identity);
   game.start();
 }

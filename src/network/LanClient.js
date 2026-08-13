@@ -47,8 +47,9 @@ function normalizePlayers(players, connectedPlayers = []) {
 }
 
 export class LanClient {
-  constructor(playerName = '', carStyle = DEFAULT_CAR_STYLE, boostStyle = DEFAULT_BOOST_STYLE) {
+  constructor(playerName = '', carStyle = DEFAULT_CAR_STYLE, boostStyle = DEFAULT_BOOST_STYLE, lobbyId = '') {
     this.socket = null;
+    this.lobbyId = String(lobbyId || '').trim();
     this.playerId = 0;
     this.playerName = String(playerName || '').trim().slice(0, 16);
     this.carStyle = normalizeCarStyle(carStyle);
@@ -57,6 +58,9 @@ export class LanClient {
     this.maxPlayers = 4;
     this.serverHz = 60;
     this.snapshotHz = 20;
+    this.matchConfig = null;
+    this.matchRules = null;
+    this.matchClock = null;
     this.connectedPlayers = [];
     this.players = [];
     this.connected = false;
@@ -92,6 +96,8 @@ export class LanClient {
     this.onDemolitionCancel = null;
     this.onQuickChat = null;
     this.onQuickChatLimit = null;
+    this.onMatchClock = null;
+    this.onMatchOver = null;
     this.quickChatLimit = { remaining: 3, cooldownMs: 0 };
     this.quickChatCooldownUntil = 0;
   }
@@ -102,6 +108,7 @@ export class LanClient {
     url.searchParams.set('name', this.playerName);
     url.searchParams.set('car', this.carStyle);
     url.searchParams.set('boost', this.boostStyle);
+    if (this.lobbyId) url.searchParams.set('lobby', this.lobbyId);
 
     return new Promise((resolve, reject) => {
       let settled = false;
@@ -143,6 +150,8 @@ export class LanClient {
           this.maxPlayers = Number(message.maxPlayers) || 4;
           this.serverHz = Math.max(1, Number(message.serverHz) || 60);
           this.snapshotHz = Math.max(1, Number(message.snapshotHz) || 20);
+          this.matchConfig = message.config && typeof message.config === 'object' ? message.config : null;
+          this.matchRules = message.rules && typeof message.rules === 'object' ? message.rules : null;
           this.connectedPlayers = Array.isArray(message.connectedPlayers) ? message.connectedPlayers : [this.playerId];
           this.players = normalizePlayers(message.players, this.connectedPlayers);
           this.connected = true;
@@ -168,6 +177,24 @@ export class LanClient {
 
         if (message.type === 'goal') {
           this.applyGoalMessage(message);
+          return;
+        }
+
+        if (message.type === 'match-clock') {
+          this.matchClock = {
+            seconds: Math.max(0, Math.round(Number(message?.seconds) || 0)),
+            overtime: Boolean(message?.overtime)
+          };
+          this.onMatchClock?.(this.matchClock);
+          return;
+        }
+
+        if (message.type === 'match-over') {
+          this.onMatchOver?.({
+            reason: String(message?.reason || 'complete'),
+            orangeScore: Math.max(0, Number(message?.orangeScore) || 0),
+            blueScore: Math.max(0, Number(message?.blueScore) || 0)
+          });
           return;
         }
 
@@ -260,7 +287,7 @@ export class LanClient {
   applyKickoffMessage(message) {
     const phase = message?.phase === 'go' ? 'go' : 'countdown';
     const count = phase === 'countdown'
-      ? Math.max(1, Math.min(3, Math.round(Number(message?.count) || 1)))
+      ? Math.max(1, Math.min(10, Math.round(Number(message?.count) || 1)))
       : 0;
     this.kickoff = { phase, count, resetScore: Boolean(message?.resetScore) };
     this.onKickoff?.(this.kickoff);
@@ -276,7 +303,7 @@ export class LanClient {
       scorerId: Number.isInteger(Number(message?.scorerId)) ? Number(message.scorerId) : -1,
       scorerName: String(message?.scorerName || 'Unbekannt').slice(0, 16),
       position,
-      durationMs: Math.max(250, Number(message?.durationMs) || 1250),
+      durationMs: Number.isFinite(Number(message?.durationMs)) ? Math.max(0, Number(message.durationMs)) : 1250,
       orangeScore: Math.max(0, Number(message?.orangeScore) || 0),
       blueScore: Math.max(0, Number(message?.blueScore) || 0)
     };
@@ -299,7 +326,7 @@ export class LanClient {
       position: Array.isArray(message?.position)
         ? [Number(message.position[0]) || 0, Number(message.position[1]) || 0, Number(message.position[2]) || 0]
         : [0, 0, 0],
-      durationMs: Math.max(500, Number(message?.durationMs) || 4000),
+      durationMs: Math.max(200, Number(message?.durationMs) || 4000),
       stateTick: Number.isFinite(Number(message?.stateTick)) ? Math.max(0, Math.floor(Number(message.stateTick))) : -1,
       selectedIndex: Math.max(0, Math.min(2, Math.round(Number(message?.selectedIndex) || 1))),
       spawnPoints: Array.isArray(message?.spawnPoints) ? message.spawnPoints.slice(0, 3).map(normalizePoint) : []

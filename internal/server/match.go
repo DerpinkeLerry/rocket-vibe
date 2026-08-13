@@ -32,6 +32,13 @@ func shouldStartKickoff(playerCount int) bool {
 	return playerCount == 2 || playerCount == 4
 }
 
+func shouldStartKickoffForLobby(playerCount, maxPlayers int) bool {
+	if maxPlayers <= 1 {
+		return playerCount == 1
+	}
+	return shouldStartKickoff(playerCount)
+}
+
 type joinRequest struct {
 	client *client
 	result chan joinResult
@@ -81,6 +88,7 @@ type Stats struct {
 
 type Match struct {
 	config game.Config
+	rules  MatchRules
 	world  *game.World
 
 	ctx      context.Context
@@ -103,9 +111,14 @@ type Match struct {
 }
 
 func NewMatch(parent context.Context, config game.Config) *Match {
+	return NewMatchWithRules(parent, config, DefaultMatchRules())
+}
+
+func NewMatchWithRules(parent context.Context, config game.Config, rules MatchRules) *Match {
 	ctx, cancel := context.WithCancel(parent)
 	match := &Match{
 		config:            config,
+		rules:             sanitizeMatchRules(rules),
 		world:             game.NewWorld(config),
 		ctx:               ctx,
 		cancel:            cancel,
@@ -123,6 +136,8 @@ func NewMatch(parent context.Context, config game.Config) *Match {
 }
 
 func (match *Match) Config() game.Config { return match.config }
+
+func (match *Match) Rules() MatchRules { return match.rules }
 
 func (match *Match) Join(ctx context.Context, connected *client) (int, error) {
 	result := make(chan joinResult, 1)
@@ -217,6 +232,11 @@ func (match *Match) run() {
 	kickoffLastAnnounced := 0
 	kickoffResetScore := false
 	lastGoalSequence := match.world.GoalSequence
+	matchRemaining := float64(match.rules.MatchSeconds)
+	matchClockSecond := -1
+	matchClockRunning := false
+	overtime := false
+	matchOverPending := false
 
 	goalCelebrationActive := false
 	var goalCelebrationEndsAt time.Time
@@ -261,20 +281,53 @@ func (match *Match) run() {
 		demolitionRespawns = make(map[string]*demolitionRespawnState, match.config.MaxPlayers)
 	}
 
+	broadcastClock := func(force bool) {
+		if match.rules.MatchSeconds <= 0 {
+			return
+		}
+		seconds := int(math.Ceil(math.Max(0, matchRemaining)))
+		if !force && seconds == matchClockSecond {
+			return
+		}
+		matchClockSecond = seconds
+		match.broadcastMatchClock(clients, seconds, overtime)
+	}
+
+	markMatchOver := func(reason string) {
+		if matchOverPending {
+			return
+		}
+		matchOverPending = true
+		match.broadcastMatchOver(clients, reason, match.world.OrangeScore, match.world.BlueScore)
+	}
+
 	startKickoff := func(resetScore bool) {
 		cancelDemolitionRespawns("kickoff")
 		match.world.SetDemolitionsEnabled(false)
+		matchClockRunning = false
 		if resetScore {
 			match.world.ResetMatch()
+			matchRemaining = float64(match.rules.MatchSeconds)
+			matchClockSecond = -1
+			overtime = false
+			matchOverPending = false
 		} else {
 			match.world.ResetKickoff()
 		}
-		kickoffEndsAt = time.Now().Add(kickoffCountdownDuration)
-		kickoffLastAnnounced = kickoffCountdownSeconds
+		kickoffLastAnnounced = match.rules.KickoffSeconds
 		kickoffResetScore = resetScore
 		state := match.world.Snapshot()
 		match.latestState.Store(state)
-		match.broadcastKickoff(clients, "countdown", kickoffCountdownSeconds, resetScore)
+		if match.rules.KickoffSeconds <= 0 {
+			kickoffEndsAt = time.Time{}
+			match.world.SetDemolitionsEnabled(match.config.Demolition.Enabled)
+			matchClockRunning = true
+			match.broadcastKickoff(clients, "go", 0, resetScore)
+			broadcastClock(true)
+		} else {
+			kickoffEndsAt = time.Now().Add(time.Duration(match.rules.KickoffSeconds) * time.Second)
+			match.broadcastKickoff(clients, "countdown", match.rules.KickoffSeconds, resetScore)
+		}
 		match.broadcastSnapshot(clients, state)
 	}
 
@@ -285,7 +338,7 @@ func (match *Match) run() {
 		replayActive = false
 		replayEndsAt = time.Time{}
 		match.broadcastReplayEnd(clients, reason)
-		startKickoff(replayResetScoreAfter)
+		startKickoff(replayResetScoreAfter || matchOverPending)
 		replayParticipants = make(map[string]bool)
 		replaySkipped = make(map[string]bool)
 		replayScorerSlot = -1
@@ -299,11 +352,28 @@ func (match *Match) run() {
 		match.world.SetDemolitionsEnabled(false)
 		_ = match.world.ConsumeDemolitions()
 		goalCelebrationActive = true
-		goalCelebrationEndsAt = time.Now().Add(goalCelebrationDuration)
+		celebrationDuration := secondsDuration(match.rules.GoalCelebrationSeconds)
+		goalCelebrationEndsAt = time.Now().Add(celebrationDuration)
 		kickoffEndsAt = time.Time{}
 		kickoffLastAnnounced = 0
 		match.world.ClearInputs()
-		match.broadcastGoal(clients, goalCelebrationDuration)
+		match.broadcastGoal(clients, celebrationDuration)
+
+		if overtime {
+			markMatchOver("overtime-goal")
+			replayResetScoreAfter = true
+		} else if match.rules.ScoreLimit > 0 && (int(match.world.OrangeScore) >= match.rules.ScoreLimit || int(match.world.BlueScore) >= match.rules.ScoreLimit) {
+			markMatchOver("score-limit")
+			replayResetScoreAfter = true
+		} else if match.rules.MatchSeconds > 0 && matchRemaining <= 0 {
+			if match.world.OrangeScore == match.world.BlueScore && match.rules.OvertimeOnTie {
+				overtime = true
+				broadcastClock(true)
+			} else {
+				markMatchOver("time")
+				replayResetScoreAfter = true
+			}
+		}
 		state := match.world.Snapshot()
 		match.latestState.Store(state)
 		match.broadcastSnapshot(clients, state)
@@ -313,8 +383,13 @@ func (match *Match) run() {
 		match.world.SetDemolitionsEnabled(false)
 		goalCelebrationActive = false
 		goalCelebrationEndsAt = time.Time{}
+		if !match.rules.GoalReplayEnabled || match.rules.GoalReplaySeconds <= 0 {
+			startKickoff(replayResetScoreAfter || matchOverPending)
+			replayResetScoreAfter = false
+			return
+		}
 		replayActive = true
-		replayEndsAt = time.Now().Add(goalReplayDuration)
+		replayEndsAt = time.Now().Add(secondsDuration(match.rules.GoalReplaySeconds))
 		replayParticipants = make(map[string]bool, len(clients))
 		replaySkipped = make(map[string]bool, len(clients))
 		for id := range clients {
@@ -353,8 +428,9 @@ func (match *Match) run() {
 			welcome, _ := json.Marshal(map[string]any{
 				"type": "welcome", "playerId": slot, "maxPlayers": match.config.MaxPlayers,
 				"playerName": request.client.name, "team": request.client.team, "carStyle": request.client.carStyle, "boostStyle": request.client.boostStyle,
-				"connectedPlayers": connectedSlots(clients), "players": rosterPlayers(clients), "protocol": 3,
+				"connectedPlayers": connectedSlots(clients), "players": rosterPlayers(clients), "protocol": 4,
 				"serverHz": match.config.PhysicsHz, "snapshotHz": match.config.SnapshotHz,
+				"config": match.config, "rules": match.rules,
 			})
 			request.client.offerJSON(welcome)
 			match.broadcastRoster(clients)
@@ -364,20 +440,20 @@ func (match *Match) run() {
 			// If their arrival creates a fair 1v1/2v2, perform the usual score-reset
 			// kickoff as soon as the current replay is over.
 			if goalCelebrationActive {
-				if shouldStartKickoff(len(clients)) {
+				if shouldStartKickoffForLobby(len(clients), match.config.MaxPlayers) {
 					replayResetScoreAfter = true
 				}
 				remaining := max(0, time.Until(goalCelebrationEndsAt).Milliseconds())
 				request.client.offerSnapshot(protocol.EncodeState(match.world.Snapshot()))
 				match.sendGoalCelebration(request.client, time.Duration(remaining)*time.Millisecond, playerNameForSlot(clients, match.world.LastGoalScorer))
 			} else if replayActive {
-				if shouldStartKickoff(len(clients)) {
+				if shouldStartKickoffForLobby(len(clients), match.config.MaxPlayers) {
 					replayResetScoreAfter = true
 				}
 				remaining := max(0, time.Until(replayEndsAt).Milliseconds())
 				request.client.offerSnapshot(protocol.EncodeState(match.world.Snapshot()))
 				match.sendReplayWaiting(request.client, replayScorerSlot, replayScorerName, replayGoalTick, remaining, skippedCount(), participantCount(), match.world.OrangeScore, match.world.BlueScore)
-			} else if shouldStartKickoff(len(clients)) {
+			} else if shouldStartKickoffForLobby(len(clients), match.config.MaxPlayers) {
 				startKickoff(true)
 			} else if !kickoffEndsAt.IsZero() {
 				// Player three never restarts a match, but if they happen to arrive
@@ -405,6 +481,11 @@ func (match *Match) run() {
 			connected.stop()
 			if len(clients) == 0 {
 				match.world.ResetMatch()
+				matchClockRunning = false
+				matchRemaining = float64(match.rules.MatchSeconds)
+				matchClockSecond = -1
+				overtime = false
+				matchOverPending = false
 			}
 			if replayActive {
 				delete(replayParticipants, clientID)
@@ -465,6 +546,12 @@ func (match *Match) run() {
 				event.input.Throttle = 0
 				event.input.Steer = 0
 			}
+			if !match.rules.AllowCarReset {
+				event.input.Edges &^= game.EdgeReset
+			}
+			if !match.rules.AllowBallReset {
+				event.input.Edges &^= game.EdgeBallReset
+			}
 			// Held throttle/steer/boost may be queued during replay/countdown so
 			// players can launch on GO. One-shot actions are never buffered.
 			if goalCelebrationActive {
@@ -506,7 +593,7 @@ func (match *Match) run() {
 						continue
 					}
 					delete(demolitionRespawns, clientID)
-					match.broadcastRespawn(clients, respawn.slot, respawn.choice, point, game.DemolitionRespawnBoost)
+					match.broadcastRespawn(clients, respawn.slot, respawn.choice, point, match.config.Demolition.RespawnBoost)
 				}
 			}
 
@@ -557,9 +644,16 @@ func (match *Match) run() {
 
 				kickoffEndsAt = time.Time{}
 				kickoffLastAnnounced = 0
-				match.world.SetDemolitionsEnabled(true)
+				match.world.SetDemolitionsEnabled(match.config.Demolition.Enabled)
+				matchClockRunning = true
 				match.broadcastKickoff(clients, "go", 0, kickoffResetScore)
+				broadcastClock(true)
 				kickoffResetScore = false
+			}
+
+			if matchClockRunning && match.rules.MatchSeconds > 0 && !overtime {
+				matchRemaining = math.Max(0, matchRemaining-dt)
+				broadcastClock(false)
 			}
 
 			match.world.Step(dt)
@@ -578,16 +672,29 @@ func (match *Match) run() {
 				continue
 			}
 
+			if matchClockRunning && match.rules.MatchSeconds > 0 && !overtime && matchRemaining <= 0 {
+				if match.world.OrangeScore == match.world.BlueScore && match.rules.OvertimeOnTie {
+					overtime = true
+					broadcastClock(true)
+				} else {
+					markMatchOver("time")
+					startKickoff(true)
+					match.lastTickMicros.Store(time.Since(started).Microseconds())
+					continue
+				}
+			}
+
 			for _, demolition := range match.world.ConsumeDemolitions() {
 				victim, victimClientID := clientForSlot(demolition.VictimSlot)
 				if victim == nil || victimClientID == "" || demolitionRespawns[victimClientID] != nil {
 					continue
 				}
 				choice := 1
+				duration := secondsDuration(match.config.Demolition.RespawnSeconds)
 				demolitionRespawns[victimClientID] = &demolitionRespawnState{
-					slot: demolition.VictimSlot, choice: choice, endsAt: time.Now().Add(demolitionRespawnDuration),
+					slot: demolition.VictimSlot, choice: choice, endsAt: time.Now().Add(duration),
 				}
-				match.broadcastDemolition(clients, demolition, choice, demolitionRespawnDuration, state.Tick)
+				match.broadcastDemolition(clients, demolition, choice, duration, state.Tick)
 			}
 
 			if loopTick%snapshotEvery == 0 && len(clients) > 0 {
@@ -638,6 +745,24 @@ func (match *Match) broadcastKickoff(clients map[string]*client, phase string, c
 	}
 }
 
+func (match *Match) broadcastMatchClock(clients map[string]*client, seconds int, overtime bool) {
+	message, _ := json.Marshal(map[string]any{
+		"type": "match-clock", "seconds": max(0, seconds), "overtime": overtime,
+	})
+	for _, connected := range clients {
+		connected.offerJSON(message)
+	}
+}
+
+func (match *Match) broadcastMatchOver(clients map[string]*client, reason string, orangeScore, blueScore uint16) {
+	message, _ := json.Marshal(map[string]any{
+		"type": "match-over", "reason": reason, "orangeScore": orangeScore, "blueScore": blueScore,
+	})
+	for _, connected := range clients {
+		connected.offerJSON(message)
+	}
+}
+
 func (match *Match) broadcastGoal(clients map[string]*client, duration time.Duration) {
 	message, _ := json.Marshal(map[string]any{
 		"type": "goal", "goalSign": match.world.LastGoalSign, "scoringTeam": match.world.LastGoalScoringTeam,
@@ -660,10 +785,18 @@ func (match *Match) sendGoalCelebration(connected *client, remaining time.Durati
 	connected.offerJSON(message)
 }
 
+func (match *Match) replayLookbackSeconds() float64 {
+	duration := match.rules.GoalReplaySeconds
+	if duration <= 0 {
+		return goalReplayLookback
+	}
+	return math.Min(goalReplayLookback, math.Max(1, duration-0.2))
+}
+
 func (match *Match) broadcastReplayStart(clients map[string]*client, scorerSlot int, scorerName string, goalTick uint64, orangeScore, blueScore uint16, required int) {
 	message, _ := json.Marshal(map[string]any{
 		"type": "replay", "phase": "start", "scorerId": scorerSlot, "scorerName": scorerName,
-		"goalTick": goalTick, "lookbackSeconds": goalReplayLookback, "durationMs": goalReplayDuration.Milliseconds(),
+		"goalTick": goalTick, "lookbackSeconds": match.replayLookbackSeconds(), "durationMs": secondsDuration(match.rules.GoalReplaySeconds).Milliseconds(),
 		"skipped": 0, "required": required, "orangeScore": orangeScore, "blueScore": blueScore,
 	})
 	for _, connected := range clients {
@@ -690,8 +823,8 @@ func (match *Match) broadcastReplayEnd(clients map[string]*client, reason string
 func (match *Match) sendReplayWaiting(connected *client, scorerSlot int, scorerName string, goalTick uint64, remainingMs int64, skipped, required int, orangeScore, blueScore uint16) {
 	message, _ := json.Marshal(map[string]any{
 		"type": "replay", "phase": "wait", "scorerId": scorerSlot, "scorerName": scorerName,
-		"goalTick": goalTick, "remainingMs": remainingMs, "skipped": skipped, "required": required,
-		"orangeScore": orangeScore, "blueScore": blueScore,
+		"goalTick": goalTick, "lookbackSeconds": match.replayLookbackSeconds(), "durationMs": remainingMs, "remainingMs": remainingMs,
+		"skipped": skipped, "required": required, "orangeScore": orangeScore, "blueScore": blueScore,
 	})
 	connected.offerJSON(message)
 }

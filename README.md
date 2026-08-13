@@ -1,4 +1,16 @@
-# Rocket Vibe 1.10.29 – Faster-Car Demolitions + Ultra High Burst
+# Rocket Vibe 1.11.0 – Lobbies, Custom Rules & Physics Mutators
+
+## v1.11.0
+
+### Lobby-System
+
+- Die Startseite ist jetzt ein echter **Lobby-Browser**: vorhandene Lobbies anzeigen, Spielerzahl/Regeln sehen und neue Lobbies erstellen. Name, Auto, Boost und Grafik werden bewusst erst nach der Lobby-Auswahl abgefragt.
+- Jede Lobby besitzt eine **eigene autoritative Go-Match-/Physics-Instanz**. Regeln und Physik einer Chaos-Lobby beeinflussen daher keine anderen laufenden Matches.
+- Lobby-Regeln umfassen Max-Spieler, Matchzeit, Scorelimit, Overtime, Kickoff-Countdown, Goal-Replay, Goal-Celebration, Auto-/Ball-Reset und Demolitions.
+- Physics-Mutatoren decken Gravitation/Solver, Arena-Geometrie, Hitbox/Masse/Tempo, Antrieb/Boost/Grip, Aerial-/Jump-/Dodge-Werte, Ballphysik, Boostpad-Respawns und die komplette Demolition-Physik ab.
+- Enthalten sind **Standard, Moonball, Pinball und Chaos** als Start-Presets; danach kann jeder Einzelwert weiter angepasst werden.
+- Der Server sendet die final sanitisierten Lobby-Werte beim Join an den Browser. Client-Prediction, Ball/Hitbox und die prozedural erzeugte Arena verwenden damit dieselben Lobbywerte wie die Serverphysik.
+- HUD zeigt Match-Uhr/Overtime und Matchende; konfigurierbare Replay-, Goal- und Demo-Zeiten werden im Client respektiert.
 
 ## v1.10.29
 

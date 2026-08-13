@@ -1,3 +1,5 @@
+import { CAR_TUNING } from '../shared/game-tuning.js';
+
 export class Hud {
   constructor(root, options = {}) {
     const playerCount = options.playerCount ?? 1;
@@ -11,6 +13,8 @@ export class Hud {
         <div class="hud__score-separator">:</div>
         <div class="hud__score-team hud__score-team--blue"><strong data-blue-score>0</strong><span>BLAU</span></div>
       </div>
+      <div class="hud__match-clock" data-match-clock hidden>5:00</div>
+      <div class="hud__match-over" data-match-over hidden aria-live="polite"></div>
       <div class="hud__kickoff" data-kickoff hidden aria-live="polite" aria-atomic="true">
         <strong data-kickoff-value>3</strong>
         <span data-kickoff-caption>KICKOFF</span>
@@ -94,6 +98,9 @@ export class Hud {
     this.buildBoostGaugeSegments();
     this.orangeScore = this.el.querySelector('[data-orange-score]');
     this.blueScore = this.el.querySelector('[data-blue-score]');
+    this.matchClock = this.el.querySelector('[data-match-clock]');
+    this.matchOver = this.el.querySelector('[data-match-over]');
+    this.matchOverTimer = null;
     this.kickoff = this.el.querySelector('[data-kickoff]');
     this.kickoffValue = this.el.querySelector('[data-kickoff-value]');
     this.kickoffCaption = this.el.querySelector('[data-kickoff-caption]');
@@ -200,6 +207,36 @@ export class Hud {
     this.blueScore.textContent = String(Math.max(0, Number(blue) || 0));
   }
 
+  setMatchClock(clock) {
+    if (!this.matchClock) return;
+    if (!clock) {
+      this.matchClock.hidden = true;
+      return;
+    }
+    this.matchClock.hidden = false;
+    if (clock.overtime) {
+      this.matchClock.textContent = 'OVERTIME';
+      this.matchClock.classList.add('is-overtime');
+      return;
+    }
+    this.matchClock.classList.remove('is-overtime');
+    const total = Math.max(0, Math.round(Number(clock.seconds) || 0));
+    const minutes = Math.floor(total / 60);
+    const seconds = total % 60;
+    this.matchClock.textContent = `${minutes}:${String(seconds).padStart(2, '0')}`;
+  }
+
+  showMatchOver(result) {
+    if (!this.matchOver) return;
+    if (this.matchOverTimer) clearTimeout(this.matchOverTimer);
+    const orange = Math.max(0, Number(result?.orangeScore) || 0);
+    const blue = Math.max(0, Number(result?.blueScore) || 0);
+    const outcome = orange === blue ? 'UNENTSCHIEDEN' : (orange > blue ? 'ORANGE GEWINNT' : 'BLAU GEWINNT');
+    this.matchOver.textContent = `${outcome} · ${orange}:${blue}`;
+    this.matchOver.hidden = false;
+    this.matchOverTimer = setTimeout(() => { this.matchOver.hidden = true; }, 2300);
+  }
+
   setKickoff(phase, count = 0) {
     if (!this.kickoff) return;
     if (this.kickoffHideTimer) {
@@ -208,11 +245,11 @@ export class Hud {
     }
 
     if (phase === 'countdown') {
-      const value = Math.max(1, Math.min(3, Math.round(Number(count) || 1)));
+      const value = Math.max(1, Math.min(10, Math.round(Number(count) || 1)));
       this.kickoff.hidden = false;
       this.kickoff.classList.remove('hud__kickoff--go');
       this.kickoffValue.textContent = String(value);
-      this.kickoffCaption.textContent = value === 3 ? 'MATCH STARTET' : 'KICKOFF';
+      this.kickoffCaption.textContent = 'KICKOFF';
       this.pulseKickoff();
       return;
     }
@@ -370,10 +407,13 @@ export class Hud {
   }
 
   updateBoostGauge(boost) {
-    const normalized = Math.max(0, Math.min(100, Number(boost) || 0));
-    if (this.boostValue) this.boostValue.textContent = String(Math.round(normalized));
+    const capacity = Math.max(1, Number(CAR_TUNING.boostCapacity) || 100);
+    const amount = Math.max(0, Math.min(capacity, Number(boost) || 0));
+    const normalized = (amount / capacity) * 100;
+    if (this.boostValue) this.boostValue.textContent = String(Math.round(amount));
     if (this.boostGauge) {
-      this.boostGauge.setAttribute('aria-valuenow', String(Math.round(normalized)));
+      this.boostGauge.setAttribute('aria-valuemax', String(Math.round(capacity)));
+      this.boostGauge.setAttribute('aria-valuenow', String(Math.round(amount)));
       this.boostGauge.style.setProperty('--boost-strength', (normalized / 100).toFixed(3));
     }
 
@@ -386,7 +426,8 @@ export class Hud {
   }
 
   update(car) {
-    const boost = Math.max(0, Math.min(100, Number(car.getBoost?.() ?? car.boost) || 0));
+    const capacity = Math.max(1, Number(CAR_TUNING.boostCapacity) || 100);
+    const boost = Math.max(0, Math.min(capacity, Number(car.getBoost?.() ?? car.boost) || 0));
     this.updateBoostGauge(boost);
     this.el.classList.toggle('hud--boost-low', boost <= 20);
     this.el.classList.toggle('hud--boosting', Boolean(car.boosting) && boost > 0.01);

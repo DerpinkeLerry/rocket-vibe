@@ -15,7 +15,7 @@ import (
 	gameserver "rocket-vibe/internal/server"
 )
 
-const version = "1.10.15-go"
+const version = "1.11.0-lobbies"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -23,9 +23,9 @@ func main() {
 	defer stopSignals()
 
 	config := game.DefaultConfig()
-	match := gameserver.NewMatch(rootContext, config)
+	lobbies := gameserver.NewLobbyManager(rootContext)
 	port := environment("PORT", "8080")
-	httpHandler := gameserver.NewHTTPServer(match, gameserver.HTTPOptions{
+	httpHandler := gameserver.NewLobbyHTTPServer(lobbies, gameserver.HTTPOptions{
 		StaticDirectory: environment("STATIC_DIR", "dist"),
 		Version:         version,
 		AllowedOrigins:  commaSeparated(os.Getenv("ALLOWED_ORIGINS")),
@@ -52,12 +52,12 @@ func main() {
 	case err := <-serverErrors:
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("http server failed", "error", err)
-			match.Stop()
+			lobbies.Stop()
 			os.Exit(1)
 		}
 	}
 
-	match.Stop()
+	lobbies.Stop()
 	shutdownContext, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelShutdown()
 	if err := server.Shutdown(shutdownContext); err != nil {

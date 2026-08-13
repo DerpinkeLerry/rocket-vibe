@@ -92,7 +92,12 @@ export class GoalExplosion {
   trigger({ goalSign = 1, scoringTeam = 'blue', position = null, durationMs = null } = {}) {
     if (!this.enabled) return;
     const sign = Number(goalSign) >= 0 ? 1 : -1;
-    this.duration = clamp((Number(durationMs) || 1280) / 1000, 0.7, 2.0);
+    const parsedDurationMs = Number(durationMs);
+    this.duration = Number.isFinite(parsedDurationMs) ? clamp(parsedDurationMs / 1000, 0, 2.0) : 1.28;
+    if (this.duration <= 0) {
+      this.stop();
+      return;
+    }
     this.elapsed = 0;
     this.active = true;
     this.teamColor.set(scoringTeam === 'orange' ? 0xff6508 : 0x087dff);
