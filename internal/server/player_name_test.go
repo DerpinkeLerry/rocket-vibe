@@ -20,7 +20,7 @@ func TestSanitizePlayerName(t *testing.T) {
 func TestSanitizeCarStyle(t *testing.T) {
 	checks := map[string]string{
 		"vortex":  "vortex",
-		" TITAN ": "titan",
+		" TITAN ": defaultCarStyle,
 		"Apex":    "apex",
 		"razor":   "razor",
 		"octane":  defaultCarStyle,

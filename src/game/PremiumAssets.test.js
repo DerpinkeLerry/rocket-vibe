@@ -7,7 +7,6 @@ import { PREMIUM_BALL_ASSET_INFO } from './PremiumBallModel.js';
 const carAssets = [
   ['octane', '../assets/octane-rocket-league.glb'],
   ['dominus', '../assets/dominus-rocket-league.glb'],
-  ['mclaren', '../assets/mclaren-570s-rocket-league.glb'],
   ['fennec', '../assets/fennec-rocket-league.glb']
 ];
 

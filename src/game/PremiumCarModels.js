@@ -29,20 +29,6 @@ const PREMIUM_CAR_CONFIGS = Object.freeze({
     wheelSpinAxis: 'y',
     exhaustAnchor: Object.freeze({ x: 0.40, z: 1.66 })
   }),
-  mclaren: Object.freeze({
-    name: 'MCLAREN 570S',
-    url: new URL('../assets/mclaren-570s-rocket-league.glb', import.meta.url).href,
-    targetLength: 3.14,
-    bottomY: -0.52,
-    paintMaterials: ['mic_body_ron'],
-    darkMaterials: ['mic_body_ron_chassis', 'mat_ron_chassis_detail_tiling'],
-    windowMaterials: ['mat_vehicle_glass_translucent'],
-    lightMaterials: [],
-    rimMaterials: ['mic_wheel_ron'],
-    wheelGroupPattern: /wheel_ron_flipped_sm/i,
-    wheelSpinAxis: 'z',
-    exhaustAnchor: Object.freeze({ x: 0.31, z: 1.63 })
-  }),
   fennec: Object.freeze({
     name: 'FENNEC',
     url: new URL('../assets/fennec-rocket-league.glb', import.meta.url).href,
@@ -60,7 +46,6 @@ const PREMIUM_CAR_CONFIGS = Object.freeze({
 });
 
 const templatePromises = new Map();
-let skeletonClonePromise = null;
 
 function getConfig(modelId) {
   return PREMIUM_CAR_CONFIGS[String(modelId || '').toLowerCase()] || null;
@@ -74,7 +59,7 @@ function normalizePremiumTemplate(scene, config) {
   scene.updateMatrixWorld(true);
   let bounds = new THREE.Box3().setFromObject(scene);
   const size = bounds.getSize(new THREE.Vector3());
-  // All four supplied Rocket League assets use +X as vehicle forward.
+  // All three supplied Rocket League car assets use +X as vehicle forward.
   const scale = size.x > 1e-6 ? config.targetLength / size.x : 1;
   scene.scale.multiplyScalar(scale);
   scene.updateMatrixWorld(true);
@@ -107,15 +92,11 @@ async function getPremiumTemplate(modelId) {
   return templatePromises.get(modelId);
 }
 
-async function cloneTemplate(template) {
-  // SkeletonUtils is required for the McLaren's skinned chassis. It is loaded
-  // only when a premium model is actually requested, so lower settings do not
-  // pay for this path.
-  if (!skeletonClonePromise) {
-    skeletonClonePromise = import('three/addons/utils/SkeletonUtils.js').then((module) => module.clone);
-  }
-  const clone = await skeletonClonePromise;
-  return clone(template);
+function cloneTemplate(template) {
+  // Octane, Dominus and Fennec contain no skinned chassis, so a normal deep
+  // Object3D clone is enough. Geometry/textures stay shared; materials are
+  // cloned per car below for independent team paint.
+  return template.clone(true);
 }
 
 function matchesAny(name, values = [], prefix = false) {
@@ -134,8 +115,7 @@ function tuneMaterial(material, config, paintColor) {
     if ('clearcoatRoughness' in material) material.clearcoatRoughness = 0.44;
     if ('envMapIntensity' in material) material.envMapIntensity = Math.min(0.62, material.envMapIntensity ?? 0.5);
   } else if (matchesAny(name, config.darkMaterials)) {
-    // Preserve textured chassis detail on McLaren while keeping untextured
-    // secondary paint on the other cars dark and neutral.
+    // Keep untextured secondary paint/chassis parts dark and neutral.
     if (!material.map) material.color?.setHex(0x11171d);
     if ('roughness' in material) material.roughness = Math.max(0.46, material.roughness ?? 0.46);
     if ('metalness' in material) material.metalness = Math.min(0.45, material.metalness ?? 0.28);
@@ -190,7 +170,7 @@ export async function createPremiumCarVisual(modelId, paintColor = 0xf46b20) {
   const config = getConfig(modelId);
   if (!config) throw new Error(`Unknown premium car model: ${modelId}`);
   const template = await getPremiumTemplate(modelId);
-  const root = await cloneTemplate(template);
+  const root = cloneTemplate(template);
   root.name = `${config.name.replace(/\s+/g, '')}PremiumVisual`;
   cloneInstanceMaterials(root, config, paintColor);
   const wheelGroups = collectWheelGroups(root, config);
@@ -216,11 +196,6 @@ export const PREMIUM_CAR_ASSET_INFO = Object.freeze({
     author: 'Jako (fairlight51)',
     license: 'CC-BY-4.0',
     source: 'https://sketchfab.com/3d-models/dominus-rocket-league-car-f592f249a65f41cd81a0e5aa3d418cb2'
-  }),
-  mclaren: Object.freeze({
-    author: 'DhaniAstrowlrd',
-    license: 'CC-BY-4.0',
-    source: 'https://sketchfab.com/3d-models/mc-laren-570s-rocket-league-3e245bf7fb8446b8950b24999b3bf712'
   }),
   fennec: Object.freeze({
     author: 'Jako (fairlight51)',

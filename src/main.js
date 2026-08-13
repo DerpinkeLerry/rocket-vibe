@@ -92,11 +92,6 @@ function carPreviewSvg(styleId) {
       glass: 'M78 42 L94 29 L123 31 L137 45 L113 47 Z',
       spoiler: 'M126 33 H153 V38 H127 Z'
     },
-    titan: {
-      body: 'M20 70 L32 55 L78 45 L139 47 L160 61 L156 78 L25 78 Z',
-      glass: 'M78 46 L100 34 L132 36 L147 50 L118 52 Z',
-      spoiler: ''
-    },
     apex: {
       body: 'M23 67 L37 49 L92 41 L143 47 L157 63 L154 78 L25 78 Z',
       glass: 'M84 43 L101 32 L130 34 L143 48 L116 50 Z',
@@ -140,7 +135,7 @@ function requestPlayerIdentity(root) {
       <form class="join-card join-card--wide">
         <div class="join-card__eyebrow">ROCKET VIBE</div>
         <h1>Fahrer & Auto</h1>
-        <p>Wähle deinen Namen und eine Karosserie. Alle vier Autos haben dieselbe Hitbox und dieselben Fahrwerte.</p>
+        <p>Wähle deinen Namen und eine Karosserie. Alle drei Autos haben dieselbe Hitbox und dieselben Fahrwerte.</p>
         ${prefersMobileControls() ? '<div class="join-card__mobile-note">📱 Touch-Steuerung aktiv · Querformat empfohlen</div>' : ''}
         <div class="join-card__fullscreen-row">
           <button class="join-card__fullscreen" type="button" data-start-fullscreen>⛶ VOLLBILD STARTEN</button>
@@ -161,7 +156,7 @@ function requestPlayerIdentity(root) {
                 <span class="car-choice__desc">${style.description}</span>
               </label>`).join('')}
           </div>
-          <div class="car-select__note">OCTANE, DOMINUS, MCLAREN 570S und FENNEC nutzen in ULTRA HIGH die echten GLB-Modelle. NORMAL und ULTRA LOW verwenden automatisch die leichten Fallback-Karosserien mit identischer Hitbox. Asset-Credits: <code>THIRD_PARTY_ASSETS.md</code>.</div>
+          <div class="car-select__note">OCTANE, DOMINUS und FENNEC nutzen in ULTRA HIGH die echten GLB-Modelle. NORMAL und ULTRA LOW verwenden automatisch die leichten Fallback-Karosserien mit identischer Hitbox. Asset-Credits: <code>THIRD_PARTY_ASSETS.md</code>.</div>
         </fieldset>
 
         <fieldset class="boost-select">

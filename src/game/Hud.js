@@ -1,18 +1,11 @@
 export class Hud {
   constructor(root, options = {}) {
-    const multiplayer = Boolean(options.lan);
-    const playerId = options.playerId ?? 0;
     const playerCount = options.playerCount ?? 1;
     const maxPlayers = options.maxPlayers ?? 4;
-    const role = multiplayer ? `SPIELER ${playerId + 1}` : 'OFFLINE';
-    const profile = options.performanceProfile ?? 'NORMAL';
-    const playerName = options.playerName || role;
-    const team = options.team === 'blue' ? 'blue' : 'orange';
 
     this.el = document.createElement('div');
     this.el.className = 'hud';
     this.el.innerHTML = `
-      <div class="hud__title">ROCKET VIBE // ONLINE 1.10.18 <span class="hud__perf" data-perf>${profile}</span></div>
       <div class="hud__scoreboard" aria-label="Spielstand Orange gegen Blau">
         <div class="hud__score-team hud__score-team--orange"><span>ORANGE</span><strong data-orange-score>0</strong></div>
         <div class="hud__score-separator">:</div>
@@ -36,14 +29,13 @@ export class Hud {
         <div class="hud__quickchat-feed" data-quickchat-feed aria-live="polite" aria-relevant="additions"></div>
         <div class="hud__quickchat-status" data-quickchat-status hidden>QUICK CHAT COOLDOWN</div>
       </div>
-      <div class="hud__network">
-        <strong class="hud__identity hud__identity--${team}" data-identity></strong>
-        <span data-network>${multiplayer ? 'Spielserver verbunden' : 'Lokaler Modus'}</span>
-        <span data-player-count>${playerCount}/${maxPlayers} Spieler</span>
-        <span data-ping>Ping -- ms</span>
-        <span data-fps>FPS -- · Render --%</span>
+      <div class="hud__network" aria-label="Performance und Verbindung">
+        <span data-ping>PING --</span>
+        <span data-fps>FPS --</span>
+        <span data-player-count>${playerCount}/${maxPlayers} SPIELER</span>
       </div>
-      <div class="hud__controls">
+      <button class="hud__controls-toggle" type="button" data-controls-toggle aria-expanded="false" aria-controls="desktop-controls">STEUERUNG</button>
+      <div class="hud__controls" id="desktop-controls" data-controls-panel hidden>
         <kbd>F2</kbd><span>Normal / Ultra High / Ultra Low</span>
         <kbd>C</kbd><span data-camera-mode>Ball Cam / Car Cam · aktuell: BALL CAM</span>
         <kbd>W / S</kbd><span>Boden: Gas · Luft: Pitch</span>
@@ -81,13 +73,14 @@ export class Hud {
     this.perf = this.el.querySelector('[data-perf]');
     this.identity = this.el.querySelector('[data-identity]');
     this.cameraMode = this.el.querySelector('[data-camera-mode]');
+    this.controlsToggle = this.el.querySelector('[data-controls-toggle]');
+    this.controlsPanel = this.el.querySelector('[data-controls-panel]');
     this.boostValue = this.el.querySelector('[data-boost-value]');
     this.boostGauge = this.el.querySelector('[data-boost-gauge]');
     this.boostSegmentsRoot = this.el.querySelector('[data-boost-segments]');
     this.boostSegments = [];
     this.lastBoostSegmentCount = -1;
     this.buildBoostGaugeSegments();
-    this.identity.textContent = playerName;
     this.orangeScore = this.el.querySelector('[data-orange-score]');
     this.blueScore = this.el.querySelector('[data-blue-score]');
     this.kickoff = this.el.querySelector('[data-kickoff]');
@@ -103,6 +96,13 @@ export class Hud {
     this.quickChatFeed = this.el.querySelector('[data-quickchat-feed]');
     this.quickChatStatus = this.el.querySelector('[data-quickchat-status]');
     this.quickChatCooldownTimer = null;
+    this.controlsToggle?.addEventListener('click', () => {
+      const open = this.controlsPanel?.hasAttribute('hidden') ?? true;
+      if (open) this.controlsPanel?.removeAttribute('hidden');
+      else this.controlsPanel?.setAttribute('hidden', '');
+      this.controlsToggle?.setAttribute('aria-expanded', open ? 'true' : 'false');
+      this.controlsToggle?.classList.toggle('is-open', open);
+    });
     this.replaySkip?.addEventListener('click', () => {
       if (this.replaySkipRequested || !this.replaySkipHandler) return;
       this.replaySkipRequested = true;
@@ -155,22 +155,21 @@ export class Hud {
     }, duration);
   }
 
-  setNetworkStatus(text) {
-    this.network.textContent = text;
+  setNetworkStatus(_text) {
+    // Connection diagnostics are intentionally omitted from the compact HUD.
   }
 
   setPlayerCount(count, maxPlayers = 4) {
-    this.playerCount.textContent = `${count}/${maxPlayers} Spieler`;
+    this.playerCount.textContent = `${count}/${maxPlayers} SPIELER`;
   }
 
   setPing(rttMs) {
     if (!this.ping) return;
-    this.ping.textContent = `Ping ${Math.round(rttMs)} ms`;
+    this.ping.textContent = `PING ${Math.round(rttMs)} ms`;
   }
 
-  setPerformance(profile, fps, pixelRatio) {
-    if (this.perf) this.perf.textContent = profile;
-    if (this.fps) this.fps.textContent = `FPS ${Math.round(fps)} · Render ${Math.round(pixelRatio * 100)}%`;
+  setPerformance(_profile, fps, _pixelRatio) {
+    if (this.fps) this.fps.textContent = `FPS ${Math.round(fps)}`;
   }
 
   setCameraMode(mode) {

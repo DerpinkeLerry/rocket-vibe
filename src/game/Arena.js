@@ -2360,8 +2360,8 @@ export class Arena {
     const count = this.lowDetail ? 14 : (this.ultraHigh ? 54 : 28);
     const trunkGeometry = new THREE.CylinderGeometry(0.28, 0.38, 3.0, 5);
     const crownGeometry = new THREE.ConeGeometry(2.2, 5.4, 6);
-    const trunkMaterial = new THREE.MeshBasicMaterial({ color: 0x5f432e });
-    const crownMaterial = new THREE.MeshBasicMaterial({ color: 0x2f6f40 });
+    const trunkMaterial = new THREE.MeshBasicMaterial({ color: this.ultraHigh ? 0x3c2d32 : 0x5f432e });
+    const crownMaterial = new THREE.MeshBasicMaterial({ color: this.ultraHigh ? 0x183e35 : 0x2f6f40 });
     const trunks = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, count);
     const crowns = new THREE.InstancedMesh(crownGeometry, crownMaterial, count);
     const dummy = new THREE.Object3D();
@@ -2394,10 +2394,16 @@ export class Arena {
     const material = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: true });
     const buildings = new THREE.InstancedMesh(geometry, material, count);
     const dummy = new THREE.Object3D();
-    const colors = [
-      new THREE.Color(0x657986), new THREE.Color(0x506775), new THREE.Color(0x7a8790),
-      new THREE.Color(0x485f6b)
-    ];
+    const colors = this.ultraHigh
+      ? [
+          new THREE.Color(0x263343), new THREE.Color(0x1e2c3b), new THREE.Color(0x334052),
+          new THREE.Color(0x202b38)
+        ]
+      : [
+          new THREE.Color(0x657986), new THREE.Color(0x506775), new THREE.Color(0x7a8790),
+          new THREE.Color(0x485f6b)
+        ];
+    const buildingData = [];
     for (let index = 0; index < count; index++) {
       const angle = (index / count) * Math.PI * 2 + 0.05;
       const radiusX = FIELD_W * 0.5 + 62 + (index % 3) * 5;
@@ -2405,17 +2411,60 @@ export class Arena {
       const height = 10 + (index % 7) * 2.8;
       const width = 6 + (index % 4) * 1.7;
       const depth = 6 + ((index + 2) % 4) * 1.5;
-      dummy.position.set(Math.sin(angle) * radiusX, height * 0.5 - 0.05, Math.cos(angle) * radiusZ);
+      const x = Math.sin(angle) * radiusX;
+      const z = Math.cos(angle) * radiusZ;
+      dummy.position.set(x, height * 0.5 - 0.05, z);
       dummy.rotation.set(0, -angle * 0.32, 0);
       dummy.scale.set(width, height, depth);
       dummy.updateMatrix();
       buildings.setMatrixAt(index, dummy.matrix);
       buildings.setColorAt(index, colors[index % colors.length]);
+      buildingData.push({ x, z, height, width, depth });
     }
     buildings.instanceMatrix.needsUpdate = true;
     if (buildings.instanceColor) buildings.instanceColor.needsUpdate = true;
     this.group.add(buildings);
+
+    if (this.ultraHigh) {
+      // A few glowing window ribbons make the distant city feel alive at dusk.
+      // They are unlit instanced boxes (one draw call), not dozens of PointLights.
+      const rowsPerBuilding = this.mobile ? 2 : 3;
+      const windowGeometry = new THREE.BoxGeometry(1, 1, 1);
+      const windowMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false, fog: true });
+      const windows = new THREE.InstancedMesh(windowGeometry, windowMaterial, count * rowsPerBuilding);
+      const warm = new THREE.Color(0xffbd70);
+      const cool = new THREE.Color(0x72cfff);
+      let windowIndex = 0;
+      for (let index = 0; index < buildingData.length; index++) {
+        const data = buildingData[index];
+        const inwardX = -data.x;
+        const inwardZ = -data.z;
+        const inwardLength = Math.hypot(inwardX, inwardZ) || 1;
+        const nx = inwardX / inwardLength;
+        const nz = inwardZ / inwardLength;
+        const yaw = Math.atan2(nx, nz);
+        for (let row = 0; row < rowsPerBuilding; row++) {
+          const y = 2.4 + (row + 1) * (data.height - 3.4) / (rowsPerBuilding + 1);
+          dummy.position.set(
+            data.x + nx * (data.depth * 0.5 + 0.08),
+            y,
+            data.z + nz * (data.depth * 0.5 + 0.08)
+          );
+          dummy.rotation.set(0, yaw, 0);
+          dummy.scale.set(data.width * (0.38 + (row % 2) * 0.08), 0.34, 0.07);
+          dummy.updateMatrix();
+          windows.setMatrixAt(windowIndex, dummy.matrix);
+          windows.setColorAt(windowIndex, (index + row) % 4 === 0 ? cool : warm);
+          windowIndex++;
+        }
+      }
+      windows.instanceMatrix.needsUpdate = true;
+      if (windows.instanceColor) windows.instanceColor.needsUpdate = true;
+      windows.userData.cameraOcclusionIgnore = true;
+      this.group.add(windows);
+    }
   }
+
 
   createUltraHighStadiumDetails() {
     const box = new THREE.BoxGeometry(1, 1, 1);
@@ -2483,49 +2532,55 @@ export class Arena {
 
   createLights() {
     const hemi = new THREE.HemisphereLight(
-      this.ultraHigh ? 0x9fc8dd : 0xb9dded,
-      this.ultraHigh ? 0x243e2d : 0x33553b,
-      this.lowDetail ? 1.70 : (this.ultraHigh ? 0.88 : 1.72)
+      this.ultraHigh ? 0x5f79a8 : 0xb9dded,
+      this.ultraHigh ? 0x172a24 : 0x33553b,
+      this.lowDetail ? 1.70 : (this.ultraHigh ? 1.02 : 1.72)
     );
     this.scene.add(hemi);
 
-    const sun = new THREE.DirectionalLight(
-      this.ultraHigh ? 0xffdfb4 : 0xffe6bd,
-      this.lowDetail ? 1.55 : (this.ultraHigh ? 1.48 : 2.02)
+    // Ultra High is a permanent blue-hour/moonlight scene. This directional
+    // light is the only shadow caster; the additional fills below are shadowless
+    // and therefore comparatively cheap while keeping the field actively lit.
+    const key = new THREE.DirectionalLight(
+      this.ultraHigh ? 0xc6ddff : 0xffe6bd,
+      this.lowDetail ? 1.55 : (this.ultraHigh ? 1.62 : 2.02)
     );
-    if (this.ultraHigh) sun.position.set(-42, 76, -36);
-    else sun.position.set(-34, 62, -28);
-    sun.castShadow = this.ultraHigh;
+    if (this.ultraHigh) key.position.set(-78, 92, -118);
+    else key.position.set(-34, 62, -28);
+    key.castShadow = this.ultraHigh;
     if (this.ultraHigh) {
-      // 2048/1024 plus staggered updates provides a much larger performance
-      // win than supersampling, while still keeping car/ball silhouettes crisp.
       const shadowSize = this.mobile ? 1024 : 2048;
-      sun.shadow.mapSize.set(shadowSize, shadowSize);
-      sun.shadow.camera.left = -88;
-      sun.shadow.camera.right = 88;
-      sun.shadow.camera.top = 112;
-      sun.shadow.camera.bottom = -112;
-      sun.shadow.camera.near = 10;
-      sun.shadow.camera.far = 205;
-      sun.shadow.bias = -0.00016;
-      sun.shadow.normalBias = 0.042;
-      sun.shadow.radius = this.mobile ? 1.4 : 1.8;
+      key.shadow.mapSize.set(shadowSize, shadowSize);
+      key.shadow.camera.left = -88;
+      key.shadow.camera.right = 88;
+      key.shadow.camera.top = 112;
+      key.shadow.camera.bottom = -112;
+      key.shadow.camera.near = 10;
+      key.shadow.camera.far = 230;
+      key.shadow.bias = -0.00016;
+      key.shadow.normalBias = 0.042;
+      key.shadow.radius = this.mobile ? 1.4 : 1.8;
     }
-    this.scene.add(sun);
+    this.scene.add(key);
 
     const fill = new THREE.DirectionalLight(
-      0xaedcff,
-      this.lowDetail ? 0.34 : (this.ultraHigh ? 0.16 : 0.52)
+      this.ultraHigh ? 0x789dff : 0xaedcff,
+      this.lowDetail ? 0.34 : (this.ultraHigh ? 0.34 : 0.52)
     );
-    fill.position.set(32, 24, 38);
+    fill.position.set(34, 38, 42);
     fill.castShadow = false;
     this.scene.add(fill);
 
     if (this.ultraHigh) {
-      const warmRim = new THREE.DirectionalLight(0xffc98e, 0.045);
-      warmRim.position.set(26, 18, -50);
-      warmRim.castShadow = false;
-      this.scene.add(warmRim);
+      const duskRim = new THREE.DirectionalLight(0xff8b70, 0.34);
+      duskRim.position.set(72, 24, -92);
+      duskRim.castShadow = false;
+      this.scene.add(duskRim);
+
+      const overhead = new THREE.DirectionalLight(0x9fbfff, this.mobile ? 0.18 : 0.24);
+      overhead.position.set(0, 90, 8);
+      overhead.castShadow = false;
+      this.scene.add(overhead);
     }
   }
 }

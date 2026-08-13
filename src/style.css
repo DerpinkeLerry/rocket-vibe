@@ -1802,3 +1802,120 @@ html, body, #app {
     width: min(350px, 40vw);
   }
 }
+
+/* v1.10.21 — compact diagnostics + collapsible desktop help ------------- */
+.hud__network {
+  right: 18px;
+  top: 16px;
+  min-width: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  color: rgba(245, 250, 255, 0.88);
+  text-align: right;
+  font: 850 10px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.05em;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.72), 0 0 12px rgba(0, 0, 0, 0.34);
+  pointer-events: none;
+}
+
+.hud__network span,
+.hud__network [data-player-count],
+.mobile-active .hud__network [data-player-count],
+.mobile-active .hud__network [data-fps],
+.mobile-active .hud__network [data-ping] {
+  display: inline;
+  margin: 0;
+  color: rgba(245, 250, 255, 0.88);
+  white-space: nowrap;
+}
+
+.hud__network [data-ping] { color: #b9e8ff; }
+.hud__network [data-fps] { color: #e7f6ff; }
+.hud__network [data-player-count] { color: #ffd8a6; }
+
+.perf-ultra .hud__network,
+.perf-ultra-high .hud__network,
+.mobile-active .hud__network {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.hud__controls-toggle {
+  position: absolute;
+  left: 20px;
+  bottom: 20px;
+  z-index: 3;
+  min-width: 104px;
+  padding: 9px 12px;
+  pointer-events: auto;
+  cursor: pointer;
+  border: 1px solid rgba(190, 225, 255, 0.20);
+  border-radius: 999px;
+  color: rgba(244, 250, 255, 0.86);
+  background: rgba(5, 12, 24, 0.58);
+  box-shadow: 0 7px 20px rgba(0, 0, 0, 0.18);
+  font: 900 9px/1 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.12em;
+  transition: background 130ms ease, border-color 130ms ease, transform 130ms ease;
+}
+
+.hud__controls-toggle:hover,
+.hud__controls-toggle.is-open {
+  border-color: rgba(111, 213, 255, 0.48);
+  background: rgba(10, 30, 50, 0.78);
+  transform: translateY(-1px);
+}
+
+.hud__controls {
+  left: 20px;
+  bottom: 62px;
+  max-height: min(66vh, 430px);
+  overflow: auto;
+  pointer-events: auto;
+  background: rgba(5, 12, 24, 0.84);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.28);
+}
+
+.hud__controls[hidden] { display: none !important; }
+.perf-ultra .hud__controls:not([hidden]) { display: grid; }
+
+.mobile-active .hud__controls-toggle,
+.mobile-active .hud__controls { display: none !important; }
+
+@media (max-width: 700px) {
+  .hud__network {
+    right: calc(env(safe-area-inset-right, 0px) + 8px);
+    top: calc(env(safe-area-inset-top, 0px) + 8px);
+    gap: 7px;
+    font-size: 8px;
+  }
+}
+
+@media (orientation: portrait) and (any-pointer: coarse) {
+  .mobile-active .hud__network {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 1px;
+    font-size: 7px;
+  }
+}
+
+/* Three-car selection: balanced desktop row; mobile keeps readable cards. */
+.car-select__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 720px) {
+  .car-select__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .car-select__grid .car-choice:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}

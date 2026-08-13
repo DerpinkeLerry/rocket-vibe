@@ -26,14 +26,6 @@ All assets below were supplied for this project by the user. The original GLB fi
 - License URL: https://creativecommons.org/licenses/by/4.0/
 - Local asset: `src/assets/fennec-rocket-league.glb`
 
-## Mc Laren 570S (Rocket League)
-
-- Author: DhaniAstrowlrd
-- Source: https://sketchfab.com/3d-models/mc-laren-570s-rocket-league-3e245bf7fb8446b8950b24999b3bf712
-- License: CC BY 4.0
-- License URL: https://creativecommons.org/licenses/by/4.0/
-- Local asset: `src/assets/mclaren-570s-rocket-league.glb`
-
 ## Ball - Rocket League
 
 - Author: Jako (fairlight51)

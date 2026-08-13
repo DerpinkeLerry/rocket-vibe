@@ -39,7 +39,7 @@ const defaultCarStyle = "vortex"
 
 func sanitizeCarStyle(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "vortex", "titan", "apex", "razor":
+	case "vortex", "apex", "razor":
 		return strings.ToLower(strings.TrimSpace(value))
 	default:
 		return defaultCarStyle

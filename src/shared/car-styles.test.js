@@ -4,13 +4,12 @@ import { CAR_STYLES, getCarStyle, normalizeCarStyle, shouldUsePremiumCarModel } 
 
 const expectedPremium = {
   vortex: ['OCTANE', 'octane'],
-  titan: ['MCLAREN 570S', 'mclaren'],
   apex: ['DOMINUS', 'dominus'],
   razor: ['FENNEC', 'fennec']
 };
 
-test('all four compatibility ids expose the named premium cars', () => {
-  assert.equal(CAR_STYLES.length, 4);
+test('the three supported car ids expose the named premium cars', () => {
+  assert.equal(CAR_STYLES.length, 3);
   for (const [id, [name, premiumModel]] of Object.entries(expectedPremium)) {
     assert.equal(normalizeCarStyle(id), id);
     assert.equal(getCarStyle(id).name, name);
@@ -23,5 +22,6 @@ test('all real car models are gated to ultra high only', () => {
     assert.equal(shouldUsePremiumCarModel(id, false), false);
     assert.equal(shouldUsePremiumCarModel(id, true), true);
   }
+  assert.equal(normalizeCarStyle('titan'), 'vortex');
   assert.equal(normalizeCarStyle('not-a-car'), 'vortex');
 });

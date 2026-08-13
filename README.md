@@ -1,11 +1,12 @@
-# Rocket Vibe 1.10.18 – Mobile HUD Spacing
+# Rocket Vibe 1.10.21 – Dusk / HUD / High-Ball Camera
 
-## v1.10.18 – Mobile Quick Chat spacing
+## v1.10.21
 
-- Mobile quick chat now uses a dedicated top-center lane under the scoreboard instead of the top-left boost-gauge area.
-- Portrait layouts move the feed below the circular boost gauge so messages remain readable.
-- Landscape layouts keep boost, score, network and quick-chat HUD regions separated.
-- Sketchfab/custom car models can be integrated as GLB/GLTF cosmetics while retaining the existing gameplay hitbox and physics.
+- Fahrzeugauswahl auf **OCTANE, DOMINUS und FENNEC** reduziert; der McLaren samt GLB/Attribution ist entfernt.
+- Desktop-Steuerungshilfe ist standardmaessig eingeklappt und wird ueber den kleinen Button **STEUERUNG** unten links geoeffnet.
+- Oben rechts stehen nur noch **PING, FPS und SPIELERZAHL** ohne Panel-/Box-Hintergrund.
+- Ball Cam besitzt einen High-Ball-Assist: bei hohen Baellen faehrt die Kamera weich nach oben und hinten und hebt den Blick an, damit Aerials direkt unter dem Ball lesbar bleiben.
+- `ULTRA HIGH` verwendet eine permanente Abenddaemmerung mit Farbverlauf, statischen Sternen, Mond + Halo, Wolkenbaenken und aktivem kuehl/warmem Mehrlicht-Setup. Normal und Ultra Low behalten den hellen Tageslook.
 
 
 Browser-Spiel fuer bis zu vier Spieler mit Three.js-Rendering, lokaler Client-Prediction und einem autoritativen Go-Server. Frontend und Server werden auf Railway als **ein Service** betrieben. Dadurch verwendet der Browser dieselbe HTTPS-Domain fuer Seite und WebSocket (`/lan`); eine separate Backend-URL oder CORS-Konfiguration ist nicht erforderlich.
@@ -23,7 +24,7 @@ Browser-Spiel fuer bis zu vier Spieler mit Three.js-Rendering, lokaler Client-Pr
 
 Die Arena besitzt eine geschlossene, transparente Einfassung mit abgerundeten Ecken und Glasdecke. Eine kompakte 3,4-Meter-Viertelrundung verbindet den Boden ohne 90-Grad-Kante mit der Wand; das Glas beginnt bereits kurz oberhalb der Rundung. Der Tormund besitzt eine eigene horizontale 2,8-Meter-Rundung, die Endwand, Torseitenwand und Torboden sichtbar wie physikalisch ohne offene Naht verbindet. Die Kamera darf auch hinter bzw. ausserhalb der Arena stehen; Geometrie zwischen Kamera und Auto wird fuer den Render-Frame ausgeblendet. Client-Prediction, Go-Server und der lokale Rapier-Modus verwenden dieselbe Grundform, damit Wand-, Tor- und Bodenkontakte nicht durch spaete Netzwerkkorrekturen zurueckspringen.
 
-Beim Start werden Spielername und eine von vier rein optischen, Rocket-League-inspirierten Karosserien mit Vorschau ausgewaehlt. Alle vier Varianten verwenden dieselbe Hitbox und dieselben Fahrwerte. Der Server bereinigt und begrenzt ihn, verteilt feste Orange-/Blau-Teams und sendet die Spielerliste an alle Browser. Namensschilder erscheinen ueber den Autos. Das orange Tor liegt auf +Z, das blaue auf -Z; ein Treffer zaehlt fuer das gegnerische Team, aktualisiert den zentralen Spielstand und startet alle Fahrzeuge sowie den Ball neu.
+Beim Start werden Spielername und eine von drei rein optischen, Rocket-League-inspirierten Karosserien mit Vorschau ausgewaehlt. Alle drei Varianten verwenden dieselbe Hitbox und dieselben Fahrwerte. Der Server bereinigt und begrenzt ihn, verteilt feste Orange-/Blau-Teams und sendet die Spielerliste an alle Browser. Namensschilder erscheinen ueber den Autos. Das orange Tor liegt auf +Z, das blaue auf -Z; ein Treffer zaehlt fuer das gegnerische Team, aktualisiert den zentralen Spielstand und startet alle Fahrzeuge sowie den Ball neu.
 
 Die Serverphysik rechnet intern mit `float64`. Fuer das Netzwerk werden Position, Quaternion, lineare und Winkelgeschwindigkeit als `float32` uebertragen. Bei vier Spielern sind das grob 16 KB/s je Client bzw. rund 64 KB/s Server-Ausgang plus WebSocket-Overhead.
 ## Circular Boost HUD v1.10.17
@@ -167,7 +168,7 @@ Direkt auf dem Startbildschirm kann die Grafikqualitaet gewaehlt werden. Die Aus
 
 - **NORMAL**: bisherige volle Standarddarstellung; auf Smartphone/Tablet automatisch der empfohlene Modus.
 - **ULTRA LOW**: stark reduzierte Renderauflosung und Details fuer schwache PCs/VMs. Weiterhin kompatibel mit `?perf=ultra` bzw. `?perf=ultra-low`.
-- **ULTRA HIGH**: auf Desktop und leistungsstarken Smartphones waehlbar. Desktop startet bei 95 % Render-Skalierung und regelt adaptiv zwischen 68 und 108 %; Mobile startet bei 80 % und regelt zwischen 55 und 92 %. Der Modus verwendet dichte alpha-getestete 3D-Grasbueschel, prozedurale hochaufgeloeste Turf-/Wandtexturen, Relief fuer die Wandplatten, detaillierte Felgen, matte Materialien sowie gestaffelt aktualisierte 2048-/1024-Schatten. Bloom, PMREM-Reflexionen und eine zweite Fullscreen-Renderpass-Kette bleiben bewusst deaktiviert.
+- **ULTRA HIGH**: auf Desktop und leistungsstarken Smartphones waehlbar. Desktop startet bei 95 % Render-Skalierung und regelt adaptiv zwischen 68 und 108 %; Mobile startet bei 80 % und regelt zwischen 55 und 92 %. Der Modus verwendet dichte alpha-getestete 3D-Grasbueschel, prozedurale hochaufgeloeste Turf-/Wandtexturen, Relief fuer die Wandplatten, detaillierte Felgen, matte Materialien, eine permanente mondbeleuchtete Abenddaemmerung mit Sternenhimmel sowie gestaffelt aktualisierte 2048-/1024-Schatten. Bloom, PMREM-Reflexionen und eine zweite Fullscreen-Renderpass-Kette bleiben bewusst deaktiviert.
 
 Direktlinks fuer Tests:
 
@@ -180,7 +181,7 @@ Auf Smartphones bleibt **NORMAL** die empfohlene Einstellung. **ULTRA HIGH** ist
 
 ### Finale Arena-/Performance-Abstimmung
 
-- Tribuen und Publikum sind entfernt; Skyline, Haeuser, Baeume und Tageshimmel bleiben erhalten.
+- Tribuen und Publikum sind entfernt; Skyline, Haeuser und Baeume bleiben erhalten. Normal/Low verwenden Tageshimmel, Ultra High eine mondbeleuchtete Abenddaemmerung.
 - Die Boden-Wand-Rundung ist deutlich kuerzer, waehrend die Glasflaeche frueher beginnt.
 - Feldwand und Tortunnel werden ueber einen echten gerundeten Tormund verbunden. Ein schmaler Team-Akzent folgt genau dieser Kurve und kaschiert keine Luecke, sondern markiert die gemeinsame Geometrie.
 - Der Torinnenraum besitzt abgerundete Boden-, Seiten-, Rueckwand- und Deckenuebergaenge. Die gleichen Radien gelten fuer Rendering, Rapier, Client-Prediction und Go-Server.
@@ -274,11 +275,10 @@ Nach Replay-Ende werden Ball, Autos und Boost-Pads auf Kickoff zurückgesetzt, d
 
 ## Premium Rocket League Models v1.10.20
 
-- Die vier sichtbaren Fahrzeug-Slots heissen jetzt `OCTANE`, `MCLAREN 570S`, `DOMINUS` und `FENNEC`. Die internen IDs `vortex`, `titan`, `apex`, `razor` bleiben fuer Netzwerk-, Save- und Server-Kompatibilitaet bestehen.
+- Die drei sichtbaren Fahrzeug-Slots heissen jetzt `OCTANE`, `DOMINUS` und `FENNEC`. Die internen IDs `vortex`, `apex` und `razor` bleiben fuer Netzwerk-, Save- und Server-Kompatibilitaet bestehen; der fruehere `titan`/McLaren-Slot wird nicht mehr angeboten und faellt auf Octane zurueck.
 - Nur `ULTRA HIGH` laedt die echten GLB-Modelle. `NORMAL` und `ULTRA LOW` nutzen weiterhin die jeweiligen leichten prozeduralen Fallback-Karosserien mit identischer Gameplay-Hitbox.
 - Alle Premium-GLBs werden lazy geladen: Ein Fahrzeugmodell wird erst angefordert, wenn mindestens ein sichtbarer Spieler genau dieses Auto in Ultra High benutzt.
 - Geometrien und eingebettete Texturen werden zwischen gleichen Fahrzeugen geteilt; Materialien werden pro Auto geklont, damit Teamfarben getrennt bleiben.
-- Der McLaren benutzt `SkeletonUtils.clone`, damit sein skinned Chassis bei mehreren Instanzen keine Skeleton-Referenzen teilt.
 - Das hochgeladene Rocket-League-Ball-GLB wird ebenfalls ausschliesslich in `ULTRA HIGH` geladen. Normal/Ultra Low behalten den bisherigen prozeduralen Soccar-Ball. Ballradius, Collider, Masse, Roll- und Trefferphysik bleiben unveraendert.
 - Physics, Gewicht, Hitbox, Booststaerke und Fahrwerte aller Fahrzeuge bleiben vollstaendig im bestehenden Car-System und werden von den GLBs nicht beeinflusst.
 

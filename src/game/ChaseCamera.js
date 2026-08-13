@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getBallCamHighBallAssist } from '../shared/camera-tuning.js';
 
 const MODE_BALL = 'BALL';
 const MODE_CAR = 'CAR';
@@ -37,6 +38,8 @@ export class ChaseCamera {
     this.carPosition = new THREE.Vector3();
     this.ballPosition = new THREE.Vector3();
     this.pivot = new THREE.Vector3();
+    this.lookTarget = new THREE.Vector3();
+    this.desiredLookTarget = new THREE.Vector3();
     this.toBall = new THREE.Vector3();
     this.carForward = new THREE.Vector3(0, 0, -1);
     this.carUp = new THREE.Vector3(0, 1, 0);
@@ -90,12 +93,16 @@ export class ChaseCamera {
     if (r) {
       this.q.set(r.x, r.y, r.z, r.w).normalize();
       this.carForward.set(0, 0, -1).applyQuaternion(this.q).normalize();
+      this.carUp.set(0, 1, 0).applyQuaternion(this.q).normalize();
     }
     this.carHeadingDirection.set(this.carForward.x, 0, this.carForward.z);
     if (this.carHeadingDirection.lengthSq() < 0.0001) this.carHeadingDirection.set(0, 0, -1);
     this.carHeadingDirection.normalize();
     this.orbitDirection.copy(this.carHeadingDirection);
     this.targetOrbitDirection.copy(this.carHeadingDirection);
+    this.pivot.copy(this.carPosition).addScaledVector(this.carUp, CAR_TARGET_LOCAL_HEIGHT);
+    this.lookTarget.copy(this.pivot);
+    this.desiredLookTarget.copy(this.pivot);
     this.occlusionCandidates = null;
   }
 
@@ -117,6 +124,7 @@ export class ChaseCamera {
 
     const speed = Math.min(this.car.getSpeedKmh() / 120, 1);
 
+    this.desiredLookTarget.copy(this.pivot);
     if (this.mode === MODE_BALL) this.updateBallCam(dt, speed);
     else this.updateCarCam(dt, speed);
 
@@ -124,10 +132,14 @@ export class ChaseCamera {
     this.position.lerp(this.desired, positionT);
     this.camera.position.copy(this.position);
 
-    // The car, never the ball, is the look target. Therefore its visual center
-    // stays in the exact middle of the viewport in both camera modes.
+    // Normal ball-cam keeps the car almost perfectly centered. When the ball is
+    // very high above us, a smooth high-ball assist raises both camera and aim
+    // target so the ball remains visible instead of disappearing above the FOV.
+    const lookT = 1 - Math.exp(-13.5 * dt);
+    if (this.lookTarget.lengthSq() < 0.0001) this.lookTarget.copy(this.desiredLookTarget);
+    else this.lookTarget.lerp(this.desiredLookTarget, lookT);
     this.camera.up.set(0, 1, 0);
-    this.camera.lookAt(this.pivot);
+    this.camera.lookAt(this.lookTarget);
   }
 
   updateBallCam(dt, speed) {
@@ -150,21 +162,28 @@ export class ChaseCamera {
     this.orbitDirection.normalize();
 
     const ballHeight = this.ballPosition.y - this.pivot.y;
+    const highBall = getBallCamHighBallAssist(ballHeight);
     const distance = 7.45
       + speed * 1.0
-      + THREE.MathUtils.clamp(fullBallDistance * 0.012, 0, 1.15);
+      + THREE.MathUtils.clamp(fullBallDistance * 0.012, 0, 1.15)
+      + highBall.distanceExtra;
 
-    // Keep the camera above the car, but lower it a little for high balls so
-    // the ball remains easier to read without ever moving the car off-center.
+    // Rocket-style high-ball assist: rise and pull back as the ball climbs. The
+    // camera only starts giving up exact car centering once the ball is several
+    // metres overhead, which keeps normal driving stable but makes aerial reads
+    // possible directly underneath the ball.
     const height = THREE.MathUtils.clamp(
-      3.0 + speed * 0.3 - ballHeight * 0.07,
-      1.65,
-      4.2
+      3.0 + speed * 0.3 + highBall.heightExtra,
+      2.2,
+      15.0
     );
+    const lookLift = highBall.lookLift;
 
     this.desired.copy(this.pivot)
       .addScaledVector(this.orbitDirection, -distance);
     this.desired.y += height;
+    this.desiredLookTarget.copy(this.pivot);
+    this.desiredLookTarget.y += lookLift;
   }
 
   updateCarCam(dt, speed) {

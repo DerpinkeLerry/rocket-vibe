@@ -75,12 +75,13 @@ export class Game {
       : Math.min(window.devicePixelRatio || 1, this.profile.initialPixelRatio);
 
     this.scene = new THREE.Scene();
-    // Bright daylight is intentionally cheap: a flat background + light fog do
-    // most of the work, while the sky dome below is a single unlit draw call.
-    const daylightSky = this.profile.ultraHigh ? 0x5687ad : 0x7fb4d3;
-    this.scene.background = new THREE.Color(daylightSky);
+    // Normal/low keep the bright daylight look. Ultra High uses a permanent
+    // blue-hour dusk palette with a moonlit sky; the arena lights below provide
+    // active illumination so the pitch stays readable rather than simply dark.
+    const skyColor = this.profile.ultraHigh ? 0x161a34 : 0x7fb4d3;
+    this.scene.background = new THREE.Color(skyColor);
     this.scene.fog = this.profile.useFog
-      ? new THREE.Fog(this.profile.ultraHigh ? 0x6f8790 : 0x9bb9c5, 155, 360)
+      ? new THREE.Fog(this.profile.ultraHigh ? 0x30344d : 0x9bb9c5, this.profile.ultraHigh ? 135 : 155, this.profile.ultraHigh ? 350 : 360)
       : null;
 
     this.camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, this.profile.ultraLow ? 230 : (this.profile.ultraHigh ? 520 : 390));
@@ -106,7 +107,7 @@ export class Game {
     this.renderer.sortObjects = !this.profile.ultraLow;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = this.profile.useToneMapping ? THREE.AgXToneMapping : THREE.NoToneMapping;
-    this.renderer.toneMappingExposure = this.profile.ultraHigh ? 0.96 : 1.02;
+    this.renderer.toneMappingExposure = this.profile.ultraHigh ? 1.00 : 1.02;
     this.root.appendChild(this.renderer.domElement);
     this.root.classList.toggle('perf-ultra', this.profile.ultraLow);
     this.root.classList.toggle('perf-ultra-low', this.profile.ultraLow);
@@ -342,26 +343,25 @@ export class Game {
   }
 
   addSkyDecoration() {
-    // One very low-poly vertex-coloured dome gives us a daylight gradient with
-    // no texture lookup, post processing, shadow map, or dynamic update cost.
-    const radius = this.profile.ultraHigh ? 340 : 260;
+    const ultraHigh = this.profile.ultraHigh;
+    const radius = ultraHigh ? 350 : 260;
     const domeGeometry = new THREE.SphereGeometry(
       radius,
-      this.profile.lowDetail ? 16 : (this.profile.ultraHigh ? 40 : 24),
-      this.profile.lowDetail ? 8 : (this.profile.ultraHigh ? 20 : 12)
+      this.profile.lowDetail ? 16 : (ultraHigh ? 40 : 24),
+      this.profile.lowDetail ? 8 : (ultraHigh ? 20 : 12)
     );
     const positions = domeGeometry.getAttribute('position');
     const colors = new Float32Array(positions.count * 3);
-    const horizon = new THREE.Color(this.profile.ultraHigh ? 0x8fa8aa : 0xb8ced0);
-    const midSky = new THREE.Color(this.profile.ultraHigh ? 0x5f91b7 : 0x79afd0);
-    const zenith = new THREE.Color(this.profile.ultraHigh ? 0x2e6598 : 0x4a8dbb);
+    const horizon = new THREE.Color(ultraHigh ? 0xa35f72 : 0xb8ced0);
+    const midSky = new THREE.Color(ultraHigh ? 0x39456f : 0x79afd0);
+    const zenith = new THREE.Color(ultraHigh ? 0x10162f : 0x4a8dbb);
     const color = new THREE.Color();
     for (let index = 0; index < positions.count; index++) {
       const h = THREE.MathUtils.clamp(positions.getY(index) / radius, -1, 1);
-      if (h < 0.18) {
-        color.copy(horizon).lerp(midSky, THREE.MathUtils.clamp((h + 0.18) / 0.36, 0, 1));
+      if (h < 0.13) {
+        color.copy(horizon).lerp(midSky, THREE.MathUtils.clamp((h + 0.20) / 0.33, 0, 1));
       } else {
-        color.copy(midSky).lerp(zenith, THREE.MathUtils.clamp((h - 0.18) / 0.82, 0, 1));
+        color.copy(midSky).lerp(zenith, THREE.MathUtils.clamp((h - 0.13) / 0.87, 0, 1));
       }
       colors[index * 3] = color.r;
       colors[index * 3 + 1] = color.g;
@@ -379,53 +379,174 @@ export class Game {
       })
     );
     dome.position.y = 18;
-    dome.renderOrder = -10;
+    dome.renderOrder = -20;
     dome.userData.cameraOcclusionIgnore = true;
     this.scene.add(dome);
 
-    // Static sun sprite. No shadow casting: the directional light supplies the
-    // daylight cue without allocating a shadow texture.
-    const sun = new THREE.Sprite(new THREE.SpriteMaterial({
-      color: 0xffdc9b,
-      transparent: true,
-      opacity: 0.92,
-      depthWrite: false,
-      depthTest: true,
-      fog: false
-    }));
-    sun.position.set(-118, 104, -156);
-    sun.scale.set(this.profile.ultraHigh ? 28 : 24, this.profile.ultraHigh ? 28 : 24, 1);
-    sun.userData.cameraOcclusionIgnore = true;
-    this.scene.add(sun);
+    const makeGlowTexture = (moon = false) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, 256, 256);
+      if (moon) {
+        const disc = ctx.createRadialGradient(112, 92, 12, 128, 128, 103);
+        disc.addColorStop(0, '#ffffff');
+        disc.addColorStop(0.48, '#e8f1ff');
+        disc.addColorStop(0.82, '#aebfda');
+        disc.addColorStop(1, 'rgba(104,122,157,0)');
+        ctx.fillStyle = disc;
+        ctx.beginPath();
+        ctx.arc(128, 128, 104, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 0.15;
+        ctx.fillStyle = '#667694';
+        for (const [x, y, r] of [[92, 86, 15], [159, 111, 10], [128, 158, 18], [76, 143, 8], [170, 164, 7]]) {
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else {
+        const glow = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+        glow.addColorStop(0, 'rgba(255,255,255,0.95)');
+        glow.addColorStop(0.16, 'rgba(178,207,255,0.52)');
+        glow.addColorStop(0.50, 'rgba(112,143,232,0.14)');
+        glow.addColorStop(1, 'rgba(70,80,160,0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, 256, 256);
+      }
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.needsUpdate = true;
+      return texture;
+    };
 
-    if (this.profile.ultraHigh) {
-      const halo = new THREE.Sprite(new THREE.SpriteMaterial({
-        color: 0xffbe69,
+    if (ultraHigh) {
+      // One static point cloud gives the dusk sky hundreds of stars for a single
+      // draw call. No twinkle animation is needed; the high-contrast moonlight
+      // and arena LEDs provide the motion/energy in the foreground.
+      let seed = 0x42c0ffee;
+      const random = () => {
+        seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+        return seed / 0x100000000;
+      };
+      const starCount = this.profile.mobile ? 260 : 560;
+      const starPositions = new Float32Array(starCount * 3);
+      const starColors = new Float32Array(starCount * 3);
+      const starRadius = radius * 0.90;
+      const warmStar = new THREE.Color(0xffe6c4);
+      const coolStar = new THREE.Color(0xcce4ff);
+      const starColor = new THREE.Color();
+      for (let index = 0; index < starCount; index++) {
+        const azimuth = random() * Math.PI * 2;
+        const yNorm = 0.12 + Math.pow(random(), 0.68) * 0.82;
+        const ring = Math.sqrt(Math.max(0, 1 - yNorm * yNorm));
+        starPositions[index * 3] = Math.cos(azimuth) * ring * starRadius;
+        starPositions[index * 3 + 1] = yNorm * starRadius;
+        starPositions[index * 3 + 2] = Math.sin(azimuth) * ring * starRadius;
+        starColor.copy(coolStar).lerp(warmStar, random() * 0.34);
+        const intensity = 0.66 + random() * 0.34;
+        starColors[index * 3] = starColor.r * intensity;
+        starColors[index * 3 + 1] = starColor.g * intensity;
+        starColors[index * 3 + 2] = starColor.b * intensity;
+      }
+      const starGeometry = new THREE.BufferGeometry();
+      starGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+      starGeometry.setAttribute('color', new THREE.BufferAttribute(starColors, 3));
+      const stars = new THREE.Points(starGeometry, new THREE.PointsMaterial({
+        size: this.profile.mobile ? 0.78 : 0.95,
+        sizeAttenuation: true,
+        vertexColors: true,
         transparent: true,
-        opacity: 0.07,
+        opacity: 0.92,
+        depthWrite: false,
+        fog: false
+      }));
+      stars.position.y = 18;
+      stars.renderOrder = -15;
+      stars.frustumCulled = false;
+      stars.userData.cameraOcclusionIgnore = true;
+      this.scene.add(stars);
+
+      const moonTexture = makeGlowTexture(true);
+      const moon = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: moonTexture,
+        color: 0xe8f3ff,
+        transparent: true,
+        opacity: 0.96,
         depthWrite: false,
         depthTest: true,
         fog: false,
-        blending: THREE.AdditiveBlending
+        toneMapped: false
       }));
-      halo.position.copy(sun.position);
-      halo.scale.set(52, 52, 1);
-      halo.userData.cameraOcclusionIgnore = true;
-      this.scene.add(halo);
+      moon.position.set(-122, 100, -182);
+      moon.scale.set(25, 25, 1);
+      moon.renderOrder = -12;
+      moon.userData.cameraOcclusionIgnore = true;
+      this.scene.add(moon);
+
+      const haloTexture = makeGlowTexture(false);
+      const moonHalo = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: haloTexture,
+        color: 0x9cbcff,
+        transparent: true,
+        opacity: 0.34,
+        depthWrite: false,
+        depthTest: true,
+        fog: false,
+        blending: THREE.AdditiveBlending,
+        toneMapped: false
+      }));
+      moonHalo.position.copy(moon.position);
+      moonHalo.scale.set(68, 68, 1);
+      moonHalo.renderOrder = -13;
+      moonHalo.userData.cameraOcclusionIgnore = true;
+      this.scene.add(moonHalo);
+
+      const horizonGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: haloTexture,
+        color: 0xff826e,
+        transparent: true,
+        opacity: 0.16,
+        depthWrite: false,
+        depthTest: true,
+        fog: false,
+        blending: THREE.AdditiveBlending,
+        toneMapped: false
+      }));
+      horizonGlow.position.set(148, 34, -238);
+      horizonGlow.scale.set(118, 76, 1);
+      horizonGlow.renderOrder = -14;
+      horizonGlow.userData.cameraOcclusionIgnore = true;
+      this.scene.add(horizonGlow);
+    } else {
+      const sun = new THREE.Sprite(new THREE.SpriteMaterial({
+        color: 0xffdc9b,
+        transparent: true,
+        opacity: 0.92,
+        depthWrite: false,
+        depthTest: true,
+        fog: false
+      }));
+      sun.position.set(-118, 104, -156);
+      sun.scale.set(24, 24, 1);
+      sun.userData.cameraOcclusionIgnore = true;
+      this.scene.add(sun);
     }
 
-    // A handful of flattened, instanced cloud blobs break up the empty sky.
-    // Even in normal mode this remains one draw call.
-    const cloudGeometry = new THREE.SphereGeometry(1, this.profile.lowDetail ? 5 : (this.profile.ultraHigh ? 10 : 7), this.profile.ultraHigh ? 6 : 4);
+    // Flattened instanced cloud banks remain very cheap. Ultra High tints them
+    // lavender/blue so they catch the permanent dusk rather than looking like
+    // bright daytime cotton in front of the stars.
+    const cloudGeometry = new THREE.SphereGeometry(1, this.profile.lowDetail ? 5 : (ultraHigh ? 9 : 7), ultraHigh ? 5 : 4);
     const cloudMaterial = new THREE.MeshBasicMaterial({
-      color: 0xeaf3f8,
+      color: ultraHigh ? 0x7e819b : 0xeaf3f8,
       transparent: true,
-      opacity: this.profile.lowDetail ? 0.30 : (this.profile.ultraHigh ? 0.44 : 0.40),
+      opacity: this.profile.lowDetail ? 0.30 : (ultraHigh ? 0.22 : 0.40),
       depthWrite: false,
       fog: false
     });
-    const cloudGroups = this.profile.lowDetail ? 6 : (this.profile.ultraHigh ? 18 : 11);
-    const blobsPerCloud = this.profile.ultraHigh ? 4 : 3;
+    const cloudGroups = this.profile.lowDetail ? 6 : (ultraHigh ? (this.profile.mobile ? 10 : 15) : 11);
+    const blobsPerCloud = ultraHigh ? 4 : 3;
     const clouds = new THREE.InstancedMesh(cloudGeometry, cloudMaterial, cloudGroups * blobsPerCloud);
     const dummy = new THREE.Object3D();
     let instance = 0;
@@ -435,10 +556,10 @@ export class Game {
       const baseZ = Math.cos(angle) * 185;
       const baseY = 44 + (group % 3) * 7;
       for (let blob = 0; blob < blobsPerCloud; blob++) {
-        if (this.profile.ultraHigh) {
+        if (ultraHigh) {
           const centeredBlob = blob - (blobsPerCloud - 1) * 0.5;
           dummy.position.set(baseX + centeredBlob * 5.2, baseY + (Math.abs(centeredBlob) < 0.6 ? 1.4 : 0), baseZ);
-          dummy.scale.set(8.7 - Math.abs(centeredBlob) * 0.7, 1.8 + (Math.abs(centeredBlob) < 0.6 ? 0.55 : 0), 3.7 + (blob % 2) * 0.45);
+          dummy.scale.set(9.4 - Math.abs(centeredBlob) * 0.75, 1.65 + (Math.abs(centeredBlob) < 0.6 ? 0.5 : 0), 4.0 + (blob % 2) * 0.55);
         } else {
           dummy.position.set(baseX + (blob - 1) * 5.2, baseY + (blob === 1 ? 1.4 : 0), baseZ);
           dummy.scale.set(8.5 - blob * 0.8, 1.8 + (blob === 1 ? 0.5 : 0), 3.6 + blob * 0.5);
@@ -449,6 +570,7 @@ export class Game {
       }
     }
     clouds.instanceMatrix.needsUpdate = true;
+    clouds.renderOrder = -11;
     clouds.userData.cameraOcclusionIgnore = true;
     this.scene.add(clouds);
   }
