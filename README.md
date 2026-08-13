@@ -1,4 +1,4 @@
-# Rocket Vibe 1.10.10 – Soccar Ball Visual Rework
+# Rocket Vibe 1.10.11 – Air Boost Aerial Rework
 
 Browser-Spiel fuer bis zu vier Spieler mit Three.js-Rendering, lokaler Client-Prediction und einem autoritativen Go-Server. Frontend und Server werden auf Railway als **ein Service** betrieben. Dadurch verwendet der Browser dieselbe HTTPS-Domain fuer Seite und WebSocket (`/lan`); eine separate Backend-URL oder CORS-Konfiguration ist nicht erforderlich.
 
@@ -40,6 +40,7 @@ Der Go-Server ist die einzige Online-Autoritaet und verarbeitet:
 - Sechs grosse 100-%-Boostpads und 28 kleine +12-%-Pads im Soccar-artigen Rotationslayout mit 10/4 Sekunden Respawn
 - Variabler Sprung durch gehaltenes Space, neutraler Doppelsprung und gerichtete Dodge/Flips mit exakt einer kontrollierten 360-Grad-Rotation
 - Pitch/Yaw/Roll in der Luft mit begrenzter, kontrollierbarer Winkelgeschwindigkeit
+- Separater, staerkerer Air-Boost (34 m/s² statt 16 m/s² am Boden), damit ein nach oben ausgerichtetes Auto die 20,5-m/s²-Schwerkraft ueberwinden und kontrolliert Hoehe gewinnen kann
 - Surface-Adhesion: Rampen und senkrechte Waende halten das Auto bis zum aktiven Absprung
 - Auto gegen Auto
 - Auto gegen Ball

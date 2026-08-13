@@ -818,7 +818,7 @@ export class Car {
 
     if (boosting) {
       const lin = this.body.linvel();
-      this.velocityVec.set(lin.x, lin.y, lin.z).addScaledVector(this.forward, CAR_TUNING.boostAcceleration * dt);
+      this.velocityVec.set(lin.x, lin.y, lin.z).addScaledVector(this.forward, CAR_TUNING.airBoostAcceleration * dt);
       const speed = this.velocityVec.length();
       if (speed > CAR_TUNING.maxBoostSpeed) this.velocityVec.multiplyScalar(CAR_TUNING.maxBoostSpeed / speed);
       this.body.setLinvel({ x: this.velocityVec.x, y: this.velocityVec.y, z: this.velocityVec.z }, true);

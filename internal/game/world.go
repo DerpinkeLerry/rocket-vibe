@@ -626,7 +626,7 @@ func (world *World) applyAirControl(car *Car, forward, right, up Vec3, pitch, ya
 	car.AngularVelocity = clampMagnitude(car.AngularVelocity, maximumAngular)
 
 	if boosting {
-		car.Velocity = car.Velocity.Add(forward.Mul(config.BoostAcceleration * dt))
+		car.Velocity = car.Velocity.Add(forward.Mul(config.AirBoostAcceleration * dt))
 		car.Velocity = clampMagnitude(car.Velocity, config.MaxBoostSpeed)
 	}
 }

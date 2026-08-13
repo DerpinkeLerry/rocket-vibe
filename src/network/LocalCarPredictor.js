@@ -328,7 +328,7 @@ export class LocalCarPredictor {
     if (angularLength > maxAngular) this.ang.multiplyScalar(maxAngular / angularLength);
 
     if (boosting) {
-      this.vel.addScaledVector(this.forward, CAR_TUNING.boostAcceleration * dt);
+      this.vel.addScaledVector(this.forward, CAR_TUNING.airBoostAcceleration * dt);
       const speed = this.vel.length();
       if (speed > CAR_TUNING.maxBoostSpeed) this.vel.multiplyScalar(CAR_TUNING.maxBoostSpeed / speed);
     }

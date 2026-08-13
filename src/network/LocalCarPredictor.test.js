@@ -180,6 +180,20 @@ test('prediction gives a held jump more lift than a tap', () => {
   assert.ok(held.body.linvel().y > tapped.body.linvel().y + 0.5);
 });
 
+test('prediction air boost gains altitude when the nose is raised', () => {
+  const { body, predictor } = makePredictor({ x: 0, y: 9, z: 0 });
+  const pitch = 50 * Math.PI / 180;
+  body.setRotation({ x: Math.sin(pitch / 2), y: 0, z: 0, w: Math.cos(pitch / 2) });
+  predictor.setInput({ mask: INPUT_BITS.BOOST, edges: 0 });
+
+  const startY = body.translation().y;
+  for (let index = 0; index < 90; index++) predictor.step(1 / 120);
+
+  assert.ok(body.translation().y > startY + 0.5,
+    `air boost failed to climb: start=${startY} end=${body.translation().y}`);
+  assert.ok(body.linvel().y > 1, `air boost vertical speed was ${body.linvel().y}`);
+});
+
 test('prediction consumes boost and enforces the 120 km/h hard cap', () => {
   const { body, predictor } = makePredictor();
   predictor.syncGrounded(true);

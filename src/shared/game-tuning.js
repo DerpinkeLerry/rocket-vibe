@@ -34,6 +34,11 @@ export const CAR_TUNING = Object.freeze({
   brakeAcceleration: 28.0,
   coastDeceleration: 3.5,
   boostAcceleration: 16.0,
+  // Air boost is intentionally stronger than ground boost. With the current
+  // gravity this gives roughly a Rocket-League-like thrust/gravity ratio, so
+  // pitching the nose upward can genuinely gain altitude instead of only
+  // slowing the fall.
+  airBoostAcceleration: 34.0,
   boostCapacity: 100,
   boostConsumptionPerSecond: 100 / 3,
   grip: 18.0,

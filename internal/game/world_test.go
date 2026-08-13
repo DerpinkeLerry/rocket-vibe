@@ -53,6 +53,39 @@ func TestNormalAndBoostTopSpeedsMatchRequestedKmh(t *testing.T) {
 	}
 }
 
+func TestAirBoostCanGainAltitudeWhenNoseIsRaised(t *testing.T) {
+	config := DefaultConfig()
+	if config.Car.AirBoostAcceleration <= config.Gravity {
+		t.Fatalf("air boost acceleration %.3f must beat gravity %.3f when pointed upward", config.Car.AirBoostAcceleration, config.Gravity)
+	}
+
+	world := NewWorld(config)
+	world.SetConnected(0, true)
+	car := &world.Cars[0]
+	car.Position = Vec3{Y: 9}
+	car.Rotation = quatFromAxisAngle(Vec3{X: 1}, 50*math.Pi/180)
+	car.Velocity = Vec3{}
+	car.Grounded = false
+	car.GroundLockout = 1
+	car.Boost = config.Car.BoostCapacity
+	if !world.SetInput(0, Input{Sequence: 1, Mask: InputBoost}) {
+		t.Fatal("air boost input was not accepted")
+	}
+
+	startY := car.Position.Y
+	dt := 1 / float64(config.PhysicsHz)
+	for step := 0; step < config.PhysicsHz*3/4; step++ {
+		world.Step(dt)
+	}
+
+	if car.Position.Y <= startY+0.5 {
+		t.Fatalf("nose-up air boost failed to gain meaningful altitude: start=%.3f end=%.3f velocity=%+v", startY, car.Position.Y, car.Velocity)
+	}
+	if car.Velocity.Y <= 1 {
+		t.Fatalf("nose-up air boost did not overcome gravity: velocity=%+v", car.Velocity)
+	}
+}
+
 func TestBoostedGroundSpeedPersistsAfterBoostReleaseUntilBraking(t *testing.T) {
 	config := DefaultConfig()
 	world := NewWorld(config)

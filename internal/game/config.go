@@ -33,6 +33,7 @@ type CarConfig struct {
 	BrakeAcceleration    float64 `json:"brakeAcceleration"`
 	CoastDeceleration    float64 `json:"coastDeceleration"`
 	BoostAcceleration    float64 `json:"boostAcceleration"`
+	AirBoostAcceleration float64 `json:"airBoostAcceleration"`
 	Grip                 float64 `json:"grip"`
 	DriftGrip            float64 `json:"driftGrip"`
 	SteerRate            float64 `json:"steerRate"`
@@ -113,6 +114,7 @@ func DefaultConfig() Config {
 			BrakeAcceleration:    28,
 			CoastDeceleration:    3.5,
 			BoostAcceleration:    16,
+			AirBoostAcceleration: 34,
 			Grip:                 18,
 			DriftGrip:            3.0,
 			SteerRate:            2.75,
