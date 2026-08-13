@@ -1,4 +1,4 @@
-# Rocket Vibe 1.10.12 – Vibrant Pitch & Team Wall Rework
+# Rocket Vibe 1.10.13 – Quick Chat
 
 Browser-Spiel fuer bis zu vier Spieler mit Three.js-Rendering, lokaler Client-Prediction und einem autoritativen Go-Server. Frontend und Server werden auf Railway als **ein Service** betrieben. Dadurch verwendet der Browser dieselbe HTTPS-Domain fuer Seite und WebSocket (`/lan`); eine separate Backend-URL oder CORS-Konfiguration ist nicht erforderlich.
 
@@ -20,6 +20,11 @@ Beim Start werden Spielername und eine von vier rein optischen, Rocket-League-in
 Die Serverphysik rechnet intern mit `float64`. Fuer das Netzwerk werden Position, Quaternion, lineare und Winkelgeschwindigkeit als `float32` uebertragen. Bei vier Spielern sind das grob 16 KB/s je Client bzw. rund 64 KB/s Server-Ausgang plus WebSocket-Overhead.
 
 
+
+
+## Quick Chat
+
+Mit `1` bzw. `Numpad 1` wird der feste Multiplayer-Quickchat **What a save!** gesendet. Jeder Spieler darf drei Nachrichten direkt hintereinander senden; nach der dritten Nachricht erzwingt der Server zwei Sekunden Cooldown. Der Server akzeptiert dabei keinen freien Chattext, sondern nur den festen Quickchat-Befehl. Auf Smartphones gibt es rechts oberhalb der Fahrbuttons einen eigenen **WHAT A SAVE!**-Button, der waehrend des Cooldowns automatisch gesperrt wird. Nachrichten erscheinen fuer alle Spieler mit Name und Teamfarbe in einem kompakten Feed.
 
 ## Ball-Optik
 

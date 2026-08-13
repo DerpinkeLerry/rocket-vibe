@@ -12,7 +12,7 @@ export class Hud {
     this.el = document.createElement('div');
     this.el.className = 'hud';
     this.el.innerHTML = `
-      <div class="hud__title">ROCKET VIBE // ONLINE 1.10.9 <span class="hud__perf" data-perf>${profile}</span></div>
+      <div class="hud__title">ROCKET VIBE // ONLINE 1.10.13 <span class="hud__perf" data-perf>${profile}</span></div>
       <div class="hud__scoreboard" aria-label="Spielstand Orange gegen Blau">
         <div class="hud__score-team hud__score-team--orange"><span>ORANGE</span><strong data-orange-score>0</strong></div>
         <div class="hud__score-separator">:</div>
@@ -32,6 +32,10 @@ export class Hud {
           <span data-replay-votes>0/0 bereit</span>
         </div>
       </div>
+      <div class="hud__quickchat" aria-label="Quick Chat">
+        <div class="hud__quickchat-feed" data-quickchat-feed aria-live="polite" aria-relevant="additions"></div>
+        <div class="hud__quickchat-status" data-quickchat-status hidden>QUICK CHAT COOLDOWN</div>
+      </div>
       <div class="hud__network">
         <strong class="hud__identity hud__identity--${team}" data-identity></strong>
         <span data-network>${multiplayer ? 'Spielserver verbunden' : 'Lokaler Modus'}</span>
@@ -47,6 +51,7 @@ export class Hud {
         <kbd>SPACE</kbd><span>Jump / Double Jump</span>
         <kbd>SHIFT</kbd><span>Boost</span>
         <kbd>STRG</kbd><span>Drift / Handbremse</span>
+        <kbd>1</kbd><span>Quick Chat · What a save! (3×, dann 2 s Cooldown)</span>
         <kbd>Q / E</kbd><span>Air Roll</span>
         <kbd>B</kbd><span>Ball Reset</span>
         <kbd>R</kbd><span>Eigenes Auto Reset</span>
@@ -86,6 +91,9 @@ export class Hud {
     this.replayVotes = this.el.querySelector('[data-replay-votes]');
     this.replaySkipHandler = null;
     this.replaySkipRequested = false;
+    this.quickChatFeed = this.el.querySelector('[data-quickchat-feed]');
+    this.quickChatStatus = this.el.querySelector('[data-quickchat-status]');
+    this.quickChatCooldownTimer = null;
     this.replaySkip?.addEventListener('click', () => {
       if (this.replaySkipRequested || !this.replaySkipHandler) return;
       this.replaySkipRequested = true;
@@ -93,6 +101,49 @@ export class Hud {
       this.replaySkip.textContent = 'SKIP ✓';
       this.replaySkipHandler();
     });
+  }
+
+  addQuickChat(chat) {
+    if (!this.quickChatFeed) return;
+    const line = document.createElement('div');
+    const team = chat?.team === 'blue' ? 'blue' : 'orange';
+    line.className = `hud__quickchat-line hud__quickchat-line--${team}`;
+
+    const name = document.createElement('span');
+    name.textContent = String(chat?.playerName || 'Spieler').slice(0, 16);
+    const text = document.createElement('strong');
+    text.textContent = 'What a save!';
+    line.append(name, text);
+    this.quickChatFeed.appendChild(line);
+
+    while (this.quickChatFeed.children.length > 6) {
+      this.quickChatFeed.firstElementChild?.remove();
+    }
+    if (globalThis.requestAnimationFrame) globalThis.requestAnimationFrame(() => line.classList.add('is-visible'));
+    else line.classList.add('is-visible');
+    setTimeout(() => {
+      line.classList.remove('is-visible');
+      setTimeout(() => line.remove(), 180);
+    }, 4200);
+  }
+
+  setQuickChatCooldown(milliseconds = 0) {
+    if (!this.quickChatStatus) return;
+    if (this.quickChatCooldownTimer) {
+      clearTimeout(this.quickChatCooldownTimer);
+      this.quickChatCooldownTimer = null;
+    }
+    const duration = Math.max(0, Number(milliseconds) || 0);
+    if (duration <= 0) {
+      this.quickChatStatus.hidden = true;
+      return;
+    }
+    this.quickChatStatus.hidden = false;
+    this.quickChatStatus.textContent = `QUICK CHAT COOLDOWN · ${(duration / 1000).toFixed(1)} s`;
+    this.quickChatCooldownTimer = setTimeout(() => {
+      this.quickChatStatus.hidden = true;
+      this.quickChatCooldownTimer = null;
+    }, duration);
   }
 
   setNetworkStatus(text) {

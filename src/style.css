@@ -1166,3 +1166,162 @@ html, body, #app {
 .replay-active .mobile-controls { opacity: 0.18; pointer-events: none; }
 .replay-active .hud__controls { opacity: 0.22; }
 .replay-active .hud { z-index: 40; }
+
+/* Rocket-style quick chat feed. Messages are fixed server-side phrases, so the
+   panel stays compact and readable even when somebody uses the full 3-message burst. */
+.hud__quickchat {
+  position: absolute;
+  left: 24px;
+  top: 92px;
+  width: min(330px, 34vw);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  pointer-events: none;
+}
+
+.hud__quickchat-feed {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.hud__quickchat-line {
+  width: fit-content;
+  max-width: 100%;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 9px;
+  color: #f7fbff;
+  background: rgba(5, 12, 24, 0.78);
+  box-shadow: 0 5px 16px rgba(0,0,0,0.18);
+  opacity: 0;
+  transform: translateX(-8px);
+  transition: opacity 140ms ease, transform 140ms ease;
+  font-size: 12px;
+}
+
+.hud__quickchat-line.is-visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.hud__quickchat-line span {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 950;
+  letter-spacing: 0.03em;
+}
+
+.hud__quickchat-line strong {
+  white-space: nowrap;
+  font-weight: 900;
+}
+
+.hud__quickchat-line--orange span { color: #ff9b4a; }
+.hud__quickchat-line--blue span { color: #57b8ff; }
+
+.hud__quickchat-status {
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: rgba(255,255,255,0.74);
+  background: rgba(5, 12, 24, 0.70);
+  border: 1px solid rgba(255,255,255,0.10);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.11em;
+}
+
+.hud__quickchat-status[hidden] { display: none; }
+
+.mobile-controls__quickchat {
+  position: absolute;
+  right: 4px;
+  bottom: 178px;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.mobile-btn--quickchat {
+  width: 108px;
+  height: 38px;
+  padding: 0 10px;
+  border-radius: 19px;
+  border-color: rgba(105, 213, 255, 0.46);
+  color: #e8f8ff;
+  background: linear-gradient(135deg, rgba(11, 49, 76, 0.88), rgba(7, 21, 38, 0.82));
+  font-size: 9px;
+  letter-spacing: 0.055em;
+}
+
+.mobile-btn--quickchat:disabled {
+  opacity: 0.52;
+  filter: saturate(0.55);
+  transform: none;
+}
+
+.mobile-active .hud__quickchat {
+  left: calc(env(safe-area-inset-left, 0px) + 10px);
+  top: calc(env(safe-area-inset-top, 0px) + 88px);
+  width: min(265px, 46vw);
+  gap: 4px;
+}
+
+.mobile-active .hud__quickchat-feed { gap: 4px; }
+.mobile-active .hud__quickchat-line {
+  padding: 5px 8px;
+  border-radius: 8px;
+  font-size: 10px;
+}
+.mobile-active .hud__quickchat-line span { max-width: 88px; }
+.mobile-active .hud__quickchat-status { font-size: 7px; }
+
+@media (orientation: portrait) and (any-pointer: coarse) {
+  .mobile-controls__quickchat { bottom: 151px; }
+  .mobile-btn--quickchat { width: 94px; height: 32px; font-size: 8px; }
+  .mobile-active .hud__quickchat {
+    top: calc(env(safe-area-inset-top, 0px) + 78px);
+    width: min(230px, 58vw);
+  }
+}
+
+@media (orientation: landscape) and (max-height: 430px) and (any-pointer: coarse) {
+  .mobile-controls__quickchat { bottom: 160px; }
+  .mobile-btn--quickchat { width: 100px; height: 34px; font-size: 8px; }
+  .mobile-active .hud__quickchat {
+    top: calc(env(safe-area-inset-top, 0px) + 78px);
+    width: min(250px, 38vw);
+  }
+}
+
+/* Quick chat stays available during goal replays (the classic time to use it),
+   while driving controls remain dimmed and non-interactive. */
+.replay-active .mobile-controls {
+  opacity: 1;
+  pointer-events: none;
+}
+.replay-active .mobile-controls__left,
+.replay-active .mobile-controls__actions,
+.replay-active .mobile-controls__roll,
+.replay-active .mobile-controls__utility {
+  opacity: 0.18;
+}
+.replay-active .mobile-controls__left *,
+.replay-active .mobile-controls__actions .mobile-btn,
+.replay-active .mobile-controls__roll .mobile-btn,
+.replay-active .mobile-controls__utility .mobile-btn {
+  pointer-events: none;
+}
+.replay-active .mobile-controls__quickchat,
+.replay-active .mobile-controls__quickchat .mobile-btn {
+  opacity: 1;
+  pointer-events: auto;
+}

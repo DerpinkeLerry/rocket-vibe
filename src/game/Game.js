@@ -61,6 +61,8 @@ export class Game {
     this.goalCelebrationActive = false;
     this.goalCelebrationUntil = 0;
     this.offlineGoalTimeRemaining = 0;
+    this.offlineQuickChatUsed = 0;
+    this.offlineQuickChatCooldownUntil = 0;
 
     this.perfElapsed = 0;
     this.perfFrames = 0;
@@ -191,6 +193,7 @@ export class Game {
     });
     this.mobileControls = new MobileControls(this.root, this.input);
     this.mobileControls.setCameraMode?.(this.chaseCamera.getMode());
+    this.mobileControls.setQuickChatHandler?.(() => this.requestQuickChat());
     this.hud.setReplaySkipHandler(() => this.network?.sendReplaySkip?.());
 
     if (this.network) {
@@ -207,6 +210,12 @@ export class Game {
       this.network.onKickoff = (kickoff) => this.handleKickoff(kickoff);
       this.network.onReplay = (replay) => this.handleReplay(replay);
       this.network.onGoal = (goal) => this.handleGoal(goal);
+      this.network.onQuickChat = (chat) => this.hud.addQuickChat(chat);
+      this.network.onQuickChatLimit = (limit) => {
+        const cooldownMs = Math.max(0, Number(limit?.cooldownMs) || 0);
+        this.hud.setQuickChatCooldown(cooldownMs);
+        this.mobileControls.setQuickChatCooldown?.(cooldownMs);
+      };
       if (this.network.kickoff) this.handleKickoff(this.network.kickoff);
       if (this.network.replay && this.network.replay.phase !== 'end') this.handleReplay(this.network.replay);
 
@@ -232,10 +241,12 @@ export class Game {
     this.onResize = this.onResize.bind(this);
     this.loop = this.loop.bind(this);
     this.onPerfToggle = this.onPerfToggle.bind(this);
+    this.onQuickChatKeyDown = this.onQuickChatKeyDown.bind(this);
     window.addEventListener('resize', this.onResize);
     window.visualViewport?.addEventListener('resize', this.onResize);
     window.addEventListener('orientationchange', this.onResize);
     window.addEventListener('keydown', this.onPerfToggle, { passive: false });
+    window.addEventListener('keydown', this.onQuickChatKeyDown, { passive: false });
     this.onResize();
   }
 
@@ -243,6 +254,44 @@ export class Game {
     if (event.code !== 'F2' || event.repeat) return;
     event.preventDefault();
     togglePerformanceProfile();
+  }
+
+  onQuickChatKeyDown(event) {
+    if ((event.code !== 'Digit1' && event.code !== 'Numpad1') || event.repeat) return;
+    event.preventDefault();
+    this.requestQuickChat();
+  }
+
+  requestQuickChat() {
+    if (this.networked) {
+      const sent = this.network?.sendQuickChat?.('what-a-save');
+      if (!sent) {
+        const remaining = this.network?.quickChatCooldownRemaining?.() || 0;
+        if (remaining > 0) {
+          this.hud.setQuickChatCooldown(remaining);
+          this.mobileControls.setQuickChatCooldown?.(remaining);
+        }
+      }
+      return Boolean(sent);
+    }
+
+    const now = performance.now();
+    if (now < this.offlineQuickChatCooldownUntil) {
+      const remaining = this.offlineQuickChatCooldownUntil - now;
+      this.hud.setQuickChatCooldown(remaining);
+      this.mobileControls.setQuickChatCooldown?.(remaining);
+      return false;
+    }
+
+    this.hud.addQuickChat({ playerName: this.playerName, team: this.playerTeam, text: 'What a save!' });
+    this.offlineQuickChatUsed += 1;
+    if (this.offlineQuickChatUsed >= 3) {
+      this.offlineQuickChatUsed = 0;
+      this.offlineQuickChatCooldownUntil = now + 2000;
+      this.hud.setQuickChatCooldown(2000);
+      this.mobileControls.setQuickChatCooldown?.(2000);
+    }
+    return true;
   }
 
   setCarVisible(index, visible) {

@@ -80,6 +80,10 @@ export class LanClient {
     this.replay = null;
     this.onGoal = null;
     this.goal = null;
+    this.onQuickChat = null;
+    this.onQuickChatLimit = null;
+    this.quickChatLimit = { remaining: 3, cooldownMs: 0 };
+    this.quickChatCooldownUntil = 0;
   }
 
   async connect() {
@@ -152,6 +156,16 @@ export class LanClient {
 
         if (message.type === 'goal') {
           this.applyGoalMessage(message);
+          return;
+        }
+
+        if (message.type === 'quick-chat') {
+          this.applyQuickChatMessage(message);
+          return;
+        }
+
+        if (message.type === 'quick-chat-limit') {
+          this.applyQuickChatLimitMessage(message);
           return;
         }
 
@@ -239,6 +253,27 @@ export class LanClient {
       blueScore: Math.max(0, Number(message?.blueScore) || 0)
     };
     this.onGoal?.(this.goal);
+  }
+
+  applyQuickChatMessage(message) {
+    const chat = {
+      id: message?.id === 'what-a-save' ? 'what-a-save' : 'what-a-save',
+      text: 'What a save!',
+      playerId: Number.isInteger(Number(message?.playerId)) ? Number(message.playerId) : -1,
+      playerName: String(message?.playerName || 'Spieler').slice(0, 16),
+      team: message?.team === 'blue' ? 'blue' : 'orange'
+    };
+    this.onQuickChat?.(chat);
+    return chat;
+  }
+
+  applyQuickChatLimitMessage(message) {
+    const remaining = Math.max(0, Math.min(3, Math.round(Number(message?.remaining) || 0)));
+    const cooldownMs = Math.max(0, Math.min(10_000, Number(message?.cooldownMs) || 0));
+    this.quickChatLimit = { remaining, cooldownMs, allowed: message?.allowed !== false };
+    this.quickChatCooldownUntil = cooldownMs > 0 ? performance.now() + cooldownMs : 0;
+    this.onQuickChatLimit?.(this.quickChatLimit);
+    return this.quickChatLimit;
   }
 
   applyReplayMessage(message) {
@@ -335,6 +370,17 @@ export class LanClient {
   sendReplaySkip() {
     if (!this.connected || this.socket?.readyState !== WebSocket.OPEN) return false;
     this.socket.send(JSON.stringify({ type: 'replay-skip' }));
+    return true;
+  }
+
+  quickChatCooldownRemaining() {
+    return Math.max(0, this.quickChatCooldownUntil - performance.now());
+  }
+
+  sendQuickChat(id = 'what-a-save') {
+    if (!this.connected || this.socket?.readyState !== WebSocket.OPEN) return false;
+    if (id !== 'what-a-save' || this.quickChatCooldownRemaining() > 0) return false;
+    this.socket.send(JSON.stringify({ type: 'quick-chat', id }));
     return true;
   }
 

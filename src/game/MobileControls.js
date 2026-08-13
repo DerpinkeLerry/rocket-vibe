@@ -40,6 +40,10 @@ export class MobileControls {
     this.activeStickCodes = new Set();
     this.buttonPointers = new Map();
     this.fullscreenButton = null;
+    this.quickChatButton = null;
+    this.quickChatHandler = null;
+    this.quickChatCooldownTimer = null;
+    this.quickChatCooldownInterval = null;
     this.destroyers = [];
 
     if (!this.enabled) return;
@@ -65,6 +69,9 @@ export class MobileControls {
           <button class="mobile-btn mobile-btn--utility" type="button" data-key="KeyR" data-tap aria-label="Auto zurücksetzen">↻</button>
           <button class="mobile-btn mobile-btn--utility mobile-btn--fullscreen" type="button" data-fullscreen aria-label="Vollbild">⛶</button>
         </div>
+        <div class="mobile-controls__quickchat">
+          <button class="mobile-btn mobile-btn--quickchat" type="button" data-quick-chat aria-label="Quick Chat: What a save!">WHAT A SAVE!</button>
+        </div>
         <div class="mobile-controls__roll">
           <button class="mobile-btn mobile-btn--small mobile-btn--drift" type="button" data-key="ControlLeft" aria-label="Drift / Handbremse">DRIFT</button>
           <button class="mobile-btn mobile-btn--small" type="button" data-key="KeyQ" aria-label="Air Roll links">ROLL L</button>
@@ -87,6 +94,7 @@ export class MobileControls {
     this.stickKnob = this.el.querySelector('[data-stick-knob]');
     this.fullscreenButton = this.el.querySelector('[data-fullscreen]');
     this.cameraButton = this.el.querySelector('[data-camera-button]');
+    this.quickChatButton = this.el.querySelector('[data-quick-chat]');
 
     this.bindStick();
     this.bindButtons();
@@ -206,6 +214,15 @@ export class MobileControls {
       });
     }
 
+    const onQuickChat = (event) => {
+      event.preventDefault();
+      if (this.quickChatButton?.disabled || !this.quickChatHandler) return;
+      vibrate(5);
+      this.quickChatHandler();
+    };
+    this.quickChatButton?.addEventListener('pointerdown', onQuickChat, { passive: false });
+    this.destroyers.push(() => this.quickChatButton?.removeEventListener('pointerdown', onQuickChat));
+
     const onFullscreen = async (event) => {
       event.preventDefault();
       vibrate(8);
@@ -236,6 +253,41 @@ export class MobileControls {
       document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
       this.el.removeEventListener('contextmenu', onContextMenu);
     });
+  }
+
+  setQuickChatHandler(handler) {
+    this.quickChatHandler = typeof handler === 'function' ? handler : null;
+  }
+
+  setQuickChatCooldown(milliseconds = 0) {
+    if (!this.quickChatButton) return;
+    if (this.quickChatCooldownTimer) clearTimeout(this.quickChatCooldownTimer);
+    if (this.quickChatCooldownInterval) clearInterval(this.quickChatCooldownInterval);
+    this.quickChatCooldownTimer = null;
+    this.quickChatCooldownInterval = null;
+
+    const duration = Math.max(0, Number(milliseconds) || 0);
+    if (duration <= 0) {
+      this.quickChatButton.disabled = false;
+      this.quickChatButton.textContent = 'WHAT A SAVE!';
+      return;
+    }
+
+    const deadline = performance.now() + duration;
+    this.quickChatButton.disabled = true;
+    const update = () => {
+      const remaining = Math.max(0, deadline - performance.now());
+      this.quickChatButton.textContent = remaining > 0 ? `WAIT ${(remaining / 1000).toFixed(1)}s` : 'WHAT A SAVE!';
+    };
+    update();
+    this.quickChatCooldownInterval = setInterval(update, 100);
+    this.quickChatCooldownTimer = setTimeout(() => {
+      if (this.quickChatCooldownInterval) clearInterval(this.quickChatCooldownInterval);
+      this.quickChatCooldownInterval = null;
+      this.quickChatCooldownTimer = null;
+      this.quickChatButton.disabled = false;
+      this.quickChatButton.textContent = 'WHAT A SAVE!';
+    }, duration);
   }
 
   setCameraMode(mode) {
@@ -272,6 +324,8 @@ export class MobileControls {
 
   destroy() {
     this.releaseAll();
+    if (this.quickChatCooldownTimer) clearTimeout(this.quickChatCooldownTimer);
+    if (this.quickChatCooldownInterval) clearInterval(this.quickChatCooldownInterval);
     for (const destroy of this.destroyers) destroy();
     this.destroyers.length = 0;
     this.el?.remove();

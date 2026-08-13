@@ -47,6 +47,11 @@ type pingMessage struct {
 	Time json.RawMessage `json:"t"`
 }
 
+type quickChatInputMessage struct {
+	Type string `json:"type"`
+	ID   string `json:"id"`
+}
+
 func NewHTTPServer(match *Match, options HTTPOptions, logger *slog.Logger) *HTTPServer {
 	server := &HTTPServer{match: match, options: options, logger: logger}
 	mux := http.NewServeMux()
@@ -199,6 +204,11 @@ func (server *HTTPServer) handleTextMessage(connected *client, payload []byte) {
 		}
 	case "replay-skip":
 		server.match.SubmitReplaySkip(connected.id)
+	case "quick-chat":
+		var message quickChatInputMessage
+		if json.Unmarshal(payload, &message) == nil && message.ID == quickChatMessageID {
+			server.match.SubmitQuickChat(connected.id)
+		}
 	}
 }
 

@@ -153,3 +153,36 @@ test('replay messages keep scorer metadata and unanimous skip progress', () => {
   assert.equal(received[2].phase, 'end');
   assert.equal(received[2].reason, 'all-skipped');
 });
+
+test('quick chat messages are normalized to the fixed What a save phrase', () => {
+  const client = new LanClient('Quick Pilot');
+  let received = null;
+  client.onQuickChat = (chat) => { received = chat; };
+
+  const chat = client.applyQuickChatMessage({
+    type: 'quick-chat', id: 'what-a-save', text: '<unsafe>',
+    playerId: 2, playerName: 'Saver', team: 'blue'
+  });
+
+  assert.deepEqual(chat, {
+    id: 'what-a-save', text: 'What a save!', playerId: 2, playerName: 'Saver', team: 'blue'
+  });
+  assert.deepEqual(received, chat);
+});
+
+test('quick chat limit starts a two second client cooldown after the third message', () => {
+  const client = new LanClient('Cooldown Pilot');
+  let received = null;
+  client.onQuickChatLimit = (limit) => { received = limit; };
+  const before = performance.now();
+
+  const limit = client.applyQuickChatLimitMessage({
+    type: 'quick-chat-limit', allowed: true, remaining: 0, cooldownMs: 2000
+  });
+
+  assert.equal(limit.remaining, 0);
+  assert.equal(limit.cooldownMs, 2000);
+  assert.equal(received.cooldownMs, 2000);
+  assert.ok(client.quickChatCooldownUntil >= before + 1900);
+  assert.ok(client.quickChatCooldownRemaining() > 0);
+});
