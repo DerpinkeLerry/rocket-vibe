@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { TransformBody } from '../network/TransformBody.js';
-import { CAR_TUNING } from '../shared/game-tuning.js';
+import { CAR_TUNING, getDirectionalDodgeLiftScale } from '../shared/game-tuning.js';
 import { getCarStyle, normalizeCarStyle, shouldUsePremiumCarModel } from '../shared/car-styles.js';
 import { getBoostStyle, normalizeBoostStyle } from '../shared/boost-styles.js';
 import { BoostTrail } from './BoostTrail.js';
@@ -1001,12 +1001,14 @@ export class Car {
     const sideAmount = sideInput / directionMagnitude;
 
     // Give the car a real dodge impulse in the requested local direction. A/D
-    // is pure lateral movement, so a side flip does not need to yaw the nose.
+    // is pure lateral movement and must not add a second upward kick. Forward/
+    // back dodges retain the small configured lift; diagonals blend it smoothly.
     this.dodgeDir.copy(this.forward).multiplyScalar(forwardAmount)
       .addScaledVector(this.right, -sideAmount)
       .normalize();
+    const dodgeLiftScale = getDirectionalDodgeLiftScale(forwardAmount);
     this.velocityVec.addScaledVector(this.dodgeDir, CAR_TUNING.dodgeImpulse)
-      .addScaledVector(this.up, CAR_TUNING.dodgeLift);
+      .addScaledVector(this.up, CAR_TUNING.dodgeLift * dodgeLiftScale);
     this.body.setLinvel({ x: this.velocityVec.x, y: this.velocityVec.y, z: this.velocityVec.z }, true);
 
     // Own one finite revolution. W = front flip, S = back flip, A = left

@@ -1117,6 +1117,44 @@ html, body, #app {
   font-size: 13px;
   letter-spacing: 0.06em;
 }
+.hud__replay-keyhint {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .hud__replay-keyhint:not([hidden]) {
+    position: absolute;
+    left: 50%;
+    bottom: max(82px, calc(env(safe-area-inset-bottom) + 70px));
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.98);
+    font-size: 14px;
+    font-weight: 950;
+    letter-spacing: 0.12em;
+    text-shadow: 0 0 12px rgba(255,177,79,0.9), 0 2px 8px rgba(0,0,0,0.9);
+    white-space: nowrap;
+    animation: replay-space-skip-blink 0.86s ease-in-out infinite;
+  }
+  .hud__replay-keyhint kbd {
+    min-width: 60px;
+    padding: 6px 10px;
+    border: 1px solid rgba(255,255,255,0.48);
+    border-bottom-width: 3px;
+    border-radius: 8px;
+    background: rgba(5,12,24,0.9);
+    color: #fff3d9;
+    font: inherit;
+    letter-spacing: 0.08em;
+    text-align: center;
+    box-shadow: 0 0 18px rgba(255,151,46,0.22);
+  }
+}
+@keyframes replay-space-skip-blink {
+  0%, 100% { opacity: 0.36; filter: brightness(0.9); }
+  50% { opacity: 1; filter: brightness(1.35); }
+}
 .hud__replay-bottom {
   position: absolute;
   left: 50%;

@@ -11,8 +11,8 @@ const state = (tick, x) => ({
 test('replay buffer keeps a bounded pre-goal window', () => {
   const buffer = new ReplayBuffer(60, 8);
   for (let tick = 0; tick <= 600; tick += 3) buffer.push(state(tick, tick));
-  const frames = buffer.window(600, 5);
-  assert.ok(frames[0].tick >= 300);
+  const frames = buffer.window(600, 6.25);
+  assert.ok(frames[0].tick >= 225);
   assert.equal(frames.at(-1).tick, 600);
 });
 

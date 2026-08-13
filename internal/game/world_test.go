@@ -569,6 +569,45 @@ func TestSideDodgesRollAndPushInMatchingDirection(t *testing.T) {
 	}
 }
 
+func TestPureSideDodgeDoesNotAddVerticalLift(t *testing.T) {
+	config := DefaultConfig()
+	world := NewWorld(config)
+	car := &world.Cars[0]
+	car.Velocity = Vec3{Y: 6.25}
+	car.JumpCount = 1
+
+	world.applySecondJumpOrDodge(
+		car,
+		Vec3{Z: -1},
+		Vec3{X: 1},
+		Vec3{Y: 1},
+		0,
+		1,
+	)
+
+	if math.Abs(car.Velocity.Y-6.25) > 1e-9 {
+		t.Fatalf("pure side dodge changed vertical velocity: got=%f want=6.25", car.Velocity.Y)
+	}
+	if car.Velocity.X > -config.Car.DodgeImpulse*0.99 {
+		t.Fatalf("pure side dodge lost lateral impulse: %+v", car.Velocity)
+	}
+
+	forwardCar := &world.Cars[1]
+	forwardCar.Velocity = Vec3{Y: 6.25}
+	forwardCar.JumpCount = 1
+	world.applySecondJumpOrDodge(
+		forwardCar,
+		Vec3{Z: -1},
+		Vec3{X: 1},
+		Vec3{Y: 1},
+		1,
+		0,
+	)
+	if math.Abs(forwardCar.Velocity.Y-(6.25+config.Car.DodgeLift)) > 1e-9 {
+		t.Fatalf("forward dodge no longer applies configured lift: got=%f", forwardCar.Velocity.Y)
+	}
+}
+
 func TestDodgeStopsAfterExactlyOneRevolutionWithoutCountersteer(t *testing.T) {
 	world, car, dt := startDirectionalDodge(t, InputW)
 	// Keep W held for the entire test. The dodge input latch must prevent that

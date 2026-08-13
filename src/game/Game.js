@@ -57,7 +57,7 @@ export class Game {
     this.replayWaiting = false;
     this.replayFrames = [];
     this.replayStartedAt = 0;
-    this.replayPlaybackSeconds = 5;
+    this.replayPlaybackSeconds = 6.25;
     this.replayState = null;
     this.replayBuffer = new ReplayBuffer(network?.serverHz ?? 60, 8);
     this.goalCelebrationActive = false;
@@ -252,11 +252,13 @@ export class Game {
     this.loop = this.loop.bind(this);
     this.onPerfToggle = this.onPerfToggle.bind(this);
     this.onQuickChatKeyDown = this.onQuickChatKeyDown.bind(this);
+    this.onReplaySkipKeyDown = this.onReplaySkipKeyDown.bind(this);
     window.addEventListener('resize', this.onResize);
     window.visualViewport?.addEventListener('resize', this.onResize);
     window.addEventListener('orientationchange', this.onResize);
     window.addEventListener('keydown', this.onPerfToggle, { passive: false });
     window.addEventListener('keydown', this.onQuickChatKeyDown, { passive: false });
+    window.addEventListener('keydown', this.onReplaySkipKeyDown, { passive: false });
     this.onResize();
   }
 
@@ -270,6 +272,15 @@ export class Game {
     if ((event.code !== 'Digit1' && event.code !== 'Numpad1') || event.repeat) return;
     event.preventDefault();
     this.requestQuickChat();
+  }
+
+  onReplaySkipKeyDown(event) {
+    if (event.code !== 'Space' || event.repeat || !this.replayActive || this.replayWaiting) return;
+    // The touch JUMP button does not dispatch DOM keyboard events, so this is a
+    // desktop/browser shortcut without stealing the existing mobile replay UI.
+    if (this.mobileControls?.enabled) return;
+    event.preventDefault();
+    this.hud?.requestReplaySkip?.();
   }
 
   requestQuickChat() {
@@ -882,12 +893,12 @@ export class Game {
     }
     this.replayFrames = this.replayWaiting
       ? []
-      : this.replayBuffer.window(replay.goalTick, replay.lookbackSeconds || 5);
+      : this.replayBuffer.window(replay.goalTick, replay.lookbackSeconds || 6.25);
     this.replayStartedAt = performance.now() / 1000;
 
     if (this.replayFrames.length >= 2) {
       const sourceSeconds = (this.replayFrames.at(-1).tick - this.replayFrames[0].tick) / Math.max(1, this.network?.serverHz || 60);
-      const serverWindow = Math.max(1, (Number(replay.durationMs) || 5500) / 1000 - 0.35);
+      const serverWindow = Math.max(1, (Number(replay.durationMs) || 6800) / 1000 - 0.35);
       this.replayPlaybackSeconds = Math.max(0.75, Math.min(serverWindow, sourceSeconds || serverWindow));
     } else {
       this.replayPlaybackSeconds = 1;

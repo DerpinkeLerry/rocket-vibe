@@ -1,4 +1,11 @@
-# Rocket Vibe 1.10.25 – Hardwood Pitch & Team-Line Fix
+# Rocket Vibe 1.10.26 – Predictable Side Dodge & Longer Replay
+
+## v1.10.26
+
+- Reine A/D-Side-Dodges bzw. Barrel Rolls geben keinen zusaetzlichen Aufwaertsimpuls mehr. Vorhandene vertikale Geschwindigkeit aus dem ersten Sprung bleibt erhalten; der zweite Input fuegt nur den seitlichen Dodge-Impuls hinzu. Vorwaerts/Rueckwaerts-Dodges behalten den kleinen Dodge-Lift, Diagonalen skalieren ihn mit ihrem Vorwaertsanteil.
+- Die Goal-Replay-Historie wurde von 5.0 auf 6.25 Sekunden erweitert und das Server-Replay von 5.5 auf 6.8 Sekunden verlaengert.
+- Desktop-Replays zeigen jetzt auffaellig blinkend **PRESS SPACE TO SKIP**. Ein neuer Space-Shortcut sendet denselben einmaligen Skip-Vote wie der vorhandene Replay-Button; Mobile behaelt den Touch-Button.
+- Server-Physics, lokale Rapier-Physics und Client-Prediction verwenden dieselbe Side-Dodge-Lift-Regel.
 
 ## v1.10.25
 

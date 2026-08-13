@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CAR_TUNING, INPUT_BITS, INPUT_EDGES, INPUT_FLAGS } from '../shared/game-tuning.js';
+import { CAR_TUNING, INPUT_BITS, INPUT_EDGES, INPUT_FLAGS, getDirectionalDodgeLiftScale } from '../shared/game-tuning.js';
 import { ARENA_TUNING, CAR_HITBOX } from '../shared/arena-tuning.js';
 
 const VEC_FORWARD = new THREE.Vector3(0, 0, -1);
@@ -372,12 +372,14 @@ export class LocalCarPredictor {
     const sideAmount = sideInput / directionMagnitude;
 
     // Directional dodge impulse: A/D moves the car sideways without changing
-    // its heading, W/S pushes forward/back, diagonals blend both directions.
+    // its heading and without adding extra height. W/S keeps the small dodge
+    // lift; diagonals blend it by their forward component for deterministic arcs.
     this.surfaceNormal.copy(this.forward).multiplyScalar(forwardAmount)
       .addScaledVector(this.right, -sideAmount)
       .normalize();
+    const dodgeLiftScale = getDirectionalDodgeLiftScale(forwardAmount);
     this.vel.addScaledVector(this.surfaceNormal, CAR_TUNING.dodgeImpulse)
-      .addScaledVector(this.up, CAR_TUNING.dodgeLift);
+      .addScaledVector(this.up, CAR_TUNING.dodgeLift * dodgeLiftScale);
 
     // Own one finite revolution. A must roll left (around -forward), D right
     // (around +forward), while W/S use the local right axis for front/back flips.

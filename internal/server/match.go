@@ -22,8 +22,8 @@ var (
 const (
 	kickoffCountdownSeconds  = 3
 	kickoffCountdownDuration = time.Duration(kickoffCountdownSeconds) * time.Second
-	goalReplayLookback       = 5.0
-	goalReplayDuration       = 5500 * time.Millisecond
+	goalReplayLookback       = 6.25
+	goalReplayDuration       = 6800 * time.Millisecond
 	goalCelebrationDuration  = 1250 * time.Millisecond
 )
 

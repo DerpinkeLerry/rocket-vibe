@@ -116,6 +116,25 @@ test('prediction side dodges roll and push in the matching direction', () => {
   assert.ok(right.body.angvel().z < -7, `right roll angular speed was ${right.body.angvel().z}`);
 });
 
+test('prediction pure side dodge preserves vertical velocity while forward dodge keeps lift', () => {
+  const side = makePredictor({ x: 0, y: 5, z: 0 }).predictor;
+  side.forward.set(0, 0, -1);
+  side.right.set(1, 0, 0);
+  side.up.set(0, 1, 0);
+  side.vel.set(0, 6.25, 0);
+  side.applySecondJumpOrDodge(0, 1);
+  assert.ok(Math.abs(side.vel.y - 6.25) < 1e-9, `side dodge added vertical speed: ${side.vel.y}`);
+  assert.ok(side.vel.x < -13.9, `side dodge lateral speed was ${side.vel.x}`);
+
+  const forward = makePredictor({ x: 0, y: 5, z: 0 }).predictor;
+  forward.forward.set(0, 0, -1);
+  forward.right.set(1, 0, 0);
+  forward.up.set(0, 1, 0);
+  forward.vel.set(0, 6.25, 0);
+  forward.applySecondJumpOrDodge(1, 0);
+  assert.ok(forward.vel.y > 8.0, `forward dodge lost configured lift: ${forward.vel.y}`);
+});
+
 test('prediction stops a held directional dodge after one revolution', () => {
   const { body, predictor } = startPredictorDodge(INPUT_BITS.W);
   body.setTranslation({ x: 0, y: 5, z: body.translation().z });

@@ -143,13 +143,15 @@ test('replay messages keep scorer metadata and unanimous skip progress', () => {
   client.onReplay = (replay) => received.push({ ...replay });
   client.applyReplayMessage({
     type: 'replay', phase: 'start', scorerId: 1, scorerName: 'GoalGuy', goalTick: 420,
-    lookbackSeconds: 5, durationMs: 5500, skipped: 0, required: 2, orangeScore: 1, blueScore: 2
+    lookbackSeconds: 6.25, durationMs: 6800, skipped: 0, required: 2, orangeScore: 1, blueScore: 2
   });
   client.applyReplayMessage({ type: 'replay', phase: 'progress', skipped: 1, required: 2 });
   client.applyReplayMessage({ type: 'replay', phase: 'end', reason: 'all-skipped' });
 
   assert.equal(received[0].scorerId, 1);
   assert.equal(received[0].goalTick, 420);
+  assert.equal(received[0].lookbackSeconds, 6.25);
+  assert.equal(received[0].durationMs, 6800);
   assert.equal(received[1].skipped, 1);
   assert.equal(received[1].required, 2);
   assert.equal(received[2].phase, 'end');

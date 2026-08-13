@@ -20,6 +20,7 @@ export class Hud {
           <span>WIEDERHOLUNG</span>
           <strong data-replay-scorer>TOR</strong>
         </div>
+        <div class="hud__replay-keyhint" data-replay-keyhint hidden aria-hidden="true">PRESS <kbd>SPACE</kbd> TO SKIP</div>
         <div class="hud__replay-bottom">
           <button type="button" data-replay-skip>REPLAY ÜBERSPRINGEN</button>
           <span data-replay-votes>0/0 bereit</span>
@@ -90,6 +91,7 @@ export class Hud {
     this.replay = this.el.querySelector('[data-replay]');
     this.replayScorer = this.el.querySelector('[data-replay-scorer]');
     this.replaySkip = this.el.querySelector('[data-replay-skip]');
+    this.replayKeyHint = this.el.querySelector('[data-replay-keyhint]');
     this.replayVotes = this.el.querySelector('[data-replay-votes]');
     this.replaySkipHandler = null;
     this.replaySkipRequested = false;
@@ -103,13 +105,7 @@ export class Hud {
       this.controlsToggle?.setAttribute('aria-expanded', open ? 'true' : 'false');
       this.controlsToggle?.classList.toggle('is-open', open);
     });
-    this.replaySkip?.addEventListener('click', () => {
-      if (this.replaySkipRequested || !this.replaySkipHandler) return;
-      this.replaySkipRequested = true;
-      this.replaySkip.disabled = true;
-      this.replaySkip.textContent = 'SKIP ✓';
-      this.replaySkipHandler();
-    });
+    this.replaySkip?.addEventListener('click', () => this.requestReplaySkip());
   }
 
   addQuickChat(chat) {
@@ -222,6 +218,18 @@ export class Hud {
     this.replaySkipHandler = typeof handler === 'function' ? handler : null;
   }
 
+  requestReplaySkip() {
+    if (this.replaySkipRequested || !this.replaySkipHandler || this.replay?.hidden || this.replaySkip?.hidden) return false;
+    this.replaySkipRequested = true;
+    if (this.replaySkip) {
+      this.replaySkip.disabled = true;
+      this.replaySkip.textContent = 'SKIP ✓';
+    }
+    if (this.replayKeyHint) this.replayKeyHint.hidden = true;
+    this.replaySkipHandler();
+    return true;
+  }
+
   setReplay(replay) {
     if (!this.replay) return;
     const phase = replay?.phase;
@@ -232,6 +240,7 @@ export class Hud {
         this.replaySkip.disabled = false;
         this.replaySkip.textContent = 'REPLAY ÜBERSPRINGEN';
       }
+      if (this.replayKeyHint) this.replayKeyHint.hidden = true;
       return;
     }
 
@@ -252,6 +261,7 @@ export class Hud {
         this.replaySkip.disabled = !canSkip;
         this.replaySkip.textContent = 'REPLAY ÜBERSPRINGEN';
       }
+      if (this.replayKeyHint) this.replayKeyHint.hidden = !canSkip || this.replaySkipRequested;
     }
   }
 

@@ -465,11 +465,17 @@ func (world *World) applySecondJumpOrDodge(car *Car, forward, right, up Vec3, fo
 
 	// The translational dodge impulse is independent from the car's heading:
 	// W/S pushes forward/back, while A/D pushes laterally without yawing the car.
-	// Diagonals blend both axes and normalize so every dodge has the same power.
+	// Pure side barrel-roll dodges must not add extra vertical velocity; otherwise
+	// the same A/D dodge changes jump height and becomes hard to predict. Forward
+	// dodges keep the configured small lift and diagonals blend it proportionally.
 	dodgeDirection := forward.Mul(forwardAmount).Add(right.Mul(-sideAmount)).NormalizeOr(forward)
+	liftScale := math.Abs(forwardAmount)
+	if liftScale < 0.20 {
+		liftScale = 0
+	}
 	car.Velocity = car.Velocity.
 		Add(dodgeDirection.Mul(config.DodgeImpulse)).
-		Add(up.NormalizeOr(Vec3{Y: 1}).Mul(config.DodgeLift))
+		Add(up.NormalizeOr(Vec3{Y: 1}).Mul(config.DodgeLift * liftScale))
 
 	// A dodge is a finite, owned rotation rather than a one-shot angular kick.
 	// Front/back flips rotate around local right. Left/right dodges barrel-roll

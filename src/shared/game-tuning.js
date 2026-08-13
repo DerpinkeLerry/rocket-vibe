@@ -25,6 +25,12 @@ export const INPUT_FLAGS = Object.freeze({
 // Arcade handling tuned around Rocket-League-style behaviour.  The server and
 // the local predictor intentionally use the same values so input never changes
 // character when an authoritative snapshot arrives.
+
+export function getDirectionalDodgeLiftScale(forwardAmount) {
+  const amount = Math.min(1, Math.abs(Number(forwardAmount) || 0));
+  return amount < 0.20 ? 0 : amount;
+}
+
 export const CAR_TUNING = Object.freeze({
   // Internal physics units are metres/second. These caps correspond to the
   // HUD targets requested for the slower, more readable game pace.
@@ -71,6 +77,8 @@ export const CAR_TUNING = Object.freeze({
   // air torque is suppressed so holding the dodge direction cannot turn the
   // flip into an endless corkscrew.
   dodgeImpulse: 14.0,
+  // Applied fully to forward/back dodges, proportionally to diagonals, and not
+  // at all to pure A/D barrel rolls so a side dodge never changes jump height.
   dodgeLift: 1.8,
   dodgeAngularSpeed: 11.22,
   dodgeRotation: Math.PI * 2,
