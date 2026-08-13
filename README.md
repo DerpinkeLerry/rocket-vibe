@@ -1,4 +1,4 @@
-# Rocket Vibe 1.10.11 – Air Boost Aerial Rework
+# Rocket Vibe 1.10.12 – Vibrant Pitch & Team Wall Rework
 
 Browser-Spiel fuer bis zu vier Spieler mit Three.js-Rendering, lokaler Client-Prediction und einem autoritativen Go-Server. Frontend und Server werden auf Railway als **ein Service** betrieben. Dadurch verwendet der Browser dieselbe HTTPS-Domain fuer Seite und WebSocket (`/lan`); eine separate Backend-URL oder CORS-Konfiguration ist nicht erforderlich.
 
@@ -27,9 +27,13 @@ Der bisherige Apfel-Platzhalter wurde komplett entfernt. Der Ball ist wieder ein
 
 ## Feld- und Boost-Layout
 
-Das Feld verwendet jetzt 34 Boost-Pads nach dem Soccar-Referenzlayout: sechs grosse 100er-Pads (vier tiefe Eckpads plus zwei an der Mittellinie nahe der Seitenwand) und 28 kleine +12-Pads. Die Pad-Maske im binaeren Snapshot wurde deshalb von 16 auf 64 Bit erweitert; die Browserseite liest weiterhin auch die vorherigen 16-Pad- und Legacy-Snapshots.
+Das Feld verwendet 34 Boost-Pads nach dem Soccar-Referenzlayout: sechs grosse 100er-Pads (vier tiefe Eckpads plus zwei an der Mittellinie nahe der Seitenwand) und 28 kleine +12-Pads. Die Pad-Maske im binaeren Snapshot wurde deshalb von 16 auf 64 Bit erweitert; die Browserseite liest weiterhin auch die vorherigen 16-Pad- und Legacy-Snapshots.
 
-Die Turf-Textur enthaelt statisch gebackene Blau-/Orange-Teamzonen, farbige Tor-Halbkreise, Center-Ringe, Rotations-/Boost-Linien, Seiten-Chevrons und permanente Locator-Ringe unter allen Boost-Pads. Diese Details verursachen keine zusaetzlichen Licht- oder Post-Processing-Paesse. Ultra High laesst im Bereich der Pad-Locators und Torboegen bewusst weniger 3D-Gras wachsen, damit die Markierungen aus der Chase-Cam lesbar bleiben.
+In v1.10.12 wurden die UV-Koordinaten der abgerundeten Feldgeometrie explizit auf 0..1 normiert. Dadurch spannt die grosse Turf-/Markierungs-Textur jetzt wirklich ueber das komplette Spielfeld, statt an weiten Stellen nur Randpixel abzutasten. Das Grundgras ist satter und besitzt groessere Maehzonen, waehrend dunkle Gras-Sprenkel deutlich reduziert wurden.
+
+Die sichtbaren Feldgrafiken liegen auf einer einzigen unbeleuchteten Overlay-Textur direkt ueber dem Turf. Dadurch bleiben Blau, Orange und Weiss auch aus niedriger Chase-Cam-Perspektive kraeftig. Enthalten sind grosse Team-Flaechen, gefuellte farbige Tor-Halbkreise, mehrere Goal-Arcs, breite Boost-/Rotationswege, Seiten-Runways, Chevrons, Center-Ringe und staerkere permanente Locator-Ringe unter allen Boost-Pads. Das kostet nur einen zusaetzlichen Draw-Call und keine zusaetzlichen Echtzeit-Lichter oder Post-Processing-Paesse.
+
+Die unteren Boden-Wand-Rundungen sind nicht mehr schwarz: Die physikalische Wand bleibt unveraendert, wird visuell aber pro Spielfeldhaelfte getrennt gerendert. Die blaue Haelfte verwendet dunkle blaue Technik-Panels mit hellen Cyan-Rails, die orange Haelfte entsprechend Orange. Ein durchgehender heller Team-Rail folgt auch den gekruemmten Ecken am Beginn der Glaswand. Ultra High laesst im Bereich der Boost-Locators und der gefuellten Torboegen bewusst kein hohes 3D-Gras wachsen, damit die Grafiken sichtbar bleiben.
 
 ## Serverseitige Physik
 

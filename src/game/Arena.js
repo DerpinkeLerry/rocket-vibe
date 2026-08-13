@@ -38,6 +38,24 @@ function roundedRectGeometry(width, length, radius, segments) {
 
   const geometry = new THREE.ShapeGeometry(shape, segments);
   geometry.rotateX(-Math.PI / 2);
+
+  // ShapeGeometry's default UVs are world-sized shape coordinates. With a
+  // clamp-to-edge full-field texture that means almost the entire pitch samples
+  // texture edge pixels. Rebuild UVs explicitly so 0..1 spans the whole arena.
+  const positions = geometry.getAttribute('position');
+  const uv = geometry.getAttribute('uv');
+  if (positions && uv) {
+    for (let index = 0; index < positions.count; index++) {
+      const x = positions.getX(index);
+      const z = positions.getZ(index);
+      uv.setXY(
+        index,
+        THREE.MathUtils.clamp((x + halfWidth) / width, 0, 1),
+        THREE.MathUtils.clamp((z + halfLength) / length, 0, 1)
+      );
+    }
+    uv.needsUpdate = true;
+  }
   return geometry;
 }
 
@@ -109,6 +127,42 @@ export class Arena {
       object.matrixAutoUpdate = false;
     });
     this.group.updateMatrixWorld(true);
+  }
+
+  panelTeamSign(panel) {
+    const explicit = Number(panel?.teamSign) || 0;
+    if (Math.abs(explicit) > 0.001) return explicit > 0 ? 1 : -1;
+    const z = Number(panel?.z) || 0;
+    if (Math.abs(z) > 0.001) return z > 0 ? 1 : -1;
+    return 0;
+  }
+
+  splitVisualPanelsByTeam(panels) {
+    const straightZ = FIELD_L * 0.5 - CORNER_R;
+    const result = [];
+    for (const panel of panels) {
+      // The physical side wall is intentionally one long collider. Visually we
+      // split it at midfield so the lower quarter-pipe can carry a clean blue
+      // and orange half without introducing a physics seam.
+      const isLongSide = Math.abs(panel.nx) > 0.9
+        && Math.abs(panel.nz) < 0.1
+        && Math.abs(panel.z) < 0.001
+        && panel.length > straightZ * 1.5;
+      if (isLongSide) {
+        const halfLength = panel.length * 0.5;
+        for (const sign of [-1, 1]) {
+          result.push({
+            ...panel,
+            z: sign * halfLength * 0.5,
+            length: halfLength,
+            teamSign: sign
+          });
+        }
+        continue;
+      }
+      result.push({ ...panel, teamSign: this.panelTeamSign(panel) });
+    }
+    return result;
   }
 
   createExteriorGround() {
@@ -184,24 +238,51 @@ export class Arena {
       ctx.fill();
       ctx.restore();
     };
+    const fillWorldArcSector = (centerX, centerZ, radiusX, radiusZ, start, end, color, alpha = 1) => {
+      const center = worldPoint(centerX, centerZ);
+      ctx.save();
+      ctx.fillStyle = color;
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      ctx.moveTo(center.x, center.y);
+      const steps = 40;
+      for (let index = 0; index <= steps; index++) {
+        const angle = start + (end - start) * index / steps;
+        ctx.lineTo(
+          center.x + Math.cos(angle) * radiusX * scaleX,
+          center.y + Math.sin(angle) * radiusZ * scaleZ
+        );
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    };
 
-    const blue = '#1687ff';
-    const blueSoft = '#39a5ff';
-    const orange = '#ff6a12';
-    const orangeSoft = '#ff9a3d';
-    const ink = '#081d1a';
-    const white = '#edf8ef';
+    const blue = '#0b8cff';
+    const blueSoft = '#52c3ff';
+    const orange = '#ff6408';
+    const orangeSoft = '#ffb044';
+    const ink = '#061716';
+    const white = '#f4fff8';
 
-    // Broad, low-cost team geometry is baked straight into the turf texture.
-    // The shapes make each half readable from the chase camera without adding
-    // meshes, lights or post-processing passes.
-    fillWorldPolygon([[-52, -76], [-34, -76], [-12, -8], [-26, -8]], blue, 0.11);
-    fillWorldPolygon([[52, -76], [34, -76], [12, -8], [26, -8]], blue, 0.11);
-    fillWorldPolygon([[-52, 76], [-34, 76], [-12, 8], [-26, 8]], orange, 0.11);
-    fillWorldPolygon([[52, 76], [34, 76], [12, 8], [26, 8]], orange, 0.11);
+    // Large team-coloured pitch graphics deliberately use broad shapes and
+    // lanes. Thin decals looked fine from above but disappeared from the normal
+    // chase-camera height; these stay readable while driving at full speed.
+    fillWorldPolygon([[-52, -76], [-31, -76], [-8, -6], [-25, -6]], blue, 0.21);
+    fillWorldPolygon([[52, -76], [31, -76], [8, -6], [25, -6]], blue, 0.21);
+    fillWorldPolygon([[-52, 76], [-31, 76], [-8, 6], [-25, 6]], orange, 0.21);
+    fillWorldPolygon([[52, 76], [31, 76], [8, 6], [25, 6]], orange, 0.21);
 
-    // Dark technical insets around both goal approaches, followed by the
-    // coloured semicircle/crease seen in arena-style Soccar fields.
+    // Secondary angled panels add the layered circuit-board look seen in busy
+    // Soccar arenas without requiring any extra geometry.
+    fillWorldPolygon([[-46, -60], [-36, -66], [-17, -9], [-23, -9]], blueSoft, 0.105);
+    fillWorldPolygon([[46, -60], [36, -66], [17, -9], [23, -9]], blueSoft, 0.105);
+    fillWorldPolygon([[-46, 60], [-36, 66], [-17, 9], [-23, 9]], orangeSoft, 0.105);
+    fillWorldPolygon([[46, 60], [36, 66], [17, 9], [23, 9]], orangeSoft, 0.105);
+
+    // Dark technical insets around both goal approaches, followed by a filled
+    // team-coloured crease and several bright concentric arcs. The fill is
+    // intentionally strong enough to remain visible from behind the car.
     for (const sign of [-1, 1]) {
       const color = sign < 0 ? blue : orange;
       const soft = sign < 0 ? blueSoft : orangeSoft;
@@ -211,22 +292,31 @@ export class Arena {
       const arcEnd = sign < 0 ? Math.PI : Math.PI * 2;
 
       fillWorldPolygon([
-        [-19.5, sign * 78.5], [19.5, sign * 78.5],
-        [25.0, sign * 62.0], [16.5, sign * 56.5],
-        [-16.5, sign * 56.5], [-25.0, sign * 62.0]
-      ], ink, highDetail ? 0.34 : 0.29);
+        [-20.5, sign * 78.7], [20.5, sign * 78.7],
+        [27.0, sign * 61.5], [18.0, sign * 54.5],
+        [-18.0, sign * 54.5], [-27.0, sign * 61.5]
+      ], ink, highDetail ? 0.40 : 0.36);
+      fillWorldArcSector(0, goalZ, 24.6, 22.0, arcStart, arcEnd, color, highDetail ? 0.17 : 0.15);
+      fillWorldArcSector(0, goalZ, 18.2, 15.8, arcStart, arcEnd, soft, highDetail ? 0.075 : 0.06);
 
-      drawWorldArc(0, goalZ, 23.5, 21.0, arcStart, arcEnd, ink, 2.15, 0.64);
-      drawWorldArc(0, goalZ, 23.5, 21.0, arcStart, arcEnd, color, 0.80, 0.92);
-      drawWorldArc(0, goalZ, 18.4, 16.2, arcStart, arcEnd, soft, 0.20, 0.72, [1.1, 0.85]);
+      drawWorldArc(0, goalZ, 24.6, 22.0, arcStart, arcEnd, ink, 2.65, 0.72);
+      drawWorldArc(0, goalZ, 24.6, 22.0, arcStart, arcEnd, color, 1.05, 0.98);
+      drawWorldArc(0, goalZ, 20.7, 18.1, arcStart, arcEnd, soft, 0.34, 0.86, [1.25, 0.72]);
+      drawWorldArc(0, goalZ, 16.1, 13.8, arcStart, arcEnd, color, 0.22, 0.58, [0.55, 0.70]);
 
-      // Goal-lane rails and shoulder traces.
-      drawPath([[-16.8, sign * 77], [-16.8, sign * 67], [-24, sign * 58], [-24, sign * 37]], ink, 1.25, 0.58);
-      drawPath([[16.8, sign * 77], [16.8, sign * 67], [24, sign * 58], [24, sign * 37]], ink, 1.25, 0.58);
-      drawPath([[-16.8, sign * 77], [-16.8, sign * 67], [-24, sign * 58], [-24, sign * 37]], color, 0.34, 0.74);
-      drawPath([[16.8, sign * 77], [16.8, sign * 67], [24, sign * 58], [24, sign * 37]], color, 0.34, 0.74);
+      // Goal-lane rails and shoulder traces. A broad translucent underlay makes
+      // the lane itself visible, with a sharp illuminated line on top.
+      const shoulders = [
+        [[-17.4, sign * 77], [-17.4, sign * 66], [-24, sign * 57], [-24, sign * 36]],
+        [[17.4, sign * 77], [17.4, sign * 66], [24, sign * 57], [24, sign * 36]]
+      ];
+      for (const shoulder of shoulders) {
+        drawPath(shoulder, ink, 2.25, 0.48);
+        drawPath(shoulder, color, 0.58, 0.90);
+      }
 
-      // Centre boost lane and two diagonal rotation lanes.
+      // Main boost/rotation network. Broad coloured corridors are cheap texture
+      // pixels, yet make the field feel designed instead of like plain grass.
       const routes = [
         [[0, sign * 72], [0, sign * 68], [0, sign * 46], [0, sign * 17], [0, 0]],
         [[-42, sign * 66], [-24, sign * 68], [-13, sign * 53], [-24, sign * 37], [-28, sign * 17], [-14, 0]],
@@ -238,27 +328,37 @@ export class Arena {
         [[-24, sign * 68], [0, sign * 68], [24, sign * 68]]
       ];
       for (const route of routes) {
-        drawPath(route, ink, 0.90, 0.43);
-        drawPath(route, color, highDetail ? 0.24 : 0.20, highDetail ? 0.48 : 0.41);
+        drawPath(route, ink, 1.55, 0.44);
+        drawPath(route, color, highDetail ? 0.54 : 0.46, highDetail ? 0.74 : 0.66);
+        drawPath(route, soft, highDetail ? 0.14 : 0.11, 0.80);
       }
 
-      // Small arrow chevrons keep the long side lanes visually active without
-      // any animated geometry. They point from each goal toward midfield.
+      // Big edge runways make the half colour visible even when looking almost
+      // parallel to the pitch from the chase camera.
       for (const side of [-1, 1]) {
-        for (let row = 0; row < 4; row++) {
-          const z = sign * (60 - row * 10);
-          const x = side * (39 - row * 1.2);
-          const tipZ = z + fieldDirection * 2.2;
-          drawPath([[x - side * 2.5, z], [x, tipZ], [x + side * 2.5, z]], color, 0.40, 0.34);
+        const x = side * 48.3;
+        drawPath([[x, sign * 64], [x, sign * 10]], color, 2.3, 0.12);
+        drawPath([[x, sign * 64], [x, sign * 10]], soft, 0.34, 0.76);
+      }
+
+      // Repeated directional chevrons create motion in the side lanes while
+      // remaining completely static and free at runtime.
+      for (const side of [-1, 1]) {
+        for (let row = 0; row < 5; row++) {
+          const z = sign * (61 - row * 9.5);
+          const x = side * (40 - row * 0.9);
+          const tipZ = z + fieldDirection * 2.7;
+          drawPath([[x - side * 2.8, z], [x, tipZ], [x + side * 2.8, z]], ink, 1.05, 0.42);
+          drawPath([[x - side * 2.8, z], [x, tipZ], [x + side * 2.8, z]], color, 0.34, 0.72);
         }
       }
     }
 
     // Midfield technical rings. The white gameplay circle mesh stays on top;
     // these are subtle coloured underlays, like illuminated circuit markings.
-    drawWorldArc(0, 0, 16.8, 16.8, 0, Math.PI, orange, 0.36, 0.32, [1.0, 0.8]);
-    drawWorldArc(0, 0, 16.8, 16.8, Math.PI, Math.PI * 2, blue, 0.36, 0.32, [1.0, 0.8]);
-    drawWorldArc(0, 0, 25.0, 25.0, 0, Math.PI * 2, white, 0.16, 0.18, [1.4, 1.2]);
+    drawWorldArc(0, 0, 16.8, 16.8, 0, Math.PI, orange, 0.52, 0.62, [1.0, 0.8]);
+    drawWorldArc(0, 0, 16.8, 16.8, Math.PI, Math.PI * 2, blue, 0.52, 0.62, [1.0, 0.8]);
+    drawWorldArc(0, 0, 25.0, 25.0, 0, Math.PI * 2, white, 0.22, 0.28, [1.4, 1.2]);
 
     // Every boost location gets a permanent floor locator. Full pads have a
     // large double halo, small pads a compact ring, so the 100/12 layout reads
@@ -272,8 +372,8 @@ export class Arena {
       ctx.save();
       ctx.translate(point.x, point.y);
       ctx.strokeStyle = large ? '#ffd83d' : '#ffcf4a';
-      ctx.globalAlpha = large ? 0.72 : 0.46;
-      ctx.lineWidth = Math.max(1.2, (large ? 0.34 : 0.22) * lineScale);
+      ctx.globalAlpha = large ? 0.92 : 0.68;
+      ctx.lineWidth = Math.max(1.2, (large ? 0.46 : 0.30) * lineScale);
       ctx.beginPath();
       ctx.ellipse(0, 0, radiusX, radiusZ, 0, 0, Math.PI * 2);
       ctx.stroke();
@@ -289,35 +389,35 @@ export class Arena {
 
     // Crisp coloured half markers immediately inside the side walls. These are
     // deliberately broad enough to be visible from a low chase-camera angle.
-    drawPath([[-51.2, -52], [-51.2, -8]], blue, 0.75, 0.58);
-    drawPath([[51.2, -52], [51.2, -8]], blue, 0.75, 0.58);
-    drawPath([[-51.2, 8], [-51.2, 52]], orange, 0.75, 0.58);
-    drawPath([[51.2, 8], [51.2, 52]], orange, 0.75, 0.58);
+    drawPath([[-51.0, -56], [-51.0, -7]], blue, 1.20, 0.80);
+    drawPath([[51.0, -56], [51.0, -7]], blue, 1.20, 0.80);
+    drawPath([[-51.0, 7], [-51.0, 56]], orange, 1.20, 0.80);
+    drawPath([[51.0, 7], [51.0, 56]], orange, 1.20, 0.80);
   }
 
   createTurfTexture(highDetail = false) {
     const canvas = document.createElement('canvas');
-    canvas.width = highDetail ? 1024 : 512;
-    canvas.height = highDetail ? 1536 : 768;
+    canvas.width = highDetail ? 1024 : 640;
+    canvas.height = highDetail ? 1536 : 960;
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
     // Render the whole pitch into one texture instead of repeating a small
     // swatch. This lets us bake in Rocket-League-like mowing blocks, subtle
     // team colour at each end and a richer mid-green without extra draw calls.
-    ctx.fillStyle = '#225f38';
+    ctx.fillStyle = '#14562f';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const rows = 12;
     const cols = 6;
     const rowH = canvas.height / rows;
     const colW = canvas.width / cols;
-    const greens = ['#276a3d', '#2c7542', '#24673a', '#307947'];
+    const greens = ['#176136', '#1d6d3b', '#227842', '#19683a'];
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
         const paletteIndex = (row + col + (row % 3 === 0 ? 1 : 0)) % greens.length;
         ctx.fillStyle = greens[paletteIndex];
-        ctx.globalAlpha = 0.62;
+        ctx.globalAlpha = 0.74;
         ctx.fillRect(col * colW, row * rowH, colW + 1, rowH + 1);
       }
     }
@@ -328,9 +428,9 @@ export class Arena {
     for (let row = 0; row < rows; row++) {
       const band = ctx.createLinearGradient(0, row * rowH, canvas.width, row * rowH);
       const light = row % 2 === 0;
-      band.addColorStop(0, light ? 'rgba(93,145,91,0.10)' : 'rgba(4,35,24,0.08)');
-      band.addColorStop(0.5, light ? 'rgba(150,184,113,0.08)' : 'rgba(3,29,20,0.10)');
-      band.addColorStop(1, light ? 'rgba(93,145,91,0.10)' : 'rgba(4,35,24,0.08)');
+      band.addColorStop(0, light ? 'rgba(104,166,99,0.13)' : 'rgba(4,41,24,0.10)');
+      band.addColorStop(0.5, light ? 'rgba(155,194,116,0.10)' : 'rgba(3,33,20,0.12)');
+      band.addColorStop(1, light ? 'rgba(104,166,99,0.13)' : 'rgba(4,41,24,0.10)');
       ctx.fillStyle = band;
       ctx.fillRect(0, row * rowH, canvas.width, rowH);
     }
@@ -339,15 +439,15 @@ export class Arena {
     // It is intentionally subtle so the field still reads as grass rather
     // than a blue/orange carpet.
     const blueZone = ctx.createLinearGradient(0, 0, 0, canvas.height * 0.34);
-    blueZone.addColorStop(0, 'rgba(20,103,232,0.25)');
-    blueZone.addColorStop(0.42, 'rgba(16,91,214,0.11)');
+    blueZone.addColorStop(0, 'rgba(16,111,255,0.30)');
+    blueZone.addColorStop(0.42, 'rgba(10,96,232,0.15)');
     blueZone.addColorStop(1, 'rgba(16,91,214,0)');
     ctx.fillStyle = blueZone;
     ctx.fillRect(0, 0, canvas.width, canvas.height * 0.36);
 
     const orangeZone = ctx.createLinearGradient(0, canvas.height, 0, canvas.height * 0.66);
-    orangeZone.addColorStop(0, 'rgba(255,102,24,0.24)');
-    orangeZone.addColorStop(0.42, 'rgba(231,83,15,0.10)');
+    orangeZone.addColorStop(0, 'rgba(255,98,12,0.29)');
+    orangeZone.addColorStop(0.42, 'rgba(240,78,8,0.14)');
     orangeZone.addColorStop(1, 'rgba(231,83,15,0)');
     ctx.fillStyle = orangeZone;
     ctx.fillRect(0, canvas.height * 0.64, canvas.width, canvas.height * 0.36);
@@ -356,7 +456,7 @@ export class Arena {
     // the actual white centre-circle mesh rendered above the turf.
     ctx.save();
     ctx.translate(canvas.width * 0.5, canvas.height * 0.5);
-    ctx.strokeStyle = 'rgba(151,187,116,0.065)';
+    ctx.strokeStyle = 'rgba(159,208,121,0.09)';
     ctx.lineWidth = canvas.width * 0.075;
     ctx.beginPath();
     ctx.arc(0, 0, canvas.width * 0.205, 0, Math.PI * 2);
@@ -368,15 +468,15 @@ export class Arena {
       seed = (seed * 1664525 + 1013904223) >>> 0;
       return seed / 4294967296;
     };
-    const bladeCount = highDetail ? 18500 : 5200;
+    const bladeCount = highDetail ? 8200 : 2200;
     for (let i = 0; i < bladeCount; i++) {
       const x = random() * canvas.width;
       const y = random() * canvas.height;
       const blade = 1 + random() * (highDetail ? 4.2 : 3.2);
       const light = random();
-      ctx.strokeStyle = light > 0.74
-        ? `rgba(146,194,112,${0.08 + random() * 0.10})`
-        : `rgba(5,49,31,${0.07 + random() * 0.11})`;
+      ctx.strokeStyle = light > 0.70
+        ? `rgba(139,201,111,${0.055 + random() * 0.070})`
+        : `rgba(8,70,38,${0.025 + random() * 0.055})`;
       ctx.lineWidth = random() > 0.91 ? 1.35 : 0.75;
       ctx.beginPath();
       ctx.moveTo(x, y);
@@ -386,17 +486,15 @@ export class Arena {
 
     // Sparse dark/warm wear variation keeps the surface from looking like a
     // flat procedural checkerboard.
-    for (let i = 0; i < (highDetail ? 520 : 150); i++) {
+    for (let i = 0; i < (highDetail ? 260 : 90); i++) {
       const x = random() * canvas.width;
       const y = random() * canvas.height;
       const radius = 2 + random() * 10;
-      ctx.fillStyle = random() > 0.62 ? 'rgba(178,150,76,0.027)' : 'rgba(4,34,23,0.050)';
+      ctx.fillStyle = random() > 0.62 ? 'rgba(178,150,76,0.018)' : 'rgba(4,50,27,0.030)';
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.fill();
     }
-
-    this.drawFieldSurfaceGraphics(ctx, canvas, highDetail);
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
@@ -404,6 +502,26 @@ export class Arena {
     texture.wrapT = THREE.ClampToEdgeWrapping;
     texture.repeat.set(1, 1);
     texture.anisotropy = Math.min(highDetail ? 16 : 8, this.maxAnisotropy);
+    return texture;
+  }
+
+  createFieldMarkingsTexture(highDetail = false) {
+    const canvas = document.createElement('canvas');
+    canvas.width = highDetail ? 1024 : 768;
+    canvas.height = highDetail ? 1536 : 1152;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    this.drawFieldSurfaceGraphics(ctx, canvas, highDetail);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.wrapS = THREE.ClampToEdgeWrapping;
+    texture.wrapT = THREE.ClampToEdgeWrapping;
+    texture.minFilter = THREE.LinearMipmapLinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.generateMipmaps = true;
+    texture.anisotropy = Math.min(highDetail ? 16 : 10, this.maxAnisotropy);
     return texture;
   }
 
@@ -437,6 +555,124 @@ export class Arena {
     texture.repeat.set(2.4, 4.8);
     texture.anisotropy = Math.min(16, this.maxAnisotropy);
     return texture;
+  }
+
+  createTeamRampTexture(teamSign, highDetail = false) {
+    const canvas = document.createElement('canvas');
+    canvas.width = highDetail ? 512 : 384;
+    canvas.height = highDetail ? 512 : 384;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    const orange = teamSign > 0;
+    const baseA = orange ? '#3b1708' : '#061b35';
+    const baseB = orange ? '#5a2208' : '#072a51';
+    const panelA = orange ? '#6c2a0b' : '#0a3768';
+    const panelB = orange ? '#4b1d09' : '#082846';
+    const accent = orange ? '#ff6a0a' : '#098cff';
+    const accentSoft = orange ? '#ffc05b' : '#63ceff';
+
+    const bg = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    bg.addColorStop(0, baseB);
+    bg.addColorStop(0.50, baseA);
+    bg.addColorStop(1, '#071111');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const rows = 8;
+    const cols = 5;
+    const rowH = canvas.height / rows;
+    const colW = canvas.width / cols;
+    for (let row = 0; row < rows; row++) {
+      const offset = row % 2 ? colW * 0.5 : 0;
+      for (let col = -1; col < cols + 1; col++) {
+        const x = col * colW + offset;
+        const y = row * rowH;
+        ctx.fillStyle = (row + col) % 2 ? panelA : panelB;
+        ctx.globalAlpha = 0.58;
+        ctx.fillRect(x + 2, y + 2, colW - 4, rowH - 4);
+      }
+    }
+    ctx.globalAlpha = 1;
+
+    // Baked light rails and circuit traces give the quarter-pipe an illuminated
+    // team identity without real point lights or post-processing.
+    ctx.save();
+    ctx.shadowColor = accent;
+    ctx.shadowBlur = highDetail ? 18 : 12;
+    for (const yRatio of [0.18, 0.51, 0.84]) {
+      const y = canvas.height * yRatio;
+      ctx.strokeStyle = accent;
+      ctx.globalAlpha = 0.78;
+      ctx.lineWidth = highDetail ? 5 : 4;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(canvas.width, y);
+      ctx.stroke();
+      ctx.strokeStyle = accentSoft;
+      ctx.globalAlpha = 0.82;
+      ctx.lineWidth = highDetail ? 1.4 : 1.0;
+      ctx.beginPath();
+      ctx.moveTo(0, y - 1);
+      ctx.lineTo(canvas.width, y - 1);
+      ctx.stroke();
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+
+    ctx.strokeStyle = 'rgba(2,8,12,0.74)';
+    ctx.lineWidth = highDetail ? 3 : 2;
+    for (let row = 0; row <= rows; row++) {
+      ctx.beginPath();
+      ctx.moveTo(0, row * rowH);
+      ctx.lineTo(canvas.width, row * rowH);
+      ctx.stroke();
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.anisotropy = Math.min(highDetail ? 12 : 8, this.maxAnisotropy);
+    return texture;
+  }
+
+  createTeamRampMaterial(teamSign) {
+    const orange = teamSign > 0;
+    const teamColor = orange ? 0xff6308 : 0x078cff;
+    const key = `${orange ? 'orange' : 'blue'}-${this.lowDetail ? 'low' : (this.ultraHigh ? 'high' : 'normal')}`;
+    this.teamRampMaterials ??= new Map();
+    if (this.teamRampMaterials.has(key)) return this.teamRampMaterials.get(key);
+
+    let material;
+    if (this.lowDetail) {
+      material = new THREE.MeshBasicMaterial({
+        color: orange ? 0x8f3508 : 0x064887,
+        side: THREE.DoubleSide
+      });
+    } else {
+      this.teamRampTextures ??= new Map();
+      if (!this.teamRampTextures.has(key)) {
+        this.teamRampTextures.set(key, this.createTeamRampTexture(teamSign, this.ultraHigh));
+      }
+      const wallBump = this.ultraHigh
+        ? (this.wallBumpTexture ??= this.createWallBumpTexture(true))
+        : null;
+      material = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        map: this.teamRampTextures.get(key),
+        bumpMap: wallBump,
+        bumpScale: this.ultraHigh ? 0.045 : 0,
+        emissive: teamColor,
+        emissiveIntensity: this.ultraHigh ? 0.36 : 0.50,
+        roughness: this.ultraHigh ? 0.78 : 0.84,
+        metalness: this.ultraHigh ? 0.08 : 0.04,
+        side: THREE.DoubleSide
+      });
+    }
+    this.teamRampMaterials.set(key, material);
+    return material;
   }
 
   createWallTileTexture(highDetail = false) {
@@ -689,10 +925,10 @@ export class Arena {
     const chunkWidth = halfW * 2 / chunksX;
     const chunkLength = halfL * 2 / chunksZ;
     const instancePalette = [
-      new THREE.Color(0x4c9a5a),
-      new THREE.Color(0x3f874e),
-      new THREE.Color(0x5ca866),
-      new THREE.Color(0x357b47)
+      new THREE.Color(0x3f9b57),
+      new THREE.Color(0x2f874a),
+      new THREE.Color(0x55aa62),
+      new THREE.Color(0x287841)
     ];
     const insideField = (x, z) => {
       const ax = Math.abs(x);
@@ -757,8 +993,11 @@ export class Arena {
             const goalZ = sign * (FIELD_L * 0.5 - 0.25);
             const onFieldSide = sign < 0 ? z > goalZ : z < goalZ;
             if (!onFieldSide) continue;
-            const arcDistance = Math.hypot(x / 23.5, (z - goalZ) / 21.0);
-            if (Math.abs(arcDistance - 1) < 0.055) {
+            const arcDistance = Math.hypot(x / 24.6, (z - goalZ) / 22.0);
+            // Keep the entire coloured goal crease readable in Ultra High, not
+            // only the one-pixel arc. The surrounding pitch still carries the
+            // 3D grass, so this looks like a deliberately trimmed goal area.
+            if (arcDistance < 1.02 || Math.abs(arcDistance - 1) < 0.075) {
               blocksMarking = true;
               break;
             }
@@ -789,6 +1028,7 @@ export class Arena {
   createField() {
     const turfTexture = this.lowDetail ? null : this.createTurfTexture(this.ultraHigh);
     const turfBump = this.ultraHigh ? this.createUltraTurfBumpTexture() : null;
+    const markingsTexture = this.createFieldMarkingsTexture(this.ultraHigh);
     const turfMat = this.lowDetail
       ? new THREE.MeshBasicMaterial({ color: 0x2a7746 })
       : (this.ultraHigh
@@ -813,22 +1053,48 @@ export class Arena {
     turf.name = 'arena-turf';
     turf.userData.shadowRole = 'field';
     this.group.add(turf);
+
+    // Team graphics and boost routes live on one unlit overlay so they stay
+    // saturated from the normal driving camera instead of being dulled by
+    // daylight, tone mapping or the grass material. This is one extra draw call.
+    if (markingsTexture) {
+      const markingsMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        map: markingsTexture,
+        transparent: true,
+        opacity: 1,
+        depthWrite: false,
+        alphaTest: 0.012,
+        toneMapped: false,
+        side: THREE.DoubleSide
+      });
+      const markings = new THREE.Mesh(
+        roundedRectGeometry(FIELD_W, FIELD_L, CORNER_R, this.lowDetail ? 4 : 12),
+        markingsMaterial
+      );
+      markings.name = 'arena-field-markings';
+      markings.position.y = 0.020;
+      markings.renderOrder = 3;
+      markings.userData.cameraOcclusionIgnore = true;
+      this.group.add(markings);
+    }
+
     if (this.ultraHigh) this.createUltraGrass();
 
-    const lineMaterial = new THREE.MeshBasicMaterial({ color: 0xf4fbff, transparent: true, opacity: 0.94, toneMapped: false });
+    const lineMaterial = new THREE.MeshBasicMaterial({ color: 0xf7ffff, transparent: true, opacity: 0.97, toneMapped: false });
     const centerLine = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_W - 2, 0.14), lineMaterial);
     centerLine.rotation.x = -Math.PI / 2;
-    centerLine.position.y = 0.012;
+    centerLine.position.y = 0.038;
     this.group.add(centerLine);
 
     const circle = new THREE.Mesh(new THREE.RingGeometry(10.5, 10.68, this.lowDetail ? 24 : 56), lineMaterial);
     circle.rotation.x = -Math.PI / 2;
-    circle.position.y = 0.014;
+    circle.position.y = 0.040;
     this.group.add(circle);
 
     const centerDot = new THREE.Mesh(new THREE.CircleGeometry(0.38, this.lowDetail ? 8 : 20), lineMaterial);
     centerDot.rotation.x = -Math.PI / 2;
-    centerDot.position.y = 0.016;
+    centerDot.position.y = 0.042;
     this.group.add(centerDot);
 
     const glassMaterial = this.lowDetail
@@ -1162,39 +1428,26 @@ export class Arena {
   }
 
   createLowerWallPanels(panels) {
-    const lowerPanels = panels.filter(
+    const lowerPanels = this.splitVisualPanelsByTeam(panels).filter(
       (panel) => panel.ramp !== false
         && this.panelGlassMinY(panel) > (panel.minY ?? 0) + 0.05
     );
     if (lowerPanels.length === 0) return;
 
-    const wallTexture = this.lowDetail
-      ? null
-      : (this.wallTileTexture ??= this.createWallTileTexture(this.ultraHigh));
-    const wallBump = this.ultraHigh
-      ? (this.wallBumpTexture ??= this.createWallBumpTexture(true))
-      : null;
-    const material = this.lowDetail
-      ? new THREE.MeshBasicMaterial({ color: 0x253f43, side: THREE.DoubleSide })
-      : new THREE.MeshStandardMaterial({
-          color: this.ultraHigh ? 0xffffff : 0xf6fbfa,
-          map: wallTexture,
-          bumpMap: wallBump,
-          bumpScale: this.ultraHigh ? 0.075 : 0,
-          roughness: 0.98,
-          metalness: 0.01,
-          side: THREE.DoubleSide
-        });
-
-    this.createPanelSurfaceMesh(lowerPanels, material, {
-      minY: (panel) => panel.minY ?? 0,
-      maxY: (panel) => this.panelGlassMinY(panel),
-      lengthScale: 1.018,
-      tileWidth: 2.8,
-      tileHeight: 0.72,
-      name: 'arena-tiled-kick-wall',
-      shadowRole: 'arena-surface'
-    });
+    for (const teamSign of [-1, 1]) {
+      const teamPanels = lowerPanels.filter((panel) => this.panelTeamSign(panel) === teamSign);
+      if (teamPanels.length === 0) continue;
+      const material = this.createTeamRampMaterial(teamSign);
+      this.createPanelSurfaceMesh(teamPanels, material, {
+        minY: (panel) => panel.minY ?? 0,
+        maxY: (panel) => this.panelGlassMinY(panel),
+        lengthScale: 1.018,
+        tileWidth: 3.2,
+        tileHeight: 2.4,
+        name: teamSign > 0 ? 'arena-orange-kick-wall' : 'arena-blue-kick-wall',
+        shadowRole: 'arena-surface'
+      });
+    }
   }
 
   createWallFrameGrid(panels, frameMaterial) {
@@ -1253,26 +1506,31 @@ export class Arena {
     frames.instanceMatrix.needsUpdate = true;
     this.group.add(frames);
 
-    // Keep the continuous base rail neutral. Team identity is handled by the
-    // split half-field LED ribbons below; a single long side-wall panel spans
-    // both halves and therefore must not inherit one team's colour.
-    const accentMaterial = new THREE.MeshBasicMaterial({ color: 0x263943, toneMapped: false });
-    const accents = new THREE.InstancedMesh(geometry, accentMaterial, panels.length);
-    accents.name = 'arena-lower-accent';
+    // A bright continuous team rail now follows the entire lower glass edge,
+    // including curved corners. It replaces the old neutral black/grey strip
+    // and makes the blue/orange half obvious from ground level.
+    const visualPanels = this.splitVisualPanelsByTeam(panels).filter((panel) => this.panelTeamSign(panel) !== 0);
+    const accentMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
+    const accents = new THREE.InstancedMesh(geometry, accentMaterial, visualPanels.length);
+    accents.name = 'arena-team-lower-accent';
     accents.userData.shadowRole = 'arena-frame';
-    for (let panelIndex = 0; panelIndex < panels.length; panelIndex++) {
-      const panel = panels[panelIndex];
+    const blue = new THREE.Color(0x078fff);
+    const orange = new THREE.Color(0xff6208);
+    for (let panelIndex = 0; panelIndex < visualPanels.length; panelIndex++) {
+      const panel = visualPanels[panelIndex];
       const minY = this.panelGlassMinY(panel);
-      const surfaceX = panel.x - panel.nx * (WALL_T * 0.5 + 0.014);
-      const surfaceZ = panel.z - panel.nz * (WALL_T * 0.5 + 0.014);
-      dummy.position.set(surfaceX, minY + 0.13, surfaceZ);
+      const surfaceX = panel.x - panel.nx * (WALL_T * 0.5 + 0.018);
+      const surfaceZ = panel.z - panel.nz * (WALL_T * 0.5 + 0.018);
+      dummy.position.set(surfaceX, minY + 0.14, surfaceZ);
       dummy.rotation.set(0, panel.yaw, 0);
-      dummy.scale.set(panel.length * 1.018, 0.085, 0.20);
+      dummy.scale.set(panel.length * 1.022, 0.16, 0.27);
       dummy.updateMatrix();
       accents.setMatrixAt(panelIndex, dummy.matrix);
+      accents.setColorAt(panelIndex, this.panelTeamSign(panel) > 0 ? orange : blue);
     }
     accents.instanceMatrix.needsUpdate = true;
-    accents.renderOrder = 4;
+    if (accents.instanceColor) accents.instanceColor.needsUpdate = true;
+    accents.renderOrder = 7;
     this.group.add(accents);
   }
 
@@ -1294,8 +1552,8 @@ export class Arena {
     ribbons.name = 'arena-team-side-ribbons';
     ribbons.userData.shadowRole = 'arena-frame';
     ribbons.renderOrder = 6;
-    const orange = new THREE.Color(0xff5a08);
-    const blue = new THREE.Color(0x087dff);
+    const orange = new THREE.Color(0xff6508);
+    const blue = new THREE.Color(0x078fff);
     const dummy = new THREE.Object3D();
     let index = 0;
     const ribbonHeights = [
@@ -1313,7 +1571,7 @@ export class Arena {
             signZ * straightZ * 0.5
           );
           dummy.rotation.set(0, 0, 0);
-          dummy.scale.set(0.15, 0.18, straightZ * 0.985);
+          dummy.scale.set(0.22, 0.30, straightZ * 0.985);
           dummy.updateMatrix();
           ribbons.setMatrixAt(index, dummy.matrix);
           ribbons.setColorAt(index, signZ > 0 ? orange : blue);
@@ -1333,7 +1591,7 @@ export class Arena {
             signZ * (halfLength - 0.045)
           );
           dummy.rotation.set(0, 0, 0);
-          dummy.scale.set(endSpan * 0.98, 0.18, 0.15);
+          dummy.scale.set(endSpan * 0.98, 0.30, 0.22);
           dummy.updateMatrix();
           ribbons.setMatrixAt(index, dummy.matrix);
           ribbons.setColorAt(index, signZ > 0 ? orange : blue);
@@ -1445,32 +1703,19 @@ export class Arena {
   }
 
   createWallRamps(panels) {
-    const rampPanels = panels.filter((panel) => panel.ramp !== false);
-    const wallTexture = this.lowDetail
-      ? null
-      : (this.wallTileTexture ??= this.createWallTileTexture(this.ultraHigh));
-    const wallBump = this.ultraHigh
-      ? (this.wallBumpTexture ??= this.createWallBumpTexture(true))
-      : null;
-    const material = this.lowDetail
-      ? new THREE.MeshBasicMaterial({ color: 0x31575a, side: THREE.DoubleSide })
-      : new THREE.MeshStandardMaterial({
-          color: this.ultraHigh ? 0xd9e0dd : 0xd2dcda,
-          map: wallTexture,
-          bumpMap: wallBump,
-          bumpScale: this.ultraHigh ? 0.075 : 0,
-          roughness: 0.98,
-          metalness: 0.01,
-          side: THREE.DoubleSide
-        });
-
-    this.createRoundedRampSurfaceMesh(rampPanels, RAMP_R, RAMP_R, false, material, {
-      tileWidth: 2.8,
-      tileHeight: 0.72,
-      lengthScale: 1.028,
-      name: 'arena-lower-quarter-pipe',
-      shadowRole: 'arena-surface'
-    });
+    const rampPanels = this.splitVisualPanelsByTeam(panels).filter((panel) => panel.ramp !== false);
+    for (const teamSign of [-1, 1]) {
+      const teamPanels = rampPanels.filter((panel) => this.panelTeamSign(panel) === teamSign);
+      if (teamPanels.length === 0) continue;
+      const material = this.createTeamRampMaterial(teamSign);
+      this.createRoundedRampSurfaceMesh(teamPanels, RAMP_R, RAMP_R, false, material, {
+        tileWidth: 3.6,
+        tileHeight: 3.2,
+        lengthScale: 1.028,
+        name: teamSign > 0 ? 'arena-orange-lower-quarter-pipe' : 'arena-blue-lower-quarter-pipe',
+        shadowRole: 'arena-surface'
+      });
+    }
   }
 
   createCeilingRamps(panels, glassMaterial) {
