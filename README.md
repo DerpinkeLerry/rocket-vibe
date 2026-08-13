@@ -1,4 +1,4 @@
-# Rocket Vibe 1.10.13 – Quick Chat
+# Rocket Vibe 1.10.14 – Boost Cosmetics
 
 Browser-Spiel fuer bis zu vier Spieler mit Three.js-Rendering, lokaler Client-Prediction und einem autoritativen Go-Server. Frontend und Server werden auf Railway als **ein Service** betrieben. Dadurch verwendet der Browser dieselbe HTTPS-Domain fuer Seite und WebSocket (`/lan`); eine separate Backend-URL oder CORS-Konfiguration ist nicht erforderlich.
 
@@ -21,6 +21,10 @@ Die Serverphysik rechnet intern mit `float64`. Fuer das Netzwerk werden Position
 
 
 
+
+## Boost-Cosmetics
+
+Im Startmenue kann neben Auto und Grafikprofil einer von vier rein optischen Boost-Trails gewaehlt werden: **SOLAR**, **ION**, **PLASMA** und **STARFALL**. Die Auswahl wird lokal gespeichert und ueber die Lobby-Roster-Daten an alle Spieler verteilt, damit jeder die gewaehlte Spur der anderen sieht. In Ultra High wird hinter jedem boostenden Auto ein gepoolter Partikel-Trail mit Additive-Blending gerendert; Normal verwendet weiterhin nur die leichte Auspuffflamme und Ultra Low verzichtet auf die Partikelspur. Die vier Varianten aendern keinerlei Schub, Verbrauch oder Geschwindigkeit. Die Boost-Leiste besitzt in Ultra High waehrend aktivem Boost zusaetzlich einen kleinen Energie-/Spark-Effekt am aktuellen Fuellstand.
 
 ## Quick Chat
 

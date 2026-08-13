@@ -14,6 +14,7 @@ import { ReplayBuffer, sampleReplayFrames } from './ReplayBuffer.js';
 import { GoalExplosion } from './GoalExplosion.js';
 import { ARENA_TUNING } from '../shared/arena-tuning.js';
 import { DEFAULT_CAR_STYLE, normalizeCarStyle } from '../shared/car-styles.js';
+import { DEFAULT_BOOST_STYLE, normalizeBoostStyle } from '../shared/boost-styles.js';
 
 const CLIENT_INPUT_HEARTBEAT_HZ = 15;
 
@@ -33,6 +34,7 @@ export class Game {
     this.playerId = network?.playerId ?? 0;
     this.playerName = network?.playerName || options.playerName || 'Spieler';
     this.playerCarStyle = normalizeCarStyle(network?.carStyle || options.carStyle || DEFAULT_CAR_STYLE);
+    this.playerBoostStyle = normalizeBoostStyle(network?.boostStyle || options.boostStyle || DEFAULT_BOOST_STYLE);
     this.playerTeam = network?.team === 'blue' ? 'blue' : 'orange';
     this.profile = getPerformanceProfile(this.networked, options.graphicsMode);
 
@@ -143,6 +145,10 @@ export class Game {
       Number(player?.playerId),
       normalizeCarStyle(player?.carStyle)
     ]));
+    const initialBoostStyles = new Map((network?.players ?? []).map((player) => [
+      Number(player?.playerId),
+      normalizeBoostStyle(player?.boostStyle)
+    ]));
 
     this.cars = PLAYER_CONFIGS.map((config, index) => new Car(
       this.scene,
@@ -156,6 +162,8 @@ export class Game {
         clientOnly: this.networked,
         playerName: index === this.playerId ? this.playerName : `Spieler ${index + 1}`,
         carStyle: index === this.playerId ? this.playerCarStyle : (initialCarStyles.get(index) || DEFAULT_CAR_STYLE),
+        boostStyle: index === this.playerId ? this.playerBoostStyle : (initialBoostStyles.get(index) || DEFAULT_BOOST_STYLE),
+        mobile: this.profile.mobile,
         localPlayer: index === this.playerId
       }
     ));
@@ -172,6 +180,7 @@ export class Game {
       for (let i = 1; i < this.cars.length; i++) this.setCarVisible(i, false);
       this.car0.setPlayerIdentity(this.playerName, 'orange', true);
       this.car0.setCarStyle(this.playerCarStyle);
+      this.car0.setBoostStyle(this.playerBoostStyle);
     }
 
     this.car = this.cars[this.playerId] ?? this.car0;
@@ -299,6 +308,7 @@ export class Game {
     if (!car) return;
     car.group.visible = visible;
     if (car.shadow) car.shadow.visible = visible;
+    car.boostTrail?.setVisible?.(visible);
   }
 
   setRoster(players, maxPlayers = 4) {
@@ -308,13 +318,14 @@ export class Game {
           playerId: Number(player.playerId),
           name: String(player.name || `Spieler ${Number(player.playerId) + 1}`).slice(0, 16),
           team: player.team === 'blue' ? 'blue' : 'orange',
-          carStyle: normalizeCarStyle(player.carStyle)
+          carStyle: normalizeCarStyle(player.carStyle),
+          boostStyle: normalizeBoostStyle(player.boostStyle)
         };
       }
       const playerId = Number(player);
-      return { playerId, name: `Spieler ${playerId + 1}`, team: playerId % 2 === 0 ? 'orange' : 'blue', carStyle: DEFAULT_CAR_STYLE };
+      return { playerId, name: `Spieler ${playerId + 1}`, team: playerId % 2 === 0 ? 'orange' : 'blue', carStyle: DEFAULT_CAR_STYLE, boostStyle: DEFAULT_BOOST_STYLE };
     }).filter((player) => Number.isInteger(player.playerId) && player.playerId >= 0 && player.playerId < this.cars.length);
-    const signature = roster.map((player) => `${player.playerId}:${player.name}:${player.team}:${player.carStyle}`).join('|');
+    const signature = roster.map((player) => `${player.playerId}:${player.name}:${player.team}:${player.carStyle}:${player.boostStyle}`).join('|');
     if (signature === this.rosterSignature) return;
     this.rosterSignature = signature;
     this.connectedPlayers = new Set(roster.map((player) => player.playerId));
@@ -322,6 +333,7 @@ export class Game {
       const car = this.cars[player.playerId];
       car?.setPlayerIdentity(player.name, player.team, player.playerId === this.playerId);
       car?.setCarStyle(player.carStyle);
+      car?.setBoostStyle(player.boostStyle);
     }
     if (this.networked) {
       for (let i = 0; i < this.cars.length; i++) this.setCarVisible(i, this.connectedPlayers.has(i));
@@ -583,7 +595,11 @@ export class Game {
       const renderDt = this.lastRenderTime === 0 ? frameDt : Math.min(now - this.lastRenderTime, 0.08);
       this.lastRenderTime = now;
 
-      for (const car of this.cars) if (car.group.visible) car.syncVisual();
+      for (const car of this.cars) {
+        if (!car.group.visible) continue;
+        car.syncVisual();
+        car.updateBoostEffects?.(renderDt);
+      }
       this.ball.syncVisual();
       if (!this.replayActive && this.input.consumePressed('KeyC')) {
         const cameraMode = this.chaseCamera.toggleMode();
@@ -723,6 +739,11 @@ export class Game {
     this.replayWaiting = replay.phase === 'wait';
     this.kickoffActive = false;
     this.replayState = { ...replay };
+    for (const car of this.cars) {
+      car.boosting = false;
+      car.boostVisualHold = 0;
+      car.boostTrail?.clear?.();
+    }
     this.replayFrames = this.replayWaiting
       ? []
       : this.replayBuffer.window(replay.goalTick, replay.lookbackSeconds || 5);
@@ -769,6 +790,7 @@ export class Game {
       if (!entity) continue;
       applyEntity(this.cars[i].body, entity);
       this.cars[i].grounded = Boolean(entity.g);
+      this.cars[i].boosting = false;
       this.cars[i].setBoost?.(entity.b);
     }
     applyEntity(this.ball.body, state.ball);

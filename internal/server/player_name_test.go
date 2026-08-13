@@ -32,3 +32,19 @@ func TestSanitizeCarStyle(t *testing.T) {
 		}
 	}
 }
+
+func TestSanitizeBoostStyle(t *testing.T) {
+	checks := map[string]string{
+		"solar":    "solar",
+		" ION ":    "ion",
+		"Plasma":   "plasma",
+		"STARFALL": "starfall",
+		"rainbow":  defaultBoostStyle,
+		"":         defaultBoostStyle,
+	}
+	for input, expected := range checks {
+		if actual := sanitizeBoostStyle(input); actual != expected {
+			t.Fatalf("sanitizeBoostStyle(%q) = %q, want %q", input, actual, expected)
+		}
+	}
+}

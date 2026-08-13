@@ -1325,3 +1325,145 @@ html, body, #app {
   opacity: 1;
   pointer-events: auto;
 }
+
+/* Boost cosmetic picker -------------------------------------------------- */
+.boost-select {
+  min-width: 0;
+  margin: 16px 0 2px;
+  padding: 0;
+  border: 0;
+}
+.boost-select legend {
+  margin-bottom: 9px;
+  padding: 0;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
+.boost-select__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.boost-choice {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 9px 10px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 13px;
+  background: rgba(255,255,255,0.045);
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+  user-select: none;
+}
+.boost-choice:hover {
+  border-color: rgba(255, 213, 117, 0.48);
+  background: rgba(255, 178, 72, 0.075);
+  transform: translateY(-1px);
+}
+.boost-choice.is-selected {
+  border-color: #ffd174;
+  background: linear-gradient(180deg, rgba(255, 188, 75, 0.15), rgba(86, 201, 255, 0.08));
+  box-shadow: inset 0 0 0 1px rgba(255, 214, 127, 0.22);
+}
+.boost-choice input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.boost-choice:has(input:focus-visible) {
+  outline: 3px solid rgba(255, 208, 105, 0.4);
+  outline-offset: 2px;
+}
+.boost-choice__preview {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1.8 / 1;
+  border-radius: 9px;
+  background:
+    radial-gradient(circle at 35% 58%, rgba(255, 188, 90, 0.12), transparent 45%),
+    linear-gradient(180deg, rgba(25, 45, 63, 0.65), rgba(5, 12, 21, 0.65));
+}
+.boost-choice__preview svg { display: block; width: 100%; height: 100%; }
+.boost-choice__name {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+}
+.boost-choice__desc {
+  color: rgba(255,255,255,0.55);
+  font-size: 10px;
+  line-height: 1.25;
+}
+.boost-select__note {
+  margin-top: 7px;
+  color: rgba(216, 234, 246, 0.55);
+  font-size: 9px;
+  line-height: 1.35;
+}
+@media (max-width: 720px) {
+  .boost-select__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Ultra High boost HUD energy ------------------------------------------ */
+.hud__boost-track {
+  --boost-level: 100%;
+  position: relative;
+  overflow: visible;
+}
+.hud__boost-sparks {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+  opacity: 0;
+}
+.hud__boost-spark {
+  position: absolute;
+  left: var(--boost-level);
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  border-radius: 50%;
+  background: #fff7c6;
+  box-shadow: 0 0 4px #fff, 0 0 9px #ffb32f;
+  opacity: 0;
+}
+.perf-ultra-high .hud--boosting .hud__boost-fill {
+  background-size: 180% 100%;
+  animation: boost-fill-energy 420ms linear infinite;
+  filter: saturate(1.15) brightness(1.08);
+  box-shadow: 0 0 12px rgba(255, 170, 42, 0.52);
+}
+.perf-ultra-high .hud--boosting .hud__boost-sparks { opacity: 1; }
+.perf-ultra-high .hud--boosting .hud__boost-spark {
+  animation: boost-spark-burst 560ms cubic-bezier(.1,.7,.25,1) infinite;
+  animation-delay: var(--spark-delay);
+}
+@keyframes boost-fill-energy {
+  from { background-position: 0 0; }
+  to { background-position: 180% 0; }
+}
+@keyframes boost-spark-burst {
+  0% { opacity: 0; transform: translate(0, 0) scale(.45); }
+  16% { opacity: 1; }
+  72% { opacity: .76; }
+  100% { opacity: 0; transform: translate(var(--spark-x), var(--spark-y)) scale(.08); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .perf-ultra-high .hud--boosting .hud__boost-fill { animation: none; }
+  .perf-ultra-high .hud--boosting .hud__boost-spark { display: none; }
+}

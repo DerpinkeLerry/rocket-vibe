@@ -19,12 +19,13 @@ type outboundMessage struct {
 }
 
 type client struct {
-	id       string
-	conn     *websocket.Conn
-	slot     int
-	name     string
-	team     string
-	carStyle string
+	id         string
+	conn       *websocket.Conn
+	slot       int
+	name       string
+	team       string
+	carStyle   string
+	boostStyle string
 
 	ctx      context.Context
 	cancel   context.CancelFunc
@@ -37,18 +38,19 @@ type client struct {
 	motionAcked bool
 }
 
-func newClient(id string, connection *websocket.Conn, name, carStyle string) *client {
+func newClient(id string, connection *websocket.Conn, name, carStyle, boostStyle string) *client {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &client{
-		id:       id,
-		conn:     connection,
-		slot:     -1,
-		name:     name,
-		carStyle: sanitizeCarStyle(carStyle),
-		ctx:      ctx,
-		cancel:   cancel,
-		control:  make(chan outboundMessage, 32),
-		snapshot: make(chan []byte, 1),
+		id:         id,
+		conn:       connection,
+		slot:       -1,
+		name:       name,
+		carStyle:   sanitizeCarStyle(carStyle),
+		boostStyle: sanitizeBoostStyle(boostStyle),
+		ctx:        ctx,
+		cancel:     cancel,
+		control:    make(chan outboundMessage, 32),
+		snapshot:   make(chan []byte, 1),
 	}
 }
 

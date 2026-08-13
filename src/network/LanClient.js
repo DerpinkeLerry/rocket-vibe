@@ -1,4 +1,5 @@
 import { DEFAULT_CAR_STYLE, normalizeCarStyle } from '../shared/car-styles.js';
+import { DEFAULT_BOOST_STYLE, normalizeBoostStyle } from '../shared/boost-styles.js';
 import { ALL_BOOST_PADS_MASK } from '../shared/boost-tuning.js';
 
 const MSG_INPUT = 1;
@@ -30,7 +31,8 @@ function normalizePlayers(players, connectedPlayers = []) {
         playerId: Number(player?.playerId),
         name: String(player?.name || '').trim().slice(0, 16),
         team: player?.team === 'blue' ? 'blue' : 'orange',
-        carStyle: normalizeCarStyle(player?.carStyle)
+        carStyle: normalizeCarStyle(player?.carStyle),
+        boostStyle: normalizeBoostStyle(player?.boostStyle)
       }))
       .filter((player) => Number.isInteger(player.playerId) && player.playerId >= 0 && player.playerId < 4);
   }
@@ -38,16 +40,18 @@ function normalizePlayers(players, connectedPlayers = []) {
     playerId: Number(playerId),
     name: `Spieler ${Number(playerId) + 1}`,
     team: Number(playerId) % 2 === 0 ? 'orange' : 'blue',
-    carStyle: DEFAULT_CAR_STYLE
+    carStyle: DEFAULT_CAR_STYLE,
+    boostStyle: DEFAULT_BOOST_STYLE
   }));
 }
 
 export class LanClient {
-  constructor(playerName = '', carStyle = DEFAULT_CAR_STYLE) {
+  constructor(playerName = '', carStyle = DEFAULT_CAR_STYLE, boostStyle = DEFAULT_BOOST_STYLE) {
     this.socket = null;
     this.playerId = 0;
     this.playerName = String(playerName || '').trim().slice(0, 16);
     this.carStyle = normalizeCarStyle(carStyle);
+    this.boostStyle = normalizeBoostStyle(boostStyle);
     this.team = 'orange';
     this.maxPlayers = 4;
     this.serverHz = 60;
@@ -91,6 +95,7 @@ export class LanClient {
     const url = new URL(`${scheme}://${location.host}/lan`);
     url.searchParams.set('name', this.playerName);
     url.searchParams.set('car', this.carStyle);
+    url.searchParams.set('boost', this.boostStyle);
 
     return new Promise((resolve, reject) => {
       let settled = false;
@@ -127,6 +132,7 @@ export class LanClient {
           this.playerId = Number(message.playerId) || 0;
           this.playerName = String(message.playerName || this.playerName || `Spieler ${this.playerId + 1}`);
           this.carStyle = normalizeCarStyle(message.carStyle || this.carStyle);
+          this.boostStyle = normalizeBoostStyle(message.boostStyle || this.boostStyle);
           this.team = message.team === 'blue' ? 'blue' : 'orange';
           this.maxPlayers = Number(message.maxPlayers) || 4;
           this.serverHz = Math.max(1, Number(message.serverHz) || 60);

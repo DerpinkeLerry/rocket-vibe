@@ -75,11 +75,13 @@ test('legacy state packets remain readable during a rolling deploy', () => {
 });
 
 
-test('client remembers the selected cosmetic car style', () => {
-  const selected = new LanClient('Style Pilot', 'apex');
+test('client remembers selected car and boost cosmetics', () => {
+  const selected = new LanClient('Style Pilot', 'apex', 'plasma');
   assert.equal(selected.carStyle, 'apex');
-  const invalid = new LanClient('Fallback Pilot', 'octane');
+  assert.equal(selected.boostStyle, 'plasma');
+  const invalid = new LanClient('Fallback Pilot', 'octane', 'rainbow');
   assert.equal(invalid.carStyle, 'vortex');
+  assert.equal(invalid.boostStyle, 'solar');
 });
 
 test('kickoff control messages persist and notify the game layer', () => {

@@ -45,3 +45,14 @@ func sanitizeCarStyle(value string) string {
 		return defaultCarStyle
 	}
 }
+
+const defaultBoostStyle = "solar"
+
+func sanitizeBoostStyle(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "solar", "ion", "plasma", "starfall":
+		return strings.ToLower(strings.TrimSpace(value))
+	default:
+		return defaultBoostStyle
+	}
+}

@@ -43,7 +43,7 @@ func TestHTTPAndWebSocketIntegration(t *testing.T) {
 
 	connectionContext, cancelConnection := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancelConnection()
-	connection, _, err := websocket.Dial(connectionContext, "ws"+strings.TrimPrefix(httpServer.URL, "http")+"/lan?name=Test%20Pilot&car=titan", nil)
+	connection, _, err := websocket.Dial(connectionContext, "ws"+strings.TrimPrefix(httpServer.URL, "http")+"/lan?name=Test%20Pilot&car=titan&boost=ion", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,15 +54,16 @@ func TestHTTPAndWebSocketIntegration(t *testing.T) {
 		t.Fatalf("welcome read failed: type=%v err=%v", messageType, err)
 	}
 	var welcome struct {
-		Type     string `json:"type"`
-		PlayerID int    `json:"playerId"`
-		Name     string `json:"playerName"`
-		Team     string `json:"team"`
-		CarStyle string `json:"carStyle"`
-		Protocol int    `json:"protocol"`
+		Type       string `json:"type"`
+		PlayerID   int    `json:"playerId"`
+		Name       string `json:"playerName"`
+		Team       string `json:"team"`
+		CarStyle   string `json:"carStyle"`
+		BoostStyle string `json:"boostStyle"`
+		Protocol   int    `json:"protocol"`
 	}
 	if json.Unmarshal(payload, &welcome) != nil || welcome.Type != "welcome" || welcome.PlayerID != 0 ||
-		welcome.Name != "Test Pilot" || welcome.Team != game.TeamOrange || welcome.CarStyle != "titan" || welcome.Protocol != 3 {
+		welcome.Name != "Test Pilot" || welcome.Team != game.TeamOrange || welcome.CarStyle != "titan" || welcome.BoostStyle != "ion" || welcome.Protocol != 3 {
 		t.Fatalf("unexpected welcome: %s", payload)
 	}
 
@@ -88,7 +89,7 @@ func TestHTTPAndWebSocketIntegration(t *testing.T) {
 				Players []rosterPlayer `json:"players"`
 			}
 			if json.Unmarshal(payload, &roster) == nil && roster.Type == "roster" {
-				if len(roster.Players) != 1 || roster.Players[0].Name != "Test Pilot" || roster.Players[0].Team != game.TeamOrange {
+				if len(roster.Players) != 1 || roster.Players[0].Name != "Test Pilot" || roster.Players[0].Team != game.TeamOrange || roster.Players[0].BoostStyle != "ion" {
 					t.Fatalf("unexpected roster: %s", payload)
 				}
 				foundRoster = true

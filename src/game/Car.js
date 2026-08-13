@@ -3,6 +3,8 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { TransformBody } from '../network/TransformBody.js';
 import { CAR_TUNING } from '../shared/game-tuning.js';
 import { getCarStyle, normalizeCarStyle } from '../shared/car-styles.js';
+import { getBoostStyle, normalizeBoostStyle } from '../shared/boost-styles.js';
+import { BoostTrail } from './BoostTrail.js';
 
 const VEC3_UP = new THREE.Vector3(0, 1, 0);
 const VEC3_FORWARD = new THREE.Vector3(0, 0, -1);
@@ -32,13 +34,19 @@ export class Car {
     this.playerName = String(options.playerName || 'Spieler').slice(0, 16);
     this.team = options.team === 'blue' ? 'blue' : 'orange';
     this.isLocalPlayer = Boolean(options.localPlayer);
+    this.mobile = Boolean(options.mobile);
     this.carStyle = getCarStyle(options.carStyle);
+    this.boostStyle = getBoostStyle(options.boostStyle);
+    this.boostVisualHold = 0;
+    this.lastVisualBoost = CAR_TUNING.boostCapacity;
+    this.boostTrail = null;
     this.visualParts = null;
     this.wheelPivots = [];
     this.maxGroundSpeed = CAR_TUNING.maxGroundSpeed;
     this.maxBoostSpeed = CAR_TUNING.maxBoostSpeed;
     this.boost = CAR_TUNING.boostCapacity;
     this.boosting = false;
+    this.boostVisualHold = 0;
     this.grip = CAR_TUNING.grip;
     this.steerRate = CAR_TUNING.steerRate;
     this.steerResponse = CAR_TUNING.steerResponse;
@@ -276,16 +284,16 @@ export class Car {
     }
 
     // Ultra High adds one short-range light per car, enabled only while boosting.
-    this.boostLight = this.ultraHigh ? new THREE.PointLight(0xff7b25, 0, 6.5, 2.0) : null;
+    this.boostLight = this.ultraHigh ? new THREE.PointLight(this.boostStyle.primary, 0, 6.5, 2.0) : null;
     if (this.boostLight) {
       this.boostLight.position.set(0, 0.02, 1.78);
       this.group.add(this.boostLight);
     }
 
-    const exhaustMat = new THREE.MeshStandardMaterial({ color: this.ultraHigh ? 0xffb15f : 0xffa34d, emissive: 0xff4c00, emissiveIntensity: this.ultraHigh ? 5.0 : 4.0, toneMapped: !this.ultraHigh });
+    this.exhaustMaterial = new THREE.MeshStandardMaterial({ color: this.boostStyle.secondary, emissive: this.boostStyle.primary, emissiveIntensity: this.ultraHigh ? 5.0 : 4.0, toneMapped: !this.ultraHigh });
     this.exhaust = [];
     for (const x of [-0.34, 0.34]) {
-      const flame = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.72, 10), exhaustMat);
+      const flame = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.72, 10), this.exhaustMaterial);
       flame.rotation.x = Math.PI / 2;
       flame.position.set(x, -0.03, 1.82);
       flame.visible = false;
@@ -293,11 +301,16 @@ export class Car {
       this.exhaust.push(flame);
     }
 
+    if (this.ultraHigh) {
+      this.boostTrail = new BoostTrail(this.scene, this, { style: this.boostStyle.id, mobile: this.mobile });
+    }
+
     this.visualParts = {
       lower, hood, cabin, roof, frontBumper, rearBumper, spoilerBar, spoilerStruts, lamps,
       lowDetail: false
     };
     this.applyCarStyleVisual();
+    this.applyBoostStyleVisual();
 
     if (this.ultraHigh) {
       this.shadow = null;
@@ -363,6 +376,8 @@ export class Car {
     this.wheelPivots = [];
     this.exhaust = [];
     this.boostLight = null;
+    this.exhaustMaterial = null;
+    this.boostTrail = null;
     this.shadow = null;
     this.visualParts = { body, cabin, frontBumper: bumper, rearBumper: rear, wheelMesh: wheels, lowDetail: true };
     this.applyCarStyleVisual();
@@ -469,6 +484,28 @@ export class Car {
 
   getCarStyleId() {
     return this.carStyle?.id || 'vortex';
+  }
+
+  setBoostStyle(value) {
+    const normalized = normalizeBoostStyle(value);
+    if (this.boostStyle?.id === normalized) return;
+    this.boostStyle = getBoostStyle(normalized);
+    this.applyBoostStyleVisual();
+  }
+
+  getBoostStyleId() {
+    return this.boostStyle?.id || 'solar';
+  }
+
+  applyBoostStyleVisual() {
+    const style = this.boostStyle || getBoostStyle();
+    if (this.exhaustMaterial) {
+      this.exhaustMaterial.color.setHex(style.secondary);
+      this.exhaustMaterial.emissive.setHex(style.primary);
+      this.exhaustMaterial.needsUpdate = true;
+    }
+    if (this.boostLight) this.boostLight.color.setHex(style.primary);
+    this.boostTrail?.setStyle(style.id);
   }
 
   createNameTag() {
@@ -941,14 +978,25 @@ export class Car {
     this.wheelSpin += speedForward * dt / 0.36;
     for (const wheel of this.wheels) wheel.rotation.x = this.wheelSpin;
 
-    if (this.boostLight) this.boostLight.intensity = boosting ? 16 : 0;
+    this.boosting = boosting;
+  }
+
+  updateBoostEffects(dt) {
+    this.boostVisualHold = Math.max(0, this.boostVisualHold - dt);
+    const active = Boolean(this.boosting || this.boostVisualHold > 0) && this.getBoost() > 0.001;
+    const style = this.boostStyle || getBoostStyle();
+    if (this.boostLight) this.boostLight.intensity = active ? 13 : 0;
     for (let i = 0; i < this.exhaust.length; i++) {
       const flame = this.exhaust[i];
-      flame.visible = boosting;
-      if (boosting) {
+      flame.visible = active;
+      if (active) {
         const flicker = 0.86 + Math.sin(performance.now() * 0.04 + i * 2) * 0.12;
-        flame.scale.set(1, flicker, 1);
+        flame.scale.set(1, style.flameLength * flicker, 1);
       }
+    }
+    if (this.boostTrail) {
+      const carStyle = this.carStyle || getCarStyle();
+      this.boostTrail.update(dt, active, carStyle.exhaustX, carStyle.exhaustZ);
     }
   }
 
@@ -978,7 +1026,10 @@ export class Car {
   }
 
   setBoost(value) {
-    this.boost = THREE.MathUtils.clamp(Number(value) || 0, 0, CAR_TUNING.boostCapacity);
+    const next = THREE.MathUtils.clamp(Number(value) || 0, 0, CAR_TUNING.boostCapacity);
+    if (next < this.boost - 0.18) this.boostVisualHold = Math.max(this.boostVisualHold, 0.18);
+    this.boost = next;
+    this.lastVisualBoost = next;
   }
 
   collectBoostPad(amount, full = false) {
@@ -1019,5 +1070,6 @@ export class Car {
     this.grounded = false;
     this.boost = CAR_TUNING.boostCapacity;
     this.boosting = false;
+    this.boostVisualHold = 0;
   }
 }

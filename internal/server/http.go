@@ -122,6 +122,7 @@ func (server *HTTPServer) webSocket(writer http.ResponseWriter, request *http.Re
 		clientID, connection,
 		sanitizePlayerName(request.URL.Query().Get("name")),
 		sanitizeCarStyle(request.URL.Query().Get("car")),
+		sanitizeBoostStyle(request.URL.Query().Get("boost")),
 	)
 	joinContext, cancelJoin := context.WithTimeout(request.Context(), 3*time.Second)
 	_, err = server.match.Join(joinContext, connected)

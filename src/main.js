@@ -1,6 +1,7 @@
 import { Game } from './game/Game.js';
 import { LanClient } from './network/LanClient.js';
 import { CAR_STYLES, DEFAULT_CAR_STYLE, normalizeCarStyle } from './shared/car-styles.js';
+import { BOOST_STYLES, DEFAULT_BOOST_STYLE, normalizeBoostStyle } from './shared/boost-styles.js';
 import { prefersMobileControls } from './game/MobileControls.js';
 import { canRequestFullscreen, isFullscreenActive, requestGameFullscreen } from './game/Fullscreen.js';
 import { canUseUltraHigh, getRememberedPerformanceMode, setPerformancePreference } from './game/PerformanceProfile.js';
@@ -39,6 +40,49 @@ function rememberedCarStyle() {
   } catch {
     return DEFAULT_CAR_STYLE;
   }
+}
+
+function rememberedBoostStyle() {
+  try {
+    return normalizeBoostStyle(localStorage.getItem('rocket-vibe-boost-style') || DEFAULT_BOOST_STYLE);
+  } catch {
+    return DEFAULT_BOOST_STYLE;
+  }
+}
+
+function boostColor(value) {
+  return `#${Number(value).toString(16).padStart(6, '0')}`;
+}
+
+function boostPreviewSvg(style) {
+  const primary = boostColor(style.primary);
+  const secondary = boostColor(style.secondary);
+  const core = boostColor(style.core);
+  const id = style.id;
+  const particles = id === 'starfall'
+    ? '<path d="M35 50 l3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/><path d="M17 37 l2 4 4 2-4 2-2 4-2-4-4-2 4-2z"/><circle cx="48" cy="78" r="2"/>'
+    : id === 'ion'
+      ? '<rect x="9" y="43" width="46" height="5" rx="2.5"/><rect x="17" y="56" width="34" height="3" rx="1.5"/><circle cx="11" cy="66" r="3"/>'
+      : id === 'plasma'
+        ? '<circle cx="28" cy="50" r="10" fill="none" stroke-width="4"/><circle cx="14" cy="62" r="6" fill="none" stroke-width="3"/><circle cx="44" cy="70" r="4"/>'
+        : '<circle cx="27" cy="49" r="7"/><circle cx="13" cy="59" r="4"/><circle cx="42" cy="67" r="3"/><circle cx="20" cy="76" r="2"/>';
+  return `
+    <svg viewBox="0 0 180 100" role="img" aria-label="${style.name} Boost Vorschau">
+      <defs>
+        <linearGradient id="boost-${id}" x1="1" x2="0">
+          <stop offset="0" stop-color="${core}"/>
+          <stop offset=".34" stop-color="${secondary}"/>
+          <stop offset="1" stop-color="${primary}" stop-opacity="0"/>
+        </linearGradient>
+        <filter id="glow-${id}" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      </defs>
+      <rect x="83" y="39" width="69" height="34" rx="9" fill="#101923" stroke="rgba(255,255,255,.22)"/>
+      <circle cx="102" cy="73" r="12" fill="#05080c"/><circle cx="139" cy="73" r="12" fill="#05080c"/>
+      <path d="M84 49 H34 L7 56 L34 63 H84 Z" fill="url(#boost-${id})" filter="url(#glow-${id})"/>
+      <g fill="${secondary}" stroke="${core}" stroke-width="1" filter="url(#glow-${id})">${particles}</g>
+      <rect x="80" y="48" width="14" height="5" rx="2.5" fill="${core}"/>
+      <rect x="80" y="61" width="14" height="5" rx="2.5" fill="${core}"/>
+    </svg>`;
 }
 
 function carPreviewSvg(styleId) {
@@ -86,6 +130,7 @@ function carPreviewSvg(styleId) {
 function requestPlayerIdentity(root) {
   return new Promise((resolve) => {
     const selectedStyle = rememberedCarStyle();
+    const selectedBoostStyle = rememberedBoostStyle();
     const selectedGraphics = getRememberedPerformanceMode();
     const ultraHighAvailable = canUseUltraHigh();
     const mobileGraphics = prefersMobileControls();
@@ -118,6 +163,20 @@ function requestPlayerIdentity(root) {
           </div>
         </fieldset>
 
+        <fieldset class="boost-select">
+          <legend>Boost-Effekt auswählen</legend>
+          <div class="boost-select__grid">
+            ${BOOST_STYLES.map((style) => `
+              <label class="boost-choice${style.id === selectedBoostStyle ? ' is-selected' : ''}" data-boost-choice="${style.id}">
+                <input type="radio" name="boostStyle" value="${style.id}" ${style.id === selectedBoostStyle ? 'checked' : ''} />
+                <span class="boost-choice__preview">${boostPreviewSvg(style)}</span>
+                <span class="boost-choice__name">${style.name}</span>
+                <span class="boost-choice__desc">${style.description}</span>
+              </label>`).join('')}
+          </div>
+          <div class="boost-select__note">Die volle Partikelspur wird in ULTRA HIGH gerendert; die Boost-Physik ist bei allen Effekten identisch.</div>
+        </fieldset>
+
         <fieldset class="graphics-select">
           <legend>Grafikqualität</legend>
           <div class="graphics-select__grid">
@@ -148,6 +207,7 @@ function requestPlayerIdentity(root) {
     const input = overlay.querySelector('#player-name');
     const error = overlay.querySelector('.join-card__error');
     const choices = [...overlay.querySelectorAll('[data-car-choice]')];
+    const boostChoices = [...overlay.querySelectorAll('[data-boost-choice]')];
     const graphicsChoices = [...overlay.querySelectorAll('[data-graphics-choice]')];
     const fullscreenButton = overlay.querySelector('[data-start-fullscreen]');
     const fullscreenStatus = overlay.querySelector('[data-fullscreen-status]');
@@ -185,6 +245,12 @@ function requestPlayerIdentity(root) {
           choice.classList.toggle('is-selected', Boolean(radio?.checked));
         }
       }
+      if (event.target?.name === 'boostStyle') {
+        for (const choice of boostChoices) {
+          const radio = choice.querySelector('input[type="radio"]');
+          choice.classList.toggle('is-selected', Boolean(radio?.checked));
+        }
+      }
       if (event.target?.name === 'graphicsMode') {
         for (const choice of graphicsChoices) {
           const radio = choice.querySelector('input[type="radio"]');
@@ -198,6 +264,7 @@ function requestPlayerIdentity(root) {
       const name = input.value.trim().replace(/\s+/g, ' ');
       const formData = new FormData(form);
       const carStyle = normalizeCarStyle(formData.get('carStyle'));
+      const boostStyle = normalizeBoostStyle(formData.get('boostStyle'));
       const graphicsMode = setPerformancePreference(formData.get('graphicsMode') || 'normal');
       if (name.length < 2) {
         error.textContent = 'Bitte mindestens 2 Zeichen eingeben.';
@@ -207,13 +274,14 @@ function requestPlayerIdentity(root) {
       try {
         localStorage.setItem('rocket-vibe-player-name', name);
         localStorage.setItem('rocket-vibe-car-style', carStyle);
+        localStorage.setItem('rocket-vibe-boost-style', boostStyle);
       } catch {
         // Private browsing may disable storage; the match can still start.
       }
       document.removeEventListener('fullscreenchange', updateFullscreenUi);
       document.removeEventListener('webkitfullscreenchange', updateFullscreenUi);
       overlay.remove();
-      resolve({ playerName: name.slice(0, 16), carStyle, graphicsMode });
+      resolve({ playerName: name.slice(0, 16), carStyle, boostStyle, graphicsMode });
     });
   });
 }
@@ -228,7 +296,7 @@ async function boot() {
   let RAPIER = null;
 
   if (multiplayerEnabled) {
-    network = new LanClient(identity.playerName, identity.carStyle);
+    network = new LanClient(identity.playerName, identity.carStyle, identity.boostStyle);
     await network.connect();
     // No Rapier import in the browser for online play. Railway owns physics.
   } else {
