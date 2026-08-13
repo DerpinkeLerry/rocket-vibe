@@ -76,7 +76,7 @@ export function getPerformanceProfile(networked, explicitMode = null) {
     createClientPhysics: !networked,
     // Ultra High now starts close to native resolution instead of spending a
     // disproportionate amount of GPU time on supersampling. The visual budget
-    // goes into grass, wall geometry, materials and shadows instead.
+    // goes into crisp field textures, wall geometry, materials and shadows instead.
     initialPixelRatio: ultraLow ? 0.48 : (ultraHigh ? (mobile ? 0.80 : 0.95) : (mobile ? 1.25 : (networked ? 0.75 : 0.9))),
     minPixelRatio: ultraLow ? 0.30 : (ultraHigh ? (mobile ? 0.55 : 0.68) : (mobile ? 0.90 : (networked ? 0.58 : 0.72))),
     maxPixelRatio: ultraLow ? 0.56 : (ultraHigh ? (mobile ? 0.92 : 1.08) : (mobile ? 1.60 : (networked ? 0.82 : 1.0))),

@@ -106,7 +106,6 @@ export class Arena {
     this.mobile = Boolean(options.mobile);
     this.maxAnisotropy = Math.max(1, Number(options.maxAnisotropy) || 1);
     this.enablePhysics = options.createPhysics !== false;
-    this.grassChunks = [];
     this.group = new THREE.Group();
     this.scene.add(this.group);
 
@@ -190,7 +189,29 @@ export class Arena {
       x: (x / FIELD_W + 0.5) * width,
       y: (z / FIELD_L + 0.5) * height
     });
-    const drawPath = (points, color, widthWorld, alpha = 1, dash = []) => {
+
+    const traceSmoothPath = (points) => {
+      if (!points?.length) return;
+      const mapped = points.map(([x, z]) => worldPoint(x, z));
+      ctx.beginPath();
+      ctx.moveTo(mapped[0].x, mapped[0].y);
+      if (mapped.length === 2) {
+        ctx.lineTo(mapped[1].x, mapped[1].y);
+        return;
+      }
+      for (let index = 1; index < mapped.length - 1; index++) {
+        const current = mapped[index];
+        const next = mapped[index + 1];
+        const midX = (current.x + next.x) * 0.5;
+        const midY = (current.y + next.y) * 0.5;
+        ctx.quadraticCurveTo(current.x, current.y, midX, midY);
+      }
+      const penultimate = mapped[mapped.length - 2];
+      const last = mapped[mapped.length - 1];
+      ctx.quadraticCurveTo(penultimate.x, penultimate.y, last.x, last.y);
+    };
+
+    const strokeSmoothPath = (points, color, widthWorld, alpha = 1, dash = []) => {
       if (!points?.length) return;
       ctx.save();
       ctx.strokeStyle = color;
@@ -199,29 +220,53 @@ export class Arena {
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.setLineDash(dash.map((value) => value * lineScale));
-      ctx.beginPath();
-      const first = worldPoint(points[0][0], points[0][1]);
-      ctx.moveTo(first.x, first.y);
-      for (let index = 1; index < points.length; index++) {
-        const point = worldPoint(points[index][0], points[index][1]);
-        ctx.lineTo(point.x, point.y);
-      }
+      traceSmoothPath(points);
       ctx.stroke();
       ctx.restore();
     };
-    const drawWorldArc = (centerX, centerZ, radiusX, radiusZ, start, end, color, widthWorld, alpha = 1, dash = []) => {
+
+    const drawRoute = (points, color, soft) => {
+      // Every route uses the same restrained three-layer language: a dark
+      // recessed channel, one team-coloured rail and a fine highlight. Keeping
+      // this consistent is what makes the floor read cleanly instead of noisy.
+      strokeSmoothPath(points, '#071514', 1.18, 0.48);
+      strokeSmoothPath(points, color, highDetail ? 0.42 : 0.38, 0.82);
+      strokeSmoothPath(points, soft, highDetail ? 0.095 : 0.085, 0.72);
+    };
+
+    const drawWorldArc = (centerX, centerZ, radiusX, radiusZ, start, end, color, widthWorld, alpha = 1) => {
       const center = worldPoint(centerX, centerZ);
       ctx.save();
       ctx.strokeStyle = color;
       ctx.globalAlpha = alpha;
       ctx.lineWidth = Math.max(1, widthWorld * lineScale);
       ctx.lineCap = 'round';
-      ctx.setLineDash(dash.map((value) => value * lineScale));
       ctx.beginPath();
       ctx.ellipse(center.x, center.y, radiusX * scaleX, radiusZ * scaleZ, 0, start, end);
       ctx.stroke();
       ctx.restore();
     };
+
+    const fillWorldArcSector = (centerX, centerZ, radiusX, radiusZ, start, end, color, alpha = 1) => {
+      const center = worldPoint(centerX, centerZ);
+      ctx.save();
+      ctx.fillStyle = color;
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      ctx.moveTo(center.x, center.y);
+      const steps = highDetail ? 96 : 64;
+      for (let index = 0; index <= steps; index++) {
+        const angle = start + (end - start) * index / steps;
+        ctx.lineTo(
+          center.x + Math.cos(angle) * radiusX * scaleX,
+          center.y + Math.sin(angle) * radiusZ * scaleZ
+        );
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    };
+
     const fillWorldPolygon = (points, color, alpha = 1) => {
       if (!points?.length) return;
       ctx.save();
@@ -238,281 +283,168 @@ export class Arena {
       ctx.fill();
       ctx.restore();
     };
-    const fillWorldArcSector = (centerX, centerZ, radiusX, radiusZ, start, end, color, alpha = 1) => {
-      const center = worldPoint(centerX, centerZ);
-      ctx.save();
-      ctx.fillStyle = color;
-      ctx.globalAlpha = alpha;
-      ctx.beginPath();
-      ctx.moveTo(center.x, center.y);
-      const steps = 40;
-      for (let index = 0; index <= steps; index++) {
-        const angle = start + (end - start) * index / steps;
-        ctx.lineTo(
-          center.x + Math.cos(angle) * radiusX * scaleX,
-          center.y + Math.sin(angle) * radiusZ * scaleZ
-        );
-      }
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-    };
 
-    const blue = '#0b8cff';
-    const blueSoft = '#52c3ff';
-    const orange = '#ff6408';
-    const orangeSoft = '#ffb044';
-    const ink = '#061716';
-    const white = '#f4fff8';
+    const blue = '#118df4';
+    const blueSoft = '#8ad8ff';
+    const orange = '#ff7114';
+    const orangeSoft = '#ffd08a';
+    const ink = '#071513';
 
-    // Large team-coloured pitch graphics deliberately use broad shapes and
-    // lanes. Thin decals looked fine from above but disappeared from the normal
-    // chase-camera height; these stay readable while driving at full speed.
-    fillWorldPolygon([[-52, -76], [-31, -76], [-8, -6], [-25, -6]], blue, 0.21);
-    fillWorldPolygon([[52, -76], [31, -76], [8, -6], [25, -6]], blue, 0.21);
-    fillWorldPolygon([[-52, 76], [-31, 76], [-8, 6], [-25, 6]], orange, 0.21);
-    fillWorldPolygon([[52, 76], [31, 76], [8, 6], [25, 6]], orange, 0.21);
+    // One quiet, symmetrical end-zone shape per team. The old design stacked
+    // many polygons, chevrons and crossing rails; this broad wash gives the
+    // field identity without competing with gameplay markings.
+    fillWorldPolygon([[-25, -78], [25, -78], [31, -57], [20, -50], [-20, -50], [-31, -57]], blue, 0.070);
+    fillWorldPolygon([[-25, 78], [25, 78], [31, 57], [20, 50], [-20, 50], [-31, 57]], orange, 0.070);
 
-    // Secondary angled panels add the layered circuit-board look seen in busy
-    // Soccar arenas without requiring any extra geometry.
-    fillWorldPolygon([[-46, -60], [-36, -66], [-17, -9], [-23, -9]], blueSoft, 0.105);
-    fillWorldPolygon([[46, -60], [36, -66], [17, -9], [23, -9]], blueSoft, 0.105);
-    fillWorldPolygon([[-46, 60], [-36, 66], [-17, 9], [-23, 9]], orangeSoft, 0.105);
-    fillWorldPolygon([[46, 60], [36, 66], [17, 9], [23, 9]], orangeSoft, 0.105);
-
-    // Dark technical insets around both goal approaches, followed by a filled
-    // team-coloured crease and several bright concentric arcs. The fill is
-    // intentionally strong enough to remain visible from behind the car.
     for (const sign of [-1, 1]) {
       const color = sign < 0 ? blue : orange;
       const soft = sign < 0 ? blueSoft : orangeSoft;
       const goalZ = sign * (FIELD_L * 0.5 - 0.25);
-      const fieldDirection = -sign;
       const arcStart = sign < 0 ? 0 : Math.PI;
       const arcEnd = sign < 0 ? Math.PI : Math.PI * 2;
 
-      fillWorldPolygon([
-        [-20.5, sign * 78.7], [20.5, sign * 78.7],
-        [27.0, sign * 61.5], [18.0, sign * 54.5],
-        [-18.0, sign * 54.5], [-27.0, sign * 61.5]
-      ], ink, highDetail ? 0.40 : 0.36);
-      fillWorldArcSector(0, goalZ, 24.6, 22.0, arcStart, arcEnd, color, highDetail ? 0.17 : 0.15);
-      fillWorldArcSector(0, goalZ, 18.2, 15.8, arcStart, arcEnd, soft, highDetail ? 0.075 : 0.06);
+      // A single strong goal crease plus one restrained inner contour. This is
+      // deliberately much cleaner than the previous stack of four concentric
+      // arcs and multiple shoulder traces.
+      fillWorldArcSector(0, goalZ, 23.0, 20.2, arcStart, arcEnd, color, highDetail ? 0.095 : 0.082);
+      drawWorldArc(0, goalZ, 23.0, 20.2, arcStart, arcEnd, ink, 1.50, 0.66);
+      drawWorldArc(0, goalZ, 23.0, 20.2, arcStart, arcEnd, color, 0.62, 0.98);
+      drawWorldArc(0, goalZ, 16.7, 14.4, arcStart, arcEnd, soft, 0.20, 0.46);
 
-      drawWorldArc(0, goalZ, 24.6, 22.0, arcStart, arcEnd, ink, 2.65, 0.72);
-      drawWorldArc(0, goalZ, 24.6, 22.0, arcStart, arcEnd, color, 1.05, 0.98);
-      drawWorldArc(0, goalZ, 20.7, 18.1, arcStart, arcEnd, soft, 0.34, 0.86, [1.25, 0.72]);
-      drawWorldArc(0, goalZ, 16.1, 13.8, arcStart, arcEnd, color, 0.22, 0.58, [0.55, 0.70]);
+      // Three primary rotation lanes correspond to the real boost-pad rows.
+      // They never cross one another, and the exact same layout is mirrored on
+      // both halves so players can read it instantly while driving.
+      drawRoute([[0, sign * 68], [0, sign * 46], [0, sign * 17], [0, 0]], color, soft);
+      drawRoute([[-24, sign * 68], [-13, sign * 53], [-24, sign * 37], [-28, sign * 17], [-14, 0]], color, soft);
+      drawRoute([[24, sign * 68], [13, sign * 53], [24, sign * 37], [28, sign * 17], [14, 0]], color, soft);
 
-      // Goal-lane rails and shoulder traces. A broad translucent underlay makes
-      // the lane itself visible, with a sharp illuminated line on top.
-      const shoulders = [
-        [[-17.4, sign * 77], [-17.4, sign * 66], [-24, sign * 57], [-24, sign * 36]],
-        [[17.4, sign * 77], [17.4, sign * 66], [24, sign * 57], [24, sign * 36]]
-      ];
-      for (const shoulder of shoulders) {
-        drawPath(shoulder, ink, 2.25, 0.48);
-        drawPath(shoulder, color, 0.58, 0.90);
-      }
+      // Outer wall rotation: midfield full boost -> wall small boost -> corner
+      // full boost. These remain independent from the inner lanes, eliminating
+      // the old web of intersecting lines around the centre of the pitch.
+      drawRoute([[-49, 0], [-48, sign * 40], [-42, sign * 66]], color, soft);
+      drawRoute([[49, 0], [48, sign * 40], [42, sign * 66]], color, soft);
 
-      // Main boost/rotation network. Broad coloured corridors are cheap texture
-      // pixels, yet make the field feel designed instead of like plain grass.
-      const routes = [
-        [[0, sign * 72], [0, sign * 68], [0, sign * 46], [0, sign * 17], [0, 0]],
-        [[-42, sign * 66], [-24, sign * 68], [-13, sign * 53], [-24, sign * 37], [-28, sign * 17], [-14, 0]],
-        [[42, sign * 66], [24, sign * 68], [13, sign * 53], [24, sign * 37], [28, sign * 17], [14, 0]],
-        [[-42, sign * 66], [-48, sign * 40], [-49, 0]],
-        [[42, sign * 66], [48, sign * 40], [49, 0]],
-        [[-24, sign * 37], [0, sign * 46], [24, sign * 37]],
-        [[-28, sign * 17], [0, sign * 17], [28, sign * 17]],
-        [[-24, sign * 68], [0, sign * 68], [24, sign * 68]]
-      ];
-      for (const route of routes) {
-        drawPath(route, ink, 1.55, 0.44);
-        drawPath(route, color, highDetail ? 0.54 : 0.46, highDetail ? 0.74 : 0.66);
-        drawPath(route, soft, highDetail ? 0.14 : 0.11, 0.80);
-      }
-
-      // Big edge runways make the half colour visible even when looking almost
-      // parallel to the pitch from the chase camera.
-      for (const side of [-1, 1]) {
-        const x = side * 48.3;
-        drawPath([[x, sign * 64], [x, sign * 10]], color, 2.3, 0.12);
-        drawPath([[x, sign * 64], [x, sign * 10]], soft, 0.34, 0.76);
-      }
-
-      // Repeated directional chevrons create motion in the side lanes while
-      // remaining completely static and free at runtime.
-      for (const side of [-1, 1]) {
-        for (let row = 0; row < 5; row++) {
-          const z = sign * (61 - row * 9.5);
-          const x = side * (40 - row * 0.9);
-          const tipZ = z + fieldDirection * 2.7;
-          drawPath([[x - side * 2.8, z], [x, tipZ], [x + side * 2.8, z]], ink, 1.05, 0.42);
-          drawPath([[x - side * 2.8, z], [x, tipZ], [x + side * 2.8, z]], color, 0.34, 0.72);
-        }
-      }
+      // A short backline connects the three small pads directly in front of the
+      // goal without extending through other routes.
+      drawRoute([[-24, sign * 68], [0, sign * 68], [24, sign * 68]], color, soft);
     }
 
-    // Midfield technical rings. The white gameplay circle mesh stays on top;
-    // these are subtle coloured underlays, like illuminated circuit markings.
-    drawWorldArc(0, 0, 16.8, 16.8, 0, Math.PI, orange, 0.52, 0.62, [1.0, 0.8]);
-    drawWorldArc(0, 0, 16.8, 16.8, Math.PI, Math.PI * 2, blue, 0.52, 0.62, [1.0, 0.8]);
-    drawWorldArc(0, 0, 25.0, 25.0, 0, Math.PI * 2, white, 0.22, 0.28, [1.4, 1.2]);
+    // One subtle split midfield ring gives the floor a finished centrepiece.
+    // The actual white gameplay circle mesh is rendered above it and stays the
+    // dominant line.
+    drawWorldArc(0, 0, 14.3, 14.3, 0, Math.PI, orange, 0.30, 0.36);
+    drawWorldArc(0, 0, 14.3, 14.3, Math.PI, Math.PI * 2, blue, 0.30, 0.36);
 
-    // Every boost location gets a permanent floor locator. Full pads have a
-    // large double halo, small pads a compact ring, so the 100/12 layout reads
-    // immediately even when a pickup is temporarily respawning.
+    // Permanent pad locators use one consistent visual scale and sit above the
+    // routes. Full boosts get a restrained second ring; no extra halos, dashes
+    // or crossing ornaments are drawn around small pads.
     for (const pad of BOOST_PADS) {
       const point = worldPoint(pad.x, pad.z);
       const large = pad.kind === 'large';
-      const radiusWorld = large ? 3.25 : 1.65;
-      const radiusX = radiusWorld * scaleX;
-      const radiusZ = radiusWorld * scaleZ;
+      const radiusWorld = large ? 3.05 : 1.44;
       ctx.save();
       ctx.translate(point.x, point.y);
-      ctx.strokeStyle = large ? '#ffd83d' : '#ffcf4a';
-      ctx.globalAlpha = large ? 0.92 : 0.68;
-      ctx.lineWidth = Math.max(1.2, (large ? 0.46 : 0.30) * lineScale);
+      ctx.strokeStyle = large ? '#ffe06b' : '#ffd35b';
+      ctx.globalAlpha = large ? 0.92 : 0.64;
+      ctx.lineWidth = Math.max(1.2, (large ? 0.34 : 0.22) * lineScale);
       ctx.beginPath();
-      ctx.ellipse(0, 0, radiusX, radiusZ, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, 0, radiusWorld * scaleX, radiusWorld * scaleZ, 0, 0, Math.PI * 2);
       ctx.stroke();
       if (large) {
         ctx.globalAlpha = 0.24;
-        ctx.lineWidth = Math.max(1, 0.18 * lineScale);
+        ctx.lineWidth = Math.max(1, 0.12 * lineScale);
         ctx.beginPath();
-        ctx.ellipse(0, 0, radiusX * 1.34, radiusZ * 1.34, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, 0, radiusWorld * 1.30 * scaleX, radiusWorld * 1.30 * scaleZ, 0, 0, Math.PI * 2);
         ctx.stroke();
       }
       ctx.restore();
     }
-
-    // Crisp coloured half markers immediately inside the side walls. These are
-    // deliberately broad enough to be visible from a low chase-camera angle.
-    drawPath([[-51.0, -56], [-51.0, -7]], blue, 1.20, 0.80);
-    drawPath([[51.0, -56], [51.0, -7]], blue, 1.20, 0.80);
-    drawPath([[-51.0, 7], [-51.0, 56]], orange, 1.20, 0.80);
-    drawPath([[51.0, 7], [51.0, 56]], orange, 1.20, 0.80);
   }
 
   createTurfTexture(highDetail = false) {
     const canvas = document.createElement('canvas');
-    canvas.width = highDetail ? 1024 : 640;
-    canvas.height = highDetail ? 1536 : 960;
+    if (highDetail) {
+      canvas.width = 1536;
+      canvas.height = 2304;
+    } else if (this.lowDetail) {
+      canvas.width = 768;
+      canvas.height = 1152;
+    } else {
+      canvas.width = 1024;
+      canvas.height = 1536;
+    }
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
-    // Render the whole pitch into one texture instead of repeating a small
-    // swatch. This lets us bake in Rocket-League-like mowing blocks, subtle
-    // team colour at each end and a richer mid-green without extra draw calls.
-    ctx.fillStyle = '#14562f';
+    // A deliberately clean broadcast-style turf. All former one-pixel blade
+    // noise and random wear dots are gone; detail comes from broad mowing bands
+    // and very soft tonal variation that survives mipmapping without shimmer.
+    const base = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    base.addColorStop(0, '#17613a');
+    base.addColorStop(0.50, '#1b673d');
+    base.addColorStop(1, '#17613a');
+    ctx.fillStyle = base;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const rows = 12;
-    const cols = 6;
-    const rowH = canvas.height / rows;
-    const colW = canvas.width / cols;
-    const greens = ['#176136', '#1d6d3b', '#227842', '#19683a'];
+    const rows = 10;
+    const rowHeight = canvas.height / rows;
     for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        const paletteIndex = (row + col + (row % 3 === 0 ? 1 : 0)) % greens.length;
-        ctx.fillStyle = greens[paletteIndex];
-        ctx.globalAlpha = 0.74;
-        ctx.fillRect(col * colW, row * rowH, colW + 1, rowH + 1);
-      }
-    }
-    ctx.globalAlpha = 1;
-
-    // Wide mowing bands keep the pitch readable at speed and create the large
-    // dark/light regions visible in the reference arena.
-    for (let row = 0; row < rows; row++) {
-      const band = ctx.createLinearGradient(0, row * rowH, canvas.width, row * rowH);
       const light = row % 2 === 0;
-      band.addColorStop(0, light ? 'rgba(104,166,99,0.13)' : 'rgba(4,41,24,0.10)');
-      band.addColorStop(0.5, light ? 'rgba(155,194,116,0.10)' : 'rgba(3,33,20,0.12)');
-      band.addColorStop(1, light ? 'rgba(104,166,99,0.13)' : 'rgba(4,41,24,0.10)');
+      const band = ctx.createLinearGradient(0, row * rowHeight, canvas.width, row * rowHeight);
+      band.addColorStop(0, light ? 'rgba(91,160,95,0.095)' : 'rgba(4,46,28,0.080)');
+      band.addColorStop(0.50, light ? 'rgba(132,179,104,0.075)' : 'rgba(3,39,24,0.065)');
+      band.addColorStop(1, light ? 'rgba(91,160,95,0.095)' : 'rgba(4,46,28,0.080)');
       ctx.fillStyle = band;
-      ctx.fillRect(0, row * rowH, canvas.width, rowH);
+      ctx.fillRect(0, row * rowHeight, canvas.width, rowHeight + 1);
     }
 
-    // Team colour is strongest close to the goals and fades into the green.
-    // It is intentionally subtle so the field still reads as grass rather
-    // than a blue/orange carpet.
-    const blueZone = ctx.createLinearGradient(0, 0, 0, canvas.height * 0.34);
-    blueZone.addColorStop(0, 'rgba(16,111,255,0.30)');
-    blueZone.addColorStop(0.42, 'rgba(10,96,232,0.15)');
-    blueZone.addColorStop(1, 'rgba(16,91,214,0)');
+    // Four broad longitudinal mowing lanes break up the horizontal bands while
+    // keeping every edge soft. This reads as maintained turf rather than a
+    // checkerboard or a noisy procedural texture.
+    const laneWidth = canvas.width / 4;
+    for (let lane = 0; lane < 4; lane++) {
+      const x = lane * laneWidth;
+      const laneGradient = ctx.createLinearGradient(x, 0, x + laneWidth, 0);
+      if (lane % 2 === 0) {
+        laneGradient.addColorStop(0, 'rgba(17,91,51,0.00)');
+        laneGradient.addColorStop(0.50, 'rgba(144,191,111,0.035)');
+        laneGradient.addColorStop(1, 'rgba(17,91,51,0.00)');
+      } else {
+        laneGradient.addColorStop(0, 'rgba(10,56,35,0.00)');
+        laneGradient.addColorStop(0.50, 'rgba(2,39,24,0.032)');
+        laneGradient.addColorStop(1, 'rgba(10,56,35,0.00)');
+      }
+      ctx.fillStyle = laneGradient;
+      ctx.fillRect(x, 0, laneWidth + 1, canvas.height);
+    }
+
+    // Team colour is limited to a soft end-zone tint. It provides orientation
+    // but does not fight the crisp team-coloured line overlay above the grass.
+    const blueZone = ctx.createLinearGradient(0, 0, 0, canvas.height * 0.31);
+    blueZone.addColorStop(0, 'rgba(17,117,224,0.18)');
+    blueZone.addColorStop(0.52, 'rgba(12,91,188,0.065)');
+    blueZone.addColorStop(1, 'rgba(12,91,188,0)');
     ctx.fillStyle = blueZone;
-    ctx.fillRect(0, 0, canvas.width, canvas.height * 0.36);
+    ctx.fillRect(0, 0, canvas.width, canvas.height * 0.33);
 
-    const orangeZone = ctx.createLinearGradient(0, canvas.height, 0, canvas.height * 0.66);
-    orangeZone.addColorStop(0, 'rgba(255,98,12,0.29)');
-    orangeZone.addColorStop(0.42, 'rgba(240,78,8,0.14)');
-    orangeZone.addColorStop(1, 'rgba(231,83,15,0)');
+    const orangeZone = ctx.createLinearGradient(0, canvas.height, 0, canvas.height * 0.69);
+    orangeZone.addColorStop(0, 'rgba(240,91,18,0.17)');
+    orangeZone.addColorStop(0.52, 'rgba(214,74,11,0.062)');
+    orangeZone.addColorStop(1, 'rgba(214,74,11,0)');
     ctx.fillStyle = orangeZone;
-    ctx.fillRect(0, canvas.height * 0.64, canvas.width, canvas.height * 0.36);
+    ctx.fillRect(0, canvas.height * 0.67, canvas.width, canvas.height * 0.33);
 
-    // A faint circular mow around midfield adds texture without competing with
-    // the actual white centre-circle mesh rendered above the turf.
+    // One soft centre mowing ring adds depth without introducing another hard
+    // line. It is intentionally broad and low contrast so the real centre
+    // circle remains perfectly clean.
     ctx.save();
     ctx.translate(canvas.width * 0.5, canvas.height * 0.5);
-    ctx.strokeStyle = 'rgba(159,208,121,0.09)';
-    ctx.lineWidth = canvas.width * 0.075;
+    ctx.strokeStyle = 'rgba(155,204,124,0.050)';
+    ctx.lineWidth = canvas.width * 0.055;
     ctx.beginPath();
-    ctx.arc(0, 0, canvas.width * 0.205, 0, Math.PI * 2);
+    ctx.arc(0, 0, canvas.width * 0.20, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
-
-    let seed = 0x13579bdf;
-    const random = () => {
-      seed = (seed * 1664525 + 1013904223) >>> 0;
-      return seed / 4294967296;
-    };
-    const bladeCount = highDetail ? 8200 : 2200;
-    for (let i = 0; i < bladeCount; i++) {
-      const x = random() * canvas.width;
-      const y = random() * canvas.height;
-      const blade = 1 + random() * (highDetail ? 4.2 : 3.2);
-      const light = random();
-      ctx.strokeStyle = light > 0.70
-        ? `rgba(139,201,111,${0.055 + random() * 0.070})`
-        : `rgba(8,70,38,${0.025 + random() * 0.055})`;
-      ctx.lineWidth = random() > 0.91 ? 1.35 : 0.75;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x + (random() - 0.5) * 1.6, y - blade);
-      ctx.stroke();
-    }
-
-    // Sparse dark/warm wear variation keeps the surface from looking like a
-    // flat procedural checkerboard.
-    for (let i = 0; i < (highDetail ? 260 : 90); i++) {
-      const x = random() * canvas.width;
-      const y = random() * canvas.height;
-      const radius = 2 + random() * 10;
-      ctx.fillStyle = random() > 0.62 ? 'rgba(178,150,76,0.018)' : 'rgba(4,50,27,0.030)';
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.wrapS = THREE.ClampToEdgeWrapping;
-    texture.wrapT = THREE.ClampToEdgeWrapping;
-    texture.repeat.set(1, 1);
-    texture.anisotropy = Math.min(highDetail ? 16 : 8, this.maxAnisotropy);
-    return texture;
-  }
-
-  createFieldMarkingsTexture(highDetail = false) {
-    const canvas = document.createElement('canvas');
-    canvas.width = highDetail ? 1024 : 768;
-    canvas.height = highDetail ? 1536 : 1152;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    this.drawFieldSurfaceGraphics(ctx, canvas, highDetail);
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
@@ -525,35 +457,66 @@ export class Arena {
     return texture;
   }
 
+  createFieldMarkingsTexture(highDetail = false) {
+    const canvas = document.createElement('canvas');
+    if (highDetail) {
+      canvas.width = 2048;
+      canvas.height = 3072;
+    } else if (this.lowDetail) {
+      canvas.width = 1024;
+      canvas.height = 1536;
+    } else {
+      canvas.width = 1536;
+      canvas.height = 2304;
+    }
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    this.drawFieldSurfaceGraphics(ctx, canvas, highDetail);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.wrapS = THREE.ClampToEdgeWrapping;
+    texture.wrapT = THREE.ClampToEdgeWrapping;
+    texture.minFilter = THREE.LinearMipmapLinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.generateMipmaps = true;
+    texture.anisotropy = Math.min(16, this.maxAnisotropy);
+    return texture;
+  }
+
   createUltraTurfBumpTexture() {
     const canvas = document.createElement('canvas');
-    canvas.width = 512;
+    canvas.width = 768;
     canvas.height = 1024;
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
-    ctx.fillStyle = '#707070';
+
+    // Ultra High keeps only a tiny directional turf relief. Unlike the old
+    // thousands of random blade strokes this produces no visible speckle and
+    // does not attempt to fake 3D grass.
+    ctx.fillStyle = '#7f7f7f';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    let seed = 0x2468ace1;
-    const random = () => {
-      seed = (seed * 1103515245 + 12345) >>> 0;
-      return seed / 4294967296;
-    };
-    for (let i = 0; i < 9500; i++) {
-      const shade = Math.floor(74 + random() * 88);
+    for (let y = 0; y < canvas.height; y += 5) {
+      const shade = 118 + ((y / 5) % 3) * 5;
       ctx.strokeStyle = `rgb(${shade},${shade},${shade})`;
-      ctx.lineWidth = random() > 0.86 ? 1.4 : 0.7;
-      const x = random() * canvas.width;
-      const y = random() * canvas.height;
+      ctx.globalAlpha = 0.34;
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x + (random() - 0.5) * 1.2, y - 1.5 - random() * 3.6);
+      ctx.moveTo(0, y + 0.5);
+      ctx.lineTo(canvas.width, y + 0.5);
       ctx.stroke();
     }
+    ctx.globalAlpha = 1;
+
     const texture = new THREE.CanvasTexture(canvas);
     texture.wrapS = THREE.RepeatWrapping;
     texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set(2.4, 4.8);
-    texture.anisotropy = Math.min(16, this.maxAnisotropy);
+    texture.repeat.set(1.8, 3.6);
+    texture.minFilter = THREE.LinearMipmapLinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.generateMipmaps = true;
+    texture.anisotropy = Math.min(12, this.maxAnisotropy);
     return texture;
   }
 
@@ -812,219 +775,6 @@ export class Arena {
     return texture;
   }
 
-  createGrassTuftTexture() {
-    const canvas = document.createElement('canvas');
-    canvas.width = 256;
-    canvas.height = 256;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // One tiny alpha-tested card contains many painted blades. Three crossed
-    // cards therefore look like a dense tuft while costing only six triangles.
-    let seed = 0x6d2b79f5;
-    const random = () => {
-      seed = (seed * 1664525 + 1013904223) >>> 0;
-      return seed / 4294967296;
-    };
-    const bladeColors = ['#3d8a52', '#2f7845', '#58a663', '#286c3e', '#6aae70'];
-    for (let index = 0; index < 52; index++) {
-      const baseX = 10 + random() * 236;
-      const baseY = 255;
-      const height = 84 + random() * 158;
-      const lean = (random() - 0.5) * 42;
-      const controlX = baseX + lean * 0.35 + (random() - 0.5) * 9;
-      const tipX = baseX + lean;
-      ctx.strokeStyle = bladeColors[Math.floor(random() * bladeColors.length)];
-      ctx.globalAlpha = 0.68 + random() * 0.30;
-      ctx.lineWidth = 1.35 + random() * 2.35;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(baseX, baseY);
-      ctx.quadraticCurveTo(controlX, baseY - height * 0.58, tipX, baseY - height);
-      ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
-
-    // A dark, irregular foot hides the card intersection without a visible
-    // rectangular alpha fringe.
-    const foot = ctx.createLinearGradient(0, 205, 0, 256);
-    foot.addColorStop(0, 'rgba(35,105,67,0)');
-    foot.addColorStop(1, 'rgba(31,91,59,0.75)');
-    ctx.fillStyle = foot;
-    for (let index = 0; index < 28; index++) {
-      const x = random() * 256;
-      const radius = 5 + random() * 13;
-      ctx.beginPath();
-      ctx.ellipse(x, 249 + random() * 7, radius, 4 + random() * 6, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.wrapS = THREE.ClampToEdgeWrapping;
-    texture.wrapT = THREE.ClampToEdgeWrapping;
-    texture.minFilter = THREE.LinearMipmapLinearFilter;
-    texture.magFilter = THREE.LinearFilter;
-    texture.generateMipmaps = true;
-    texture.anisotropy = Math.min(8, this.maxAnisotropy);
-    return texture;
-  }
-
-  createUltraGrass() {
-    // Dense grass is built from alpha-tested crossed cards instead of one mesh
-    // per blade. This version draws substantially more visible blades than the
-    // previous geometry while reducing triangle count and draw calls.
-    const cardWidth = this.mobile ? 0.62 : 0.58;
-    const cardHeight = this.mobile ? 0.105 : 0.118;
-    const positions = [];
-    const uvs = [];
-    const indices = [];
-    for (let card = 0; card < 4; card++) {
-      const angle = card * Math.PI / 4;
-      const dx = Math.cos(angle) * cardWidth * 0.5;
-      const dz = Math.sin(angle) * cardWidth * 0.5;
-      const base = positions.length / 3;
-      positions.push(
-        -dx, 0, -dz,
-         dx, 0,  dz,
-         dx, cardHeight,  dz,
-        -dx, cardHeight, -dz
-      );
-      uvs.push(0, 0, 1, 0, 1, 1, 0, 1);
-      indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-    }
-
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-    geometry.setIndex(indices);
-    geometry.computeVertexNormals();
-    geometry.computeBoundingSphere();
-
-    const texture = this.createGrassTuftTexture();
-    const material = new THREE.MeshLambertMaterial({
-      color: 0xffffff,
-      map: texture,
-      alphaTest: 0.26,
-      transparent: false,
-      vertexColors: true,
-      side: THREE.DoubleSide,
-      depthWrite: true
-    });
-    material.alphaToCoverage = true;
-
-    // Twelve chunks keep draw calls low while still allowing Three.js frustum
-    // culling and a cheap distance cutoff on mobile hardware.
-    const chunksX = 3;
-    const chunksZ = 4;
-    const patchesPerChunk = this.mobile ? 320 : 900;
-    const halfW = FIELD_W * 0.5 - 0.48;
-    const halfL = FIELD_L * 0.5 - 0.48;
-    const corner = Math.max(0.1, CORNER_R - 0.48);
-    const chunkWidth = halfW * 2 / chunksX;
-    const chunkLength = halfL * 2 / chunksZ;
-    const instancePalette = [
-      new THREE.Color(0x3f9b57),
-      new THREE.Color(0x2f874a),
-      new THREE.Color(0x55aa62),
-      new THREE.Color(0x287841)
-    ];
-    const insideField = (x, z) => {
-      const ax = Math.abs(x);
-      const az = Math.abs(z);
-      if (ax > halfW || az > halfL) return false;
-      if (ax <= halfW - corner || az <= halfL - corner) return true;
-      const dx = ax - (halfW - corner);
-      const dz = az - (halfL - corner);
-      return dx * dx + dz * dz <= corner * corner;
-    };
-    const dummy = new THREE.Object3D();
-    let seed = 0x52a4f19d;
-    const random = () => {
-      seed = (seed * 1664525 + 1013904223) >>> 0;
-      return seed / 4294967296;
-    };
-
-    for (let chunkZ = 0; chunkZ < chunksZ; chunkZ++) {
-      for (let chunkX = 0; chunkX < chunksX; chunkX++) {
-        const minX = -halfW + chunkX * chunkWidth;
-        const minZ = -halfL + chunkZ * chunkLength;
-        const centerX = minX + chunkWidth * 0.5;
-        const centerZ = minZ + chunkLength * 0.5;
-        const grass = new THREE.InstancedMesh(geometry, material, patchesPerChunk);
-        grass.name = `ultra-high-3d-grass-${chunkX}-${chunkZ}`;
-        grass.userData.grassBlades = true;
-        grass.userData.cameraOcclusionIgnore = true;
-        grass.userData.grassCenter = new THREE.Vector3(centerX, 0, centerZ);
-        grass.userData.grassCullDistance = this.mobile ? 68 : 104;
-        grass.castShadow = false;
-        grass.receiveShadow = false;
-        grass.frustumCulled = true;
-
-        let placed = 0;
-        let attempts = 0;
-        while (placed < patchesPerChunk && attempts < patchesPerChunk * 10) {
-          attempts += 1;
-          const x = minX + random() * chunkWidth;
-          const z = minZ + random() * chunkLength;
-          if (!insideField(x, z)) continue;
-
-          // Preserve the centre line, centre spot and circle. The cards are
-          // wider than their origin, so use a generous margin around markings.
-          const centreRadius = Math.hypot(x, z);
-          if (Math.abs(z) < 0.30 || centreRadius < 0.62 || (centreRadius > 10.15 && centreRadius < 10.92)) continue;
-
-          // Keep the baked boost locators and the coloured goal arcs readable.
-          // The turf itself remains continuous underneath; only the tall 3D
-          // cards are omitted in these small marking zones.
-          let blocksMarking = false;
-          for (const pad of BOOST_PADS) {
-            const clearRadius = pad.kind === 'large' ? 3.55 : 2.05;
-            const dx = x - pad.x;
-            const dz = z - pad.z;
-            if (dx * dx + dz * dz < clearRadius * clearRadius) {
-              blocksMarking = true;
-              break;
-            }
-          }
-          if (blocksMarking) continue;
-          for (const sign of [-1, 1]) {
-            const goalZ = sign * (FIELD_L * 0.5 - 0.25);
-            const onFieldSide = sign < 0 ? z > goalZ : z < goalZ;
-            if (!onFieldSide) continue;
-            const arcDistance = Math.hypot(x / 24.6, (z - goalZ) / 22.0);
-            // Keep the entire coloured goal crease readable in Ultra High, not
-            // only the one-pixel arc. The surrounding pitch still carries the
-            // 3D grass, so this looks like a deliberately trimmed goal area.
-            if (arcDistance < 1.02 || Math.abs(arcDistance - 1) < 0.075) {
-              blocksMarking = true;
-              break;
-            }
-          }
-          if (blocksMarking) continue;
-
-          const scale = 0.82 + random() * 0.35;
-          dummy.position.set(x, 0.006, z);
-          dummy.rotation.set(0, random() * Math.PI * 2, 0);
-          dummy.scale.set(scale, 0.88 + random() * 0.26, scale);
-          dummy.updateMatrix();
-          grass.setMatrixAt(placed, dummy.matrix);
-          grass.setColorAt(placed, instancePalette[Math.floor(random() * instancePalette.length)]);
-          placed += 1;
-        }
-
-        grass.count = placed;
-        grass.instanceMatrix.needsUpdate = true;
-        if (grass.instanceColor) grass.instanceColor.needsUpdate = true;
-        grass.computeBoundingBox?.();
-        grass.computeBoundingSphere?.();
-        this.group.add(grass);
-        this.grassChunks.push(grass);
-      }
-    }
-  }
-
   createField() {
     const turfTexture = this.lowDetail ? null : this.createTurfTexture(this.ultraHigh);
     const turfBump = this.ultraHigh ? this.createUltraTurfBumpTexture() : null;
@@ -1036,7 +786,7 @@ export class Arena {
             color: 0xffffff,
             map: turfTexture,
             bumpMap: turfBump,
-            bumpScale: 0.038,
+            bumpScale: 0.018,
             roughness: 0.98,
             metalness: 0.0
           })
@@ -1078,8 +828,6 @@ export class Arena {
       markings.userData.cameraOcclusionIgnore = true;
       this.group.add(markings);
     }
-
-    if (this.ultraHigh) this.createUltraGrass();
 
     const lineMaterial = new THREE.MeshBasicMaterial({ color: 0xf7ffff, transparent: true, opacity: 0.97, toneMapped: false });
     const centerLine = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_W - 2, 0.14), lineMaterial);
@@ -2517,17 +2265,9 @@ export class Arena {
     this.group.add(lamps);
   }
 
-  updateVisuals(camera) {
-    if (!camera || this.grassChunks.length === 0) return;
-    const cameraX = camera.position.x;
-    const cameraZ = camera.position.z;
-    for (const chunk of this.grassChunks) {
-      const center = chunk.userData.grassCenter;
-      const maxDistance = chunk.userData.grassCullDistance || 116;
-      const dx = center.x - cameraX;
-      const dz = center.z - cameraZ;
-      chunk.visible = dx * dx + dz * dz <= maxDistance * maxDistance;
-    }
+  updateVisuals() {
+    // Kept for Game's generic arena update hook. 3D grass was removed in
+    // v1.10.23, so the arena no longer needs per-frame visibility work.
   }
 
   createLights() {

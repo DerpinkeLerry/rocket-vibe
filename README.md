@@ -1,4 +1,13 @@
-# Rocket Vibe 1.10.22 – Mobile Chat + Aerial Stability
+# Rocket Vibe 1.10.23 – Clean Pitch Rework
+
+## v1.10.23
+
+- Das komplette Spielfeld-Design wurde neu geordnet: nur noch wenige klare, symmetrische Boost-/Rotationsrouten ohne das fruehere Liniennetz mit vielen Ueberschneidungen.
+- Team-Torbereiche verwenden je einen grossen, sauberen Halbkreis plus eine dezente Innenkontur; kleine Chevrons, gestapelte Goal-Arcs und kreuzende Dekorlinien wurden entfernt.
+- Feldmarkierungen werden in deutlich hoeherer Canvas-Aufloesung gerendert (bis 2048x3072 in Ultra High) und mit Mipmaps/Anisotropie gefiltert, damit Kurven und Linien aus der Fahrkamera wesentlich ruhiger und weniger pixelig wirken.
+- Die Turf-Textur ist jetzt bewusst clean: breite weiche Maehbahnen, dezente Team-Endzonen und keine tausenden 1-Pixel-Grashalme/Wear-Sprenkel mehr.
+- Das komplette geometrische 3D-Gras wurde aus Ultra High entfernt. Dadurch gibt es keine Gras-Instanzen, kein Distanz-Culling und keine zusaetzlichen Gras-Draw-Calls mehr.
+- Ultra High behaelt nur ein sehr dezentes, guenstiges Turf-Relief; die eigentliche Oberflaeche bleibt flach und sauber lesbar.
 
 ## v1.10.22
 
@@ -68,9 +77,9 @@ Das Feld verwendet 34 Boost-Pads nach dem Soccar-Referenzlayout: sechs grosse 10
 
 In v1.10.12 wurden die UV-Koordinaten der abgerundeten Feldgeometrie explizit auf 0..1 normiert. Dadurch spannt die grosse Turf-/Markierungs-Textur jetzt wirklich ueber das komplette Spielfeld, statt an weiten Stellen nur Randpixel abzutasten. Das Grundgras ist satter und besitzt groessere Maehzonen, waehrend dunkle Gras-Sprenkel deutlich reduziert wurden.
 
-Die sichtbaren Feldgrafiken liegen auf einer einzigen unbeleuchteten Overlay-Textur direkt ueber dem Turf. Dadurch bleiben Blau, Orange und Weiss auch aus niedriger Chase-Cam-Perspektive kraeftig. Enthalten sind grosse Team-Flaechen, gefuellte farbige Tor-Halbkreise, mehrere Goal-Arcs, breite Boost-/Rotationswege, Seiten-Runways, Chevrons, Center-Ringe und staerkere permanente Locator-Ringe unter allen Boost-Pads. Das kostet nur einen zusaetzlichen Draw-Call und keine zusaetzlichen Echtzeit-Lichter oder Post-Processing-Paesse.
+Die sichtbaren Feldgrafiken liegen weiterhin auf einer einzigen unbeleuchteten Overlay-Textur direkt ueber dem Turf. In v1.10.23 wurde das Design jedoch stark vereinfacht: drei klar getrennte innere Rotationsrouten pro Haelfte, zwei saubere Aussenrouten, eine kurze Backline, ein grosser Goal-Halbkreis sowie permanente Locator-Ringe unter den Boost-Pads. Die Linien kreuzen sich nicht mehr quer ueber das Feld und werden in deutlich hoeherer Aufloesung gerendert. Das kostet weiterhin nur einen zusaetzlichen Draw-Call und keine zusaetzlichen Echtzeit-Lichter oder Post-Processing-Paesse.
 
-Die unteren Boden-Wand-Rundungen sind nicht mehr schwarz: Die physikalische Wand bleibt unveraendert, wird visuell aber pro Spielfeldhaelfte getrennt gerendert. Die blaue Haelfte verwendet dunkle blaue Technik-Panels mit hellen Cyan-Rails, die orange Haelfte entsprechend Orange. Ein durchgehender heller Team-Rail folgt auch den gekruemmten Ecken am Beginn der Glaswand. Ultra High laesst im Bereich der Boost-Locators und der gefuellten Torboegen bewusst kein hohes 3D-Gras wachsen, damit die Grafiken sichtbar bleiben.
+Die unteren Boden-Wand-Rundungen sind nicht mehr schwarz: Die physikalische Wand bleibt unveraendert, wird visuell aber pro Spielfeldhaelfte getrennt gerendert. Die blaue Haelfte verwendet dunkle blaue Technik-Panels mit hellen Cyan-Rails, die orange Haelfte entsprechend Orange. Ein durchgehender heller Team-Rail folgt auch den gekruemmten Ecken am Beginn der Glaswand. Seit v1.10.23 gibt es auf dem Spielfeld gar kein geometrisches 3D-Gras mehr; Boost-Locators und Torboegen bleiben dadurch in jedem Grafikmodus frei und klar lesbar.
 
 ## Serverseitige Physik
 
@@ -175,7 +184,7 @@ Direkt auf dem Startbildschirm kann die Grafikqualitaet gewaehlt werden. Die Aus
 
 - **NORMAL**: bisherige volle Standarddarstellung; auf Smartphone/Tablet automatisch der empfohlene Modus.
 - **ULTRA LOW**: stark reduzierte Renderauflosung und Details fuer schwache PCs/VMs. Weiterhin kompatibel mit `?perf=ultra` bzw. `?perf=ultra-low`.
-- **ULTRA HIGH**: auf Desktop und leistungsstarken Smartphones waehlbar. Desktop startet bei 95 % Render-Skalierung und regelt adaptiv zwischen 68 und 108 %; Mobile startet bei 80 % und regelt zwischen 55 und 92 %. Der Modus verwendet dichte alpha-getestete 3D-Grasbueschel, prozedurale hochaufgeloeste Turf-/Wandtexturen, Relief fuer die Wandplatten, detaillierte Felgen, matte Materialien, eine permanente mondbeleuchtete Abenddaemmerung mit Sternenhimmel sowie gestaffelt aktualisierte 2048-/1024-Schatten. Bloom, PMREM-Reflexionen und eine zweite Fullscreen-Renderpass-Kette bleiben bewusst deaktiviert.
+- **ULTRA HIGH**: auf Desktop und leistungsstarken Smartphones waehlbar. Desktop startet bei 95 % Render-Skalierung und regelt adaptiv zwischen 68 und 108 %; Mobile startet bei 80 % und regelt zwischen 55 und 92 %. Der Modus verwendet hochaufgeloeste, stark gefilterte Turf-/Feld-/Wandtexturen, ein dezentes Turf-Relief, Relief fuer die Wandplatten, detaillierte Felgen, matte Materialien, eine permanente mondbeleuchtete Abenddaemmerung mit Sternenhimmel sowie gestaffelt aktualisierte 2048-/1024-Schatten. Das ehemalige 3D-Gras ist vollstaendig entfernt. Bloom, PMREM-Reflexionen und eine zweite Fullscreen-Renderpass-Kette bleiben bewusst deaktiviert.
 
 Direktlinks fuer Tests:
 
@@ -222,7 +231,7 @@ Die Tests decken Fahrbewegung, 70/120-km/h-Speed-Caps und erhaltenes Boost-Momen
 - Satterer, kontrastreicher Turf mit grossen Mow-Blocks und dezenten Blau/Orange-Zonen direkt in einer einzelnen Canvas-Textur.
 - Dunklere Graphit-Waende, neutraleres Glas und kraeftigere Team-Akzente fuer einen lebendigeren Arena-Look.
 - AgX-Tonemapping und neu abgestimmtes Tageslicht fuer mehr Farbtiefe ohne zusaetzliche Post-Processing-Kosten.
-- Ultra-High-3D-Gras nutzt dunklere, sattere Halme und bleibt weiterhin instanziert/culling-optimiert.
+- Ultra High verwendet seit v1.10.23 kein geometrisches 3D-Gras mehr; die freigewordene GPU-Zeit geht stattdessen in schaerfere Feldtexturen und die vorhandenen Materialien/Schatten.
 
 
 ## Goal Mouth Frame Fix v1.10.2
