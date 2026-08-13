@@ -137,9 +137,11 @@ const (
 	DemolitionRespawnSeconds  = 4.0
 	DemolitionRespawnBoost    = 33.0
 	DemolitionSpawnCount      = 3
+	DemolitionMinSpeed        = 90.0 / 3.6
 	demolitionFrontDot        = 0.72
 	demolitionMotionDot       = 0.72
 	demolitionMinClosingSpeed = 0.15
+	demolitionSpeedTieEpsilon = 0.05
 	demolitionRespawnImmunity = 0.75
 )
 
@@ -901,35 +903,46 @@ func (world *World) tryCarCarDemolition(first, second *Car, contact carCarContac
 		return false
 	}
 
+	// Demolitions are intentionally asymmetric: the faster car may demolish the
+	// slower one, never the other way around. This also prevents head-on impacts
+	// from randomly destroying both cars when both happen to satisfy the old
+	// frontal/supersonic test in the same solver iteration.
+	firstSpeed := first.Velocity.Length()
+	secondSpeed := second.Velocity.Length()
+	if math.Abs(firstSpeed-secondSpeed) <= demolitionSpeedTieEpsilon {
+		return false
+	}
+
 	towardSecond := second.Position.Sub(first.Position)
 	towardSecond.Y = 0
 	if towardSecond.LengthSquared() < 1e-8 {
 		towardSecond = contact.Normal
 	}
-	firstKillsSecond := canDemolishCar(first, second, towardSecond, contact.ClosingSpeed, world.Config.Car)
-	secondKillsFirst := canDemolishCar(second, first, towardSecond.Mul(-1), contact.ClosingSpeed, world.Config.Car)
-	if !firstKillsSecond && !secondKillsFirst {
+
+	attacker := first
+	victim := second
+	direction := towardSecond
+	if secondSpeed > firstSpeed {
+		attacker = second
+		victim = first
+		direction = towardSecond.Mul(-1)
+	}
+	if !canDemolishCar(attacker, victim, direction, contact.ClosingSpeed) {
 		return false
 	}
 
 	position := first.Position.Add(second.Position).Mul(0.5)
-	if firstKillsSecond {
-		world.markDemolished(second)
-		world.pendingDemolitions = append(world.pendingDemolitions, DemolitionEvent{AttackerSlot: first.Slot, VictimSlot: second.Slot, Position: position})
-	}
-	if secondKillsFirst {
-		world.markDemolished(first)
-		world.pendingDemolitions = append(world.pendingDemolitions, DemolitionEvent{AttackerSlot: second.Slot, VictimSlot: first.Slot, Position: position})
-	}
+	world.markDemolished(victim)
+	world.pendingDemolitions = append(world.pendingDemolitions, DemolitionEvent{AttackerSlot: attacker.Slot, VictimSlot: victim.Slot, Position: position})
 	return true
 }
 
-func canDemolishCar(attacker, victim *Car, towardVictim Vec3, closingSpeed float64, config CarConfig) bool {
+func canDemolishCar(attacker, victim *Car, towardVictim Vec3, closingSpeed float64) bool {
 	if attacker == nil || victim == nil || attacker.Demolished || victim.Demolished || victim.DemoImmunity > 0 {
 		return false
 	}
 	speed := attacker.Velocity.Length()
-	if speed <= config.MaxGroundSpeed+1e-6 || closingSpeed < demolitionMinClosingSpeed {
+	if speed+1e-6 < DemolitionMinSpeed || speed <= victim.Velocity.Length()+demolitionSpeedTieEpsilon || closingSpeed < demolitionMinClosingSpeed {
 		return false
 	}
 

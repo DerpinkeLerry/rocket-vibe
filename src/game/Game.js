@@ -12,6 +12,7 @@ import { VirtualInput } from '../network/VirtualInput.js';
 import { LocalCarPredictor } from '../network/LocalCarPredictor.js';
 import { ReplayBuffer, sampleReplayFrames } from './ReplayBuffer.js';
 import { GoalExplosion } from './GoalExplosion.js';
+import { DemolitionExplosion } from './DemolitionExplosion.js';
 import { ARENA_TUNING } from '../shared/arena-tuning.js';
 import { evaluateDemolitionSnapshot } from '../shared/demolition-respawn.js';
 import { DEFAULT_CAR_STYLE, normalizeCarStyle } from '../shared/car-styles.js';
@@ -149,6 +150,11 @@ export class Game {
     });
     this.boostPads = new BoostPads(this.scene, { lowDetail: this.profile.lowDetail, ultraHigh: this.profile.ultraHigh });
     this.goalExplosion = new GoalExplosion(this.scene, {
+      lowDetail: this.profile.lowDetail,
+      ultraHigh: this.profile.ultraHigh,
+      mobile: this.profile.mobile
+    });
+    this.demolitionExplosion = new DemolitionExplosion(this.scene, {
       lowDetail: this.profile.lowDetail,
       ultraHigh: this.profile.ultraHigh,
       mobile: this.profile.mobile
@@ -790,6 +796,7 @@ export class Game {
       }
       this.boostPads.update(renderDt);
       this.goalExplosion?.update(renderDt);
+      this.demolitionExplosion?.update(renderDt);
       this.updateRespawnMarkers(now);
       this.chaseCamera.update(renderDt);
       this.arena.updateVisuals?.(this.camera);
@@ -912,6 +919,7 @@ export class Game {
     const victimId = Number(demolition.victimId);
     if (!Number.isInteger(victimId) || victimId < 0 || victimId >= this.cars.length) return;
     this.demolishedPlayers.add(victimId);
+    this.demolitionExplosion?.trigger(demolition.position);
     this.setCarVisible(victimId, false);
     const victim = this.cars[victimId];
     if (victim) {
@@ -1112,6 +1120,7 @@ export class Game {
       this.goalCelebrationUntil = 0;
       this.chaseCamera?.setGoalCelebrationActive?.(false);
       this.goalExplosion?.stop();
+      this.demolitionExplosion?.stop();
       this.kickoffActive = true;
       if (startingFreshCountdown) this.resetForNetworkKickoff(Boolean(kickoff.resetScore));
       this.hud.setKickoff('countdown', count);
@@ -1142,6 +1151,7 @@ export class Game {
     this.goalCelebrationUntil = 0;
     this.chaseCamera?.setGoalCelebrationActive?.(false);
     this.goalExplosion?.stop();
+    this.demolitionExplosion?.stop();
     this.replayActive = true;
     this.replayWaiting = replay.phase === 'wait';
     this.kickoffActive = false;

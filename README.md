@@ -1,4 +1,14 @@
-# Rocket Vibe 1.10.28 – Reliable Desktop Demolition Respawn
+# Rocket Vibe 1.10.29 – Faster-Car Demolitions + Ultra High Burst
+
+## v1.10.29
+
+### Demolition rule tuning
+
+- Demo-Schwelle liegt jetzt bei **90 km/h**: darunter kann kein Auto demolieren.
+- Bei einem gegnerischen Kontakt wird zuerst die Geschwindigkeit beider Autos verglichen. Nur das **schnellere** Auto kann das langsamere demolieren; bei praktisch gleichem Tempo gibt es keine Demo.
+- Die bestehende Fronttreffer-/Bewegungsrichtungs-Pruefung bleibt erhalten, damit ein schnelleres Auto nicht allein durch seitliches Streifen demoliert.
+- **ULTRA HIGH** zeigt bei einer erfolgreichen Demo eine kurze kleine orange-goldene Partikelexplosion mit Ring, Flash und sehr kurzem lokalen Licht. NORMAL und ULTRA LOW erhalten keinen zusaetzlichen Effekt.
+- Respawn-Vogelperspektive, Spawnwahl und 0,75-s-Respawn-Immunitaet bleiben unveraendert.
 
 ## v1.10.28
 
@@ -10,7 +20,7 @@
 - The selected spawn point is re-affirmed every 550 ms during the four-second selection window for extra queue resilience.
 
 
-- Neues serverautoritaeres **Demolition-System**: Ein gegnerisches Auto wird nur bei einem echten Fronttreffer zerstoert, wenn der Angreifer strikt schneller als das normale 70-km/h-Limit ist. Seiten-/Hecktreffer, Teamkontakte und Treffer bei exakt 70 km/h loesen keine Demo aus.
+- Neues serverautoritaeres **Demolition-System**: Ein gegnerisches Auto wird nur bei einem echten Fronttreffer zerstoert, wenn der Angreifer mindestens 90 km/h schnell und zugleich schneller als das getroffene Auto ist. Seiten-/Hecktreffer, Teamkontakte und gleich schnelle Kontakte loesen keine Demo aus.
 - Nach einer Demo verschwindet das zerstoerte Auto sofort aus der aktiven Physik und kann weder Ball, Autos noch Boost-Pads beeinflussen.
 - Der betroffene Spieler bekommt fuer exakt **4 Sekunden eine Vogelperspektive ueber der eigenen Spielhaelfte** und drei klar markierte Respawn-Punkte: links, Mitte, rechts. Ohne Auswahl wird automatisch die Mitte verwendet.
 - Desktop: Spawn mit `1 / 2 / 3` direkt waehlen oder mit `A/D` bzw. Pfeiltasten durchschalten. Mobile: die drei grossen Spawn-Buttons antippen. Die Auswahl wird sofort an den Server uebertragen.
@@ -130,7 +140,7 @@ Der Go-Server ist die einzige Online-Autoritaet und verarbeitet:
 - Pitch/Yaw/Roll in der Luft mit analoger Ziel-Winkelgeschwindigkeit; ohne Input wird Restrotation aktiv stabilisiert, damit das Auto nicht durch altes Drehmoment wild weiterspinnt
 - Separater, staerkerer Air-Boost (34 m/s² statt 16 m/s² am Boden), damit ein nach oben ausgerichtetes Auto die 20,5-m/s²-Schwerkraft ueberwinden und kontrolliert Hoehe gewinnen kann
 - Surface-Adhesion: Rampen und senkrechte Waende halten das Auto bis zum aktiven Absprung
-- Demolition bei gegnerischem Fronttreffer strikt oberhalb 70 km/h inklusive 4-Sekunden-Vogelperspektive und serverseitig ausgewaehltem Respawnpunkt
+- Demolition bei gegnerischem Fronttreffer ab 90 km/h, wobei ausschliesslich das schnellere Auto das langsamere demolieren kann, inklusive 4-Sekunden-Vogelperspektive und serverseitig ausgewaehltem Respawnpunkt
 - Auto gegen Auto
 - Auto gegen Ball
 - Auto und Ball gegen Boden, Seitenwaende, Endwaende, Torrahmen, Tortunnel und Decke
