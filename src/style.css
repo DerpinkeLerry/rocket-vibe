@@ -2796,3 +2796,28 @@ section.lobby-settings-section .lobby-settings-grid { padding: 0; }
 @media (max-width: 620px) {
   .lobby-mode-select__grid { grid-template-columns: 1fr; }
 }
+
+/* Ultra Low spends almost no GPU budget on shadows or atmosphere, so a tiny
+   ball range label complements the single-draw-call 3D floor/depth cue. */
+.ultra-low-ball-range {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 9;
+  pointer-events: none;
+  user-select: none;
+  padding: 2px 6px;
+  border: 1px solid rgba(201, 239, 255, 0.48);
+  border-radius: 999px;
+  background: rgba(2, 11, 18, 0.64);
+  color: #e7f8ff;
+  font: 800 10px/1.2 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  letter-spacing: 0.035em;
+  white-space: pre;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  will-change: transform, opacity;
+}
+
+.ultra-low-ball-range[hidden] {
+  display: none;
+}
