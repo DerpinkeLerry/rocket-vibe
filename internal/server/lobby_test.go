@@ -10,14 +10,18 @@ import (
 
 func TestLobbyConfigSupportsEightPlayersWhileDefaultStaysFour(t *testing.T) {
 	defaults := game.DefaultConfig()
-	if defaults.MaxPlayers != game.DefaultMaxPlayers || defaults.MaxPlayers != 4 {
-		t.Fatalf("default max players = %d, want 4", defaults.MaxPlayers)
+	if game.DefaultMaxPlayers != 4 {
+		t.Fatalf("DefaultMaxPlayers = %d, want 4", game.DefaultMaxPlayers)
 	}
+	if defaults.MaxPlayers != game.DefaultMaxPlayers {
+		t.Fatalf("default max players = %d, want %d", defaults.MaxPlayers, game.DefaultMaxPlayers)
+	}
+
 	config := defaults
-	config.MaxPlayers = 8
+	config.MaxPlayers = game.MaxPlayers
 	got := sanitizeLobbyConfig(config)
-	if got.MaxPlayers != 8 {
-		t.Fatalf("eight-player lobby was clamped to %d", got.MaxPlayers)
+	if got.MaxPlayers != game.MaxPlayers {
+		t.Fatalf("max-player lobby was clamped to %d, want %d", got.MaxPlayers, game.MaxPlayers)
 	}
 }
 
