@@ -1,4 +1,13 @@
-# Rocket Vibe 1.13.0 – Basketball/Hoops & Match-Chat
+# Rocket Vibe 1.13.5 – Ultra-High Speed Immersion
+
+## v1.13.5
+
+- **ULTRA HIGH** bekommt dezente High-Speed-Immersion ab etwa **80 km/h**: die Kamera erweitert das FOV weich um maximal ca. 5 Grad statt mit einem harten Zoom zu springen.
+- Bei hohem Tempo entstehen zwei kurze **leuchtende Fahrspuren** hinter dem lokalen Auto. Sie folgen dem echten Fahrweg, nutzen die aktuelle Boost-Farbe und werden durch den vorhandenen Bloom-Pass weich hervorgehoben.
+- Kurze **Airflow-Streaks** ziehen am Fahrzeug vorbei, werden mit steigender Geschwindigkeit dichter und bleiben bewusst sparsam, damit die Sicht auf Ball und Gegner frei bleibt.
+- Beim erstmaligen Ueberschreiten des schnellen Fahrbereichs gibt es einen sehr dezenten, kurz expandierenden **Speed-Pulse** hinter dem Auto. Ein Cooldown verhindert visuelles Flackern rund um den Grenzwert.
+- Ein schwaches dynamisches **Aero-Licht** hinter dem Fahrzeug sowie minimal staerkerer Bloom und eine sehr kleine Exposure-Anhebung geben 100–120 km/h mehr Energie, ohne den normalen Arena-Look zu ueberstrahlen.
+- Die Effekte sind ausschliesslich fuer **ULTRA HIGH** aktiv und werden waehrend Replay, Kickoff, Goal-Celebration und Demolition-Respawn automatisch heruntergefahren. Auf Mobile sind Partikeldichte, FOV-Gain und Lichtstaerke reduziert.
 
 ## v1.13.0
 

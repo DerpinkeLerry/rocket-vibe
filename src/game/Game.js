@@ -14,6 +14,7 @@ import { LocalCarPredictor } from '../network/LocalCarPredictor.js';
 import { ReplayBuffer, sampleReplayFrames } from './ReplayBuffer.js';
 import { GoalExplosion } from './GoalExplosion.js';
 import { DemolitionExplosion } from './DemolitionExplosion.js';
+import { HighSpeedEffects } from './HighSpeedEffects.js';
 import { ARENA_TUNING } from '../shared/arena-tuning.js';
 import { evaluateDemolitionSnapshot } from '../shared/demolition-respawn.js';
 import { DEFAULT_CAR_STYLE, normalizeCarStyle } from '../shared/car-styles.js';
@@ -136,6 +137,10 @@ export class Game {
     this.root.classList.toggle('perf-ultra-high', this.profile.ultraHigh);
     this.composer = null;
     this.ultraHighPipelineReady = false;
+    this.ultraBloomPass = null;
+    this.ultraBloomBaseStrength = this.profile.mobile ? 0.08 : 0.16;
+    this.ultraBloomBaseRadius = this.profile.mobile ? 0.18 : 0.24;
+    this.baseCameraFov = 72;
 
     // In online mode the Go server owns all real physics. The browser uses tiny JS
     // transform stores instead of loading/stepping Rapier/WASM.
@@ -222,6 +227,9 @@ export class Game {
         })
       : null;
     this.chaseCamera = new ChaseCamera(this.camera, this.car, this.ball, this.scene);
+    this.highSpeedEffects = this.profile.ultraHigh
+      ? new HighSpeedEffects(this.scene, this.car, { mobile: this.profile.mobile })
+      : null;
     this.hud = new Hud(this.root, {
       lan: this.networked,
       playerId: this.playerId,
@@ -765,10 +773,11 @@ export class Game {
       composer.setSize(width, height);
       composer.addPass(new RenderPass(this.scene, this.camera));
 
-      const bloom = new UnrealBloomPass(new THREE.Vector2(width, height), this.profile.mobile ? 0.08 : 0.16, 0.28, 1.05);
+      const bloom = new UnrealBloomPass(new THREE.Vector2(width, height), this.ultraBloomBaseStrength, 0.28, 1.05);
       bloom.threshold = this.profile.mobile ? 1.12 : 1.05;
-      bloom.strength = this.profile.mobile ? 0.08 : 0.16;
-      bloom.radius = this.profile.mobile ? 0.18 : 0.24;
+      bloom.strength = this.ultraBloomBaseStrength;
+      bloom.radius = this.ultraBloomBaseRadius;
+      this.ultraBloomPass = bloom;
       composer.addPass(bloom);
       composer.addPass(new OutputPass());
 
@@ -779,6 +788,7 @@ export class Game {
       console.warn('Ultra High post-processing unavailable; using renderer fallback.', error);
       this.composer = null;
       this.ultraHighPipelineReady = false;
+      this.ultraBloomPass = null;
     }
   }
 
@@ -860,6 +870,13 @@ export class Game {
       this.demolitionExplosion?.update(renderDt);
       this.updateRespawnMarkers(now);
       this.chaseCamera.update(renderDt);
+      const highSpeedImmersionActive = !this.replayActive
+        && !this.kickoffActive
+        && !this.goalCelebrationActive
+        && !this.demolitionRespawnActive
+        && Boolean(this.car?.group?.visible);
+      this.highSpeedEffects?.update(renderDt, highSpeedImmersionActive);
+      this.updateUltraHighImmersion(renderDt, highSpeedImmersionActive);
       if (!this.profile.ultraLow) this.arena.updateVisuals?.(this.camera);
 
       this.hudAccumulator += renderDt;
@@ -1499,11 +1516,35 @@ export class Game {
     body.setAngvel({ x: target.w[0], y: target.w[1], z: target.w[2] }, false);
   }
 
+  updateUltraHighImmersion(dt, enabled = true) {
+    const intensity = enabled && this.profile.ultraHigh
+      ? THREE.MathUtils.clamp(this.highSpeedEffects?.intensity || 0, 0, 1)
+      : 0;
+    const fovGain = this.profile.mobile ? 3.8 : 5.2;
+    const targetFov = this.baseCameraFov + intensity * fovGain;
+    const fovBlend = 1 - Math.exp(-5.4 * Math.max(0, Number(dt) || 0));
+    const nextFov = THREE.MathUtils.lerp(this.camera.fov, targetFov, fovBlend);
+    if (Math.abs(nextFov - this.camera.fov) > 0.002) {
+      this.camera.fov = nextFov;
+      this.camera.updateProjectionMatrix();
+    }
+
+    if (this.ultraBloomPass) {
+      this.ultraBloomPass.strength = this.ultraBloomBaseStrength + intensity * (this.profile.mobile ? 0.025 : 0.055);
+      this.ultraBloomPass.radius = this.ultraBloomBaseRadius + intensity * (this.profile.mobile ? 0.018 : 0.035);
+    }
+    if (this.profile.ultraHigh) {
+      this.renderer.toneMappingExposure = 1.00 + intensity * 0.012;
+    }
+  }
+
   onResize() {
     const width = Math.max(1, this.root.clientWidth || window.innerWidth);
     const height = Math.max(1, this.root.clientHeight || window.innerHeight);
     this.camera.aspect = width / height;
-    this.camera.fov = this.mobileControls?.enabled && height > width ? 78 : 72;
+    this.baseCameraFov = this.mobileControls?.enabled && height > width ? 78 : 72;
+    const liveGain = this.profile.ultraHigh ? (this.highSpeedEffects?.intensity || 0) * (this.profile.mobile ? 3.8 : 5.2) : 0;
+    this.camera.fov = this.baseCameraFov + liveGain;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height, false);
     this.composer?.setPixelRatio?.(this.renderPixelRatio);
