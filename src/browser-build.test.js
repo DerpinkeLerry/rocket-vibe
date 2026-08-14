@@ -22,3 +22,20 @@ test('vite production target is compatible instead of esnext', () => {
   assert.match(viteSource, /safari13\.1/);
   assert.match(viteSource, /ios13\.4/);
 });
+
+const renderSource = readFileSync(new URL('../render.yaml', import.meta.url), 'utf8');
+const dockerSource = readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
+const serverMainSource = readFileSync(new URL('../cmd/server/main.go', import.meta.url), 'utf8');
+
+test('Render blueprint keeps the in-memory lobby server on one Docker instance', () => {
+  assert.match(renderSource, /runtime:\s*docker/);
+  assert.match(renderSource, /healthCheckPath:\s*\/health/);
+  assert.match(renderSource, /numInstances:\s*1/);
+  assert.match(renderSource, /region:\s*frankfurt/);
+});
+
+test('Render-compatible server binds to the platform port on all interfaces', () => {
+  assert.match(serverMainSource, /0\.0\.0\.0:" \+ port/);
+  assert.match(dockerSource, /ENV PORT=10000/);
+  assert.match(dockerSource, /EXPOSE 10000/);
+});

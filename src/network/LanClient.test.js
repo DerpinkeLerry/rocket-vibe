@@ -3,27 +3,30 @@ import assert from 'node:assert/strict';
 import { LanClient } from './LanClient.js';
 import { ALL_BOOST_PADS_MASK } from '../shared/boost-tuning.js';
 
-const STATE_BYTES = 283;
+const STATE_BYTES = 496;
+const FOUR_PLAYER_STATE_BYTES = 283;
 const PREVIOUS_STATE_BYTES = 277;
 const LEGACY_STATE_BYTES = 271;
 
-test('binary state reads the 34-pad mask, scores and entity data from protocol v5 layout', () => {
+test('binary state reads eight cars, full masks, scores and the 34-pad mask from protocol v5 layout', () => {
   const client = new LanClient('Test Pilot');
   const buffer = new ArrayBuffer(STATE_BYTES);
   const view = new DataView(buffer);
   view.setUint8(0, 2);
   view.setUint32(1, 0x11223344, true);
-  view.setUint8(5, 0b0101);
-  view.setUint8(6, 0b01010001); // grounded car 0; demolished cars 0 and 2
-  view.setUint16(7, 12, true);
-  view.setUint16(9, 9, true);
-  view.setUint8(11, 73);
-  view.setUint8(12, 44);
-  view.setUint8(13, 20);
-  view.setUint8(14, 0);
-  view.setUint32(15, 0x0000a55a, true);
-  view.setUint32(19, 0x00000002, true); // bit 33
-  view.setFloat32(23, 42.5, true);
+  view.setUint8(5, 0b10000101);
+  view.setUint8(6, 0b10000001);
+  view.setUint8(7, 0b10000100);
+  view.setUint16(8, 12, true);
+  view.setUint16(10, 9, true);
+  view.setUint8(12, 73);
+  view.setUint8(13, 44);
+  view.setUint8(18, 21);
+  view.setUint8(19, 66);
+  view.setUint32(20, 0x0000a55a, true);
+  view.setUint32(24, 0x00000002, true); // bit 33
+  view.setFloat32(28, 42.5, true);
+  view.setFloat32(28 + 7 * 52, -12.5, true);
 
   let received = false;
   client.onState = () => { received = true; };
@@ -34,16 +37,45 @@ test('binary state reads the 34-pad mask, scores and entity data from protocol v
   assert.equal(client.state.orangeScore, 12);
   assert.equal(client.state.blueScore, 9);
   assert.equal(client.state.boostPadMask, 2 ** 33 + 0xa55a);
-  assert.deepEqual(client.state.connected, [1, 0, 1, 0]);
+  assert.equal(client.state.connected.length, 8);
+  assert.equal(client.state.cars.length, 8);
+  assert.deepEqual(client.state.connected, [1, 0, 1, 0, 0, 0, 0, 1]);
   assert.equal(client.state.cars[0].g, 1);
+  assert.equal(client.state.cars[7].g, 1);
+  assert.equal(client.state.cars[2].d, 1);
+  assert.equal(client.state.cars[7].d, 1);
+  assert.equal(client.state.cars[0].b, 73);
+  assert.equal(client.state.cars[7].b, 66);
+  assert.equal(client.state.cars[0].p[0], 42.5);
+  assert.equal(client.state.cars[7].p[0], -12.5);
+});
+
+test('previous four-player 34-pad packets remain readable during a rolling deploy', () => {
+  const client = new LanClient('Four Player Pilot');
+  const buffer = new ArrayBuffer(FOUR_PLAYER_STATE_BYTES);
+  const view = new DataView(buffer);
+  view.setUint8(0, 2);
+  view.setUint32(1, 23, true);
+  view.setUint8(5, 0b0101);
+  view.setUint8(6, 0b01010001);
+  view.setUint16(7, 3, true);
+  view.setUint16(9, 4, true);
+  view.setUint8(11, 73);
+  view.setUint8(12, 44);
+  view.setUint32(15, 0x0000a55a, true);
+  view.setUint32(19, 0x00000002, true);
+  view.setFloat32(23, 7.75, true);
+
+  client.readBinaryMessage(buffer);
+  assert.equal(client.state.tick, 23);
+  assert.deepEqual(client.state.connected, [1, 0, 1, 0, 0, 0, 0, 0]);
   assert.equal(client.state.cars[0].d, 1);
-  assert.equal(client.state.cars[1].d, 0);
   assert.equal(client.state.cars[2].d, 1);
   assert.equal(client.state.cars[0].b, 73);
   assert.equal(client.state.cars[1].b, 44);
-  assert.equal(client.state.cars[0].p[0], 42.5);
+  assert.equal(client.state.boostPadMask, 2 ** 33 + 0xa55a);
+  assert.equal(client.state.cars[0].p[0], 7.75);
 });
-
 
 test('previous 16-pad state packets remain readable during a rolling deploy', () => {
   const client = new LanClient('Previous Pilot');
@@ -104,10 +136,10 @@ test('kickoff control messages persist and notify the game layer', () => {
   assert.deepEqual(client.kickoff, { phase: 'go', count: 0, resetScore: false });
 });
 
-test('kickoff countdown values are clamped to the three-second format', () => {
+test('kickoff countdown values are clamped to the configurable ten-second maximum', () => {
   const client = new LanClient('Clamp Pilot');
   client.applyKickoffMessage({ type: 'kickoff', phase: 'countdown', count: 99 });
-  assert.deepEqual(client.kickoff, { phase: 'countdown', count: 3, resetScore: false });
+  assert.deepEqual(client.kickoff, { phase: 'countdown', count: 10, resetScore: false });
   client.applyKickoffMessage({ type: 'kickoff', phase: 'countdown', count: -4 });
   assert.deepEqual(client.kickoff, { phase: 'countdown', count: 1, resetScore: false });
 });

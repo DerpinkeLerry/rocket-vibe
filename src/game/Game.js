@@ -24,7 +24,11 @@ const PLAYER_CONFIGS = [
   { spawn: { x: -13, y: 0.52, z: 44 }, spawnYaw: 0, color: 0xf45a13, team: 'orange' },
   { spawn: { x: -13, y: 0.52, z: -44 }, spawnYaw: Math.PI, color: 0x087dff, team: 'blue' },
   { spawn: { x: 13, y: 0.52, z: 44 }, spawnYaw: 0, color: 0xff8b16, team: 'orange' },
-  { spawn: { x: 13, y: 0.52, z: -44 }, spawnYaw: Math.PI, color: 0x23bfff, team: 'blue' }
+  { spawn: { x: 13, y: 0.52, z: -44 }, spawnYaw: Math.PI, color: 0x23bfff, team: 'blue' },
+  { spawn: { x: -32, y: 0.52, z: 34 }, spawnYaw: 0, color: 0xff7430, team: 'orange' },
+  { spawn: { x: -32, y: 0.52, z: -34 }, spawnYaw: Math.PI, color: 0x398dff, team: 'blue' },
+  { spawn: { x: 32, y: 0.52, z: 34 }, spawnYaw: 0, color: 0xffa02e, team: 'orange' },
+  { spawn: { x: 32, y: 0.52, z: -34 }, spawnYaw: Math.PI, color: 0x52caff, team: 'blue' }
 ];
 
 export class Game {
@@ -128,7 +132,7 @@ export class Game {
     this.composer = null;
     this.ultraHighPipelineReady = false;
 
-    // In online mode Railway owns all real physics. The browser uses tiny JS
+    // In online mode the Go server owns all real physics. The browser uses tiny JS
     // transform stores instead of loading/stepping Rapier/WASM.
     if (this.networked) {
       this.world = null;
@@ -169,7 +173,8 @@ export class Game {
       normalizeBoostStyle(player?.boostStyle)
     ]));
 
-    this.cars = PLAYER_CONFIGS.map((config, index) => new Car(
+    const lobbyCapacity = Math.max(1, Math.min(PLAYER_CONFIGS.length, Number(network?.maxPlayers) || 4));
+    this.cars = PLAYER_CONFIGS.slice(0, lobbyCapacity).map((config, index) => new Car(
       this.scene,
       this.world,
       RAPIER,
@@ -254,7 +259,7 @@ export class Game {
       if (this.network.replay && this.network.replay.phase !== 'end') this.handleReplay(this.network.replay);
       if (this.network.matchClock) this.hud.setMatchClock?.(this.network.matchClock);
 
-      // Key transitions bypass requestAnimationFrame and go to Railway immediately.
+      // Key transitions bypass requestAnimationFrame and go to the server immediately.
       this.input.setNetworkChangeHandler(() => this.sendNetworkInput());
       this.sendNetworkInput();
       this.hud.setNetworkStatus(this.network.statusText('ONLINE'));
@@ -1338,7 +1343,7 @@ export class Game {
 
   applyNetworkState(dt, now) {
     const state = this.latestNetworkState;
-    if (!state?.ball || !Array.isArray(state.cars) || state.cars.length < 4) return;
+    if (!state?.ball || !Array.isArray(state.cars) || state.cars.length < this.cars.length) return;
 
     if (Array.isArray(state.connected)) {
       const connectedIds = [];

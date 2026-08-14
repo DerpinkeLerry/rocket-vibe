@@ -8,6 +8,19 @@ import (
 	"rocket-vibe/internal/game"
 )
 
+func TestLobbyConfigSupportsEightPlayersWhileDefaultStaysFour(t *testing.T) {
+	defaults := game.DefaultConfig()
+	if defaults.MaxPlayers != game.DefaultMaxPlayers || defaults.MaxPlayers != 4 {
+		t.Fatalf("default max players = %d, want 4", defaults.MaxPlayers)
+	}
+	config := defaults
+	config.MaxPlayers = 8
+	got := sanitizeLobbyConfig(config)
+	if got.MaxPlayers != 8 {
+		t.Fatalf("eight-player lobby was clamped to %d", got.MaxPlayers)
+	}
+}
+
 func TestSanitizeLobbyConfigKeepsValidCustomPhysics(t *testing.T) {
 	config := game.DefaultConfig()
 	config.MaxPlayers = 2

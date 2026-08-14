@@ -2504,3 +2504,86 @@ section.lobby-settings-section .lobby-settings-grid { padding: 0; }
 .perf-ultra-low.mobile-active .hud__boost-core strong {
   font-size: 24px;
 }
+
+/* Lobby sliders: all numeric lobby rules/physics expose their complete allowed range. */
+.lobby-setting--range {
+  padding: 10px 11px 9px;
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 10px;
+  background: rgba(0,0,0,.10);
+}
+.lobby-range-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(88px, auto);
+  align-items: center;
+  gap: 11px;
+}
+.lobby-setting input[type="range"] {
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  box-shadow: none;
+  background: transparent;
+  accent-color: #41d6ff;
+  cursor: ew-resize;
+  touch-action: pan-y;
+}
+.lobby-setting input[type="range"]:focus {
+  border-color: transparent;
+  box-shadow: none;
+}
+.lobby-setting input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(59,207,255,.7), rgba(255,255,255,.16));
+}
+.lobby-setting input[type="range"]::-webkit-slider-thumb {
+  width: 18px;
+  height: 18px;
+  margin-top: -6px;
+  border: 2px solid #e9fbff;
+  border-radius: 50%;
+  background: #31cfff;
+  box-shadow: 0 2px 9px rgba(0,0,0,.4);
+  -webkit-appearance: none;
+  appearance: none;
+}
+.lobby-setting input[type="range"]::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(59,207,255,.7), rgba(255,255,255,.16));
+}
+.lobby-setting input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #e9fbff;
+  border-radius: 50%;
+  background: #31cfff;
+  box-shadow: 0 2px 9px rgba(0,0,0,.4);
+}
+.lobby-range-control output {
+  min-width: 88px;
+  padding: 7px 8px;
+  border: 1px solid rgba(85,213,255,.22);
+  border-radius: 7px;
+  color: #bdecff;
+  background: rgba(15,91,126,.18);
+  text-align: center;
+  font: 900 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: nowrap;
+}
+.lobby-range-limits {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: -2px;
+  color: rgba(255,255,255,.34);
+  font: 700 8px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (max-width: 760px) {
+  .lobby-range-control { grid-template-columns: minmax(0, 1fr) 82px; gap: 8px; }
+  .lobby-range-control output { min-width: 82px; font-size: 10px; }
+  .lobby-setting input[type="range"] { min-height: 34px; }
+}

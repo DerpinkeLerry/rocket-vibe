@@ -170,7 +170,7 @@ const LOBBY_PHYSICS_SECTIONS = [
     title: 'Auto · Antrieb, Boost & Grip',
     fields: [
       ['config.car.boostCapacity', 'Boost-Kapazität', 1, 100, 1, ''],
-      ['config.car.boostConsumptionPerSecond', 'Boost-Verbrauch', 0, 200, 'any', '/s'],
+      ['config.car.boostConsumptionPerSecond', 'Boost-Verbrauch', 0, 200, 0.01, '/s'],
       ['config.car.driveAcceleration', 'Beschleunigung vorwärts', 0, 80, 0.5, 'm/s²'],
       ['config.car.reverseAcceleration', 'Beschleunigung rückwärts', 0, 80, 0.5, 'm/s²'],
       ['config.car.brakeAcceleration', 'Bremskraft', 0, 120, 0.5, 'm/s²'],
@@ -204,8 +204,8 @@ const LOBBY_PHYSICS_SECTIONS = [
       ['config.car.doubleJumpSpeed', 'Double-Jump Speed', 0, 50, 0.1, 'm/s'],
       ['config.car.dodgeImpulse', 'Dodge Impuls', 0, 50, 0.1, ''],
       ['config.car.dodgeLift', 'Dodge Lift', -10, 20, 0.1, ''],
-      ['config.car.dodgeAngularSpeed', 'Dodge Rotationsspeed', 0, 40, 'any', 'rad/s'],
-      ['config.car.dodgeRotation', 'Dodge Gesamtrotation', 0, 25.1327, 'any', 'rad'],
+      ['config.car.dodgeAngularSpeed', 'Dodge Rotationsspeed', 0, 40, 0.01, 'rad/s'],
+      ['config.car.dodgeRotation', 'Dodge Gesamtrotation', 0, 25.1327, 0.001, 'rad'],
       ['config.car.dodgeWindow', 'Dodge-Fenster', 0, 5, 0.01, 's'],
       ['config.car.dodgeDuration', 'Dodge-Dauer', 0.05, 3, 0.01, 's'],
       ['config.car.dodgeControlScale', 'Steuerung während Dodge', 0, 1, 0.01, ''],
@@ -313,15 +313,62 @@ function lobbyRuleSummary(lobby) {
   return `${time} · ${score} · ${config?.demolition?.enabled ? 'Demos an' : 'Demos aus'} · G ${gravityText}`;
 }
 
+function sliderPrecision(step) {
+  const text = String(step);
+  if (!text.includes('.')) return 0;
+  return Math.min(4, text.split('.')[1].length);
+}
+
+function formatSliderValue(value, step, unit = '') {
+  const number = Number(value);
+  const precision = sliderPrecision(step);
+  const text = Number.isFinite(number) ? number.toFixed(precision) : '0';
+  return unit ? `${text} ${unit}` : text;
+}
+
+function renderLobbyRangeControl(path, label, min, max, step, unit, value, scale = 1, hint = '') {
+  const safeValue = Math.min(Number(max), Math.max(Number(min), Number(value)));
+  const current = Number(safeValue.toFixed(5));
+  return `
+    <label class="lobby-setting lobby-setting--range">
+      <span>${escapeHtml(label)}${hint || unit ? `<small>${escapeHtml(hint || unit)}</small>` : ''}</span>
+      <div class="lobby-range-control">
+        <input type="range" data-lobby-setting="${path}" data-scale="${scale}" data-unit="${escapeHtml(unit)}" min="${min}" max="${max}" step="${step}" value="${current}" aria-label="${escapeHtml(label)}" />
+        <output data-lobby-value-for="${path}">${escapeHtml(formatSliderValue(current, step, unit))}</output>
+      </div>
+      <div class="lobby-range-limits" aria-hidden="true">
+        <span>${escapeHtml(formatSliderValue(min, step, unit))}</span>
+        <span>${escapeHtml(formatSliderValue(max, step, unit))}</span>
+      </div>
+    </label>`;
+}
+
 function renderNumericLobbyField(defaults, field) {
   const [path, label, min, max, step, unit, scale = 1] = field;
   const raw = Number(readPath(defaults, path));
-  const value = Number.isFinite(raw) ? raw * scale : 0;
-  return `
-    <label class="lobby-setting">
-      <span>${escapeHtml(label)}${unit ? `<small>${escapeHtml(unit)}</small>` : ''}</span>
-      <input type="number" data-lobby-setting="${path}" data-scale="${scale}" min="${min}" max="${max}" step="${step}" value="${Number(value.toFixed(5))}" />
-    </label>`;
+  const value = Number.isFinite(raw) ? raw * scale : min;
+  return renderLobbyRangeControl(path, label, min, max, step, unit, value, scale);
+}
+
+function syncLobbyRangeOutputs(form) {
+  for (const input of form.querySelectorAll('input[type="range"][data-lobby-setting]')) {
+    const output = form.querySelector(`[data-lobby-value-for="${input.dataset.lobbySetting}"]`);
+    if (!output) continue;
+    output.textContent = formatSliderValue(input.value, input.step, input.dataset.unit || '');
+  }
+}
+
+function bindLobbyRangeOutputs(form) {
+  const syncInput = (input) => {
+    const output = form.querySelector(`[data-lobby-value-for="${input.dataset.lobbySetting}"]`);
+    if (!output) return;
+    const unit = input.dataset.unit || '';
+    output.textContent = formatSliderValue(input.value, input.step, unit);
+  };
+  for (const input of form.querySelectorAll('input[type="range"][data-lobby-setting]')) {
+    input.addEventListener('input', () => syncInput(input));
+    syncInput(input);
+  }
 }
 
 function lobbyCreationMarkup(defaults) {
@@ -349,12 +396,12 @@ function lobbyCreationMarkup(defaults) {
         <h2>Lobby & Spielregeln</h2>
         <div class="lobby-settings-grid">
           <label class="lobby-setting lobby-setting--wide"><span>Lobby-Name</span><input name="lobbyName" type="text" maxlength="32" value="${escapeHtml(defaults.name || 'Neue Lobby')}" required /></label>
-          <label class="lobby-setting"><span>Max. Spieler <small>1–4</small></span><input type="number" data-lobby-setting="config.maxPlayers" min="1" max="4" step="1" value="${Number(config.maxPlayers) || 4}" /></label>
-          <label class="lobby-setting"><span>Matchdauer <small>Sekunden · 0 = ∞</small></span><input type="number" data-lobby-setting="rules.matchSeconds" min="0" max="3600" step="15" value="${Number(rules.matchSeconds) || 0}" /></label>
-          <label class="lobby-setting"><span>Scorelimit <small>0 = ∞</small></span><input type="number" data-lobby-setting="rules.scoreLimit" min="0" max="99" step="1" value="${Number(rules.scoreLimit) || 0}" /></label>
-          <label class="lobby-setting"><span>Kickoff Countdown <small>Sekunden</small></span><input type="number" data-lobby-setting="rules.kickoffSeconds" min="0" max="10" step="1" value="${Number(rules.kickoffSeconds) || 0}" /></label>
-          <label class="lobby-setting"><span>Goal Replay <small>Sekunden</small></span><input type="number" data-lobby-setting="rules.goalReplaySeconds" min="0" max="20" step="0.1" value="${Number(rules.goalReplaySeconds) || 0}" /></label>
-          <label class="lobby-setting"><span>Goal Celebration <small>Sekunden</small></span><input type="number" data-lobby-setting="rules.goalCelebrationSeconds" min="0" max="10" step="0.05" value="${Number(rules.goalCelebrationSeconds) || 0}" /></label>
+          ${renderLobbyRangeControl('config.maxPlayers', 'Max. Spieler', 1, 8, 1, 'Spieler', Number(config.maxPlayers) || 4)}
+          ${renderLobbyRangeControl('rules.matchSeconds', 'Matchdauer', 0, 3600, 15, 's', Number(rules.matchSeconds) || 0, 1, '0 = ∞')}
+          ${renderLobbyRangeControl('rules.scoreLimit', 'Scorelimit', 0, 99, 1, 'Tore', Number(rules.scoreLimit) || 0, 1, '0 = ∞')}
+          ${renderLobbyRangeControl('rules.kickoffSeconds', 'Kickoff Countdown', 0, 10, 1, 's', Number(rules.kickoffSeconds) || 0)}
+          ${renderLobbyRangeControl('rules.goalReplaySeconds', 'Goal Replay', 0, 20, 0.1, 's', Number(rules.goalReplaySeconds) || 0)}
+          ${renderLobbyRangeControl('rules.goalCelebrationSeconds', 'Goal Celebration', 0, 10, 0.05, 's', Number(rules.goalCelebrationSeconds) || 0)}
         </div>
         <div class="lobby-toggle-grid">
           <label><input type="checkbox" data-lobby-setting-bool="rules.overtimeOnTie" ${rules.overtimeOnTie ? 'checked' : ''}/><span>Overtime bei Gleichstand</span></label>
@@ -411,6 +458,7 @@ function applyLobbyPreset(form, defaults, preset) {
   for (const input of form.querySelectorAll('[data-lobby-setting-bool]')) {
     input.checked = Boolean(readPath(values, input.dataset.lobbySettingBool));
   }
+  syncLobbyRangeOutputs(form);
 }
 
 function collectLobbySettings(form, defaults) {
@@ -534,6 +582,7 @@ function requestLobby(root, notice = '') {
       overlay.innerHTML = lobbyCreationMarkup(defaults);
       const form = overlay.querySelector('[data-lobby-create-form]');
       const error = overlay.querySelector('[data-lobby-create-error]');
+      bindLobbyRangeOutputs(form);
       overlay.querySelector('[data-lobby-back]').addEventListener('click', async () => {
         await showBrowser('');
         refreshTimer = setInterval(refreshList, 2500);
@@ -762,7 +811,7 @@ async function boot() {
     applyServerPhysicsConfig(network.matchConfig);
     applyServerArenaConfig(network.matchConfig);
     applyServerHitboxConfig(network.matchConfig);
-    // No Rapier import in the browser for online play. Railway owns physics.
+    // No Rapier import in the browser for online play. The Go server owns physics.
   } else {
     identity = await requestPlayerIdentity(app);
     const rapierModule = await import('@dimforge/rapier3d-compat');
@@ -783,6 +832,6 @@ boot().catch((error) => {
   console.error(error);
   document.body.innerHTML = `
     <pre style="white-space:pre-wrap;color:#fff;background:#120b12;padding:24px;min-height:100vh;margin:0">
-Fehler beim Starten:\n\n${error?.stack ?? error}\n\nGo/LAN: "npm run lan".\nRailway baut das enthaltene Dockerfile automatisch.\nOffline: "npm run dev".
+Fehler beim Starten:\n\n${error?.stack ?? error}\n\nGo/LAN: "npm run lan".\nRender baut das enthaltene Dockerfile automatisch.\nOffline: "npm run dev".
     </pre>`;
 });

@@ -29,7 +29,7 @@ const (
 )
 
 func shouldStartKickoff(playerCount int) bool {
-	return playerCount == 2 || playerCount == 4
+	return playerCount >= 2 && playerCount <= game.MaxPlayers && playerCount%2 == 0
 }
 
 func shouldStartKickoffForLobby(playerCount, maxPlayers int) bool {
@@ -456,7 +456,7 @@ func (match *Match) run() {
 			} else if shouldStartKickoffForLobby(len(clients), match.config.MaxPlayers) {
 				startKickoff(true)
 			} else if !kickoffEndsAt.IsZero() {
-				// Player three never restarts a match, but if they happen to arrive
+				// An odd-numbered join never restarts a match, but if it happens to arrive
 				// during the 1v1 countdown they still need to see the existing lock.
 				remaining := int(math.Ceil(time.Until(kickoffEndsAt).Seconds()))
 				if remaining > 0 {

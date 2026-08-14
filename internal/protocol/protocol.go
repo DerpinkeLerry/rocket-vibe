@@ -9,15 +9,16 @@ import (
 
 const (
 	// Version is the WebSocket application protocol version announced in the welcome message.
-	// Keep it here so the server and integration tests share one source of truth.
-	Version = 4
+	// v5 expands the binary state packet from four to eight car slots and gives
+	// grounded/demolished masks a full byte each.
+	Version = 5
 
 	MessageInput byte = 1
 	MessageState byte = 2
 
 	entityFloatCount = 13
 	entityCount      = game.MaxPlayers + 1
-	stateHeaderBytes = 23
+	stateHeaderBytes = 28
 	StateBytes       = stateHeaderBytes + entityFloatCount*entityCount*4
 )
 
@@ -42,9 +43,8 @@ func DecodeInput(data []byte) (InputPacket, bool) {
 	if len(data) >= 8 {
 		packet.Flags = data[7] & (game.InputFlagDrift | game.InputFlagAnalog)
 	}
-	// v1.10.15 analog extension. Signed bytes preserve enough precision for a
-	// phone thumbstick while keeping held-input traffic tiny. Legacy 7/8-byte
-	// packets simply remain digital.
+	// Signed bytes preserve enough precision for a phone thumbstick while
+	// keeping held-input traffic tiny. Legacy 7/8-byte packets remain digital.
 	if len(data) >= 10 && packet.Flags&game.InputFlagAnalog != 0 {
 		packet.Throttle = decodeAxis(data[8])
 		packet.Steer = decodeAxis(data[9])
@@ -69,16 +69,14 @@ func EncodeState(snapshot game.Snapshot) []byte {
 	buffer[0] = MessageState
 	binary.LittleEndian.PutUint32(buffer[1:5], uint32(snapshot.Tick))
 	buffer[5] = snapshot.ConnectedMask
-	// Lower nibble remains the legacy grounded mask. Upper nibble carries the
-	// four demolition flags without growing the packet, so older clients keep
-	// parsing entity floats at the exact same offsets.
-	buffer[6] = (snapshot.GroundMask & 0x0f) | ((snapshot.DemolishedMask & 0x0f) << 4)
-	binary.LittleEndian.PutUint16(buffer[7:9], snapshot.OrangeScore)
-	binary.LittleEndian.PutUint16(buffer[9:11], snapshot.BlueScore)
+	buffer[6] = snapshot.GroundMask
+	buffer[7] = snapshot.DemolishedMask
+	binary.LittleEndian.PutUint16(buffer[8:10], snapshot.OrangeScore)
+	binary.LittleEndian.PutUint16(buffer[10:12], snapshot.BlueScore)
 	for index := range snapshot.Boost {
-		buffer[11+index] = snapshot.Boost[index]
+		buffer[12+index] = snapshot.Boost[index]
 	}
-	binary.LittleEndian.PutUint64(buffer[15:23], snapshot.BoostPadMask)
+	binary.LittleEndian.PutUint64(buffer[20:28], snapshot.BoostPadMask)
 
 	offset := stateHeaderBytes
 	for index := range snapshot.Cars {

@@ -172,6 +172,10 @@ var playerSpawns = [MaxPlayers]struct {
 	{Position: Vec3{X: -13, Y: 0.52, Z: -44}, Yaw: math.Pi},
 	{Position: Vec3{X: 13, Y: 0.52, Z: 44}, Yaw: 0},
 	{Position: Vec3{X: 13, Y: 0.52, Z: -44}, Yaw: math.Pi},
+	{Position: Vec3{X: -32, Y: 0.52, Z: 34}, Yaw: 0},
+	{Position: Vec3{X: -32, Y: 0.52, Z: -34}, Yaw: math.Pi},
+	{Position: Vec3{X: 32, Y: 0.52, Z: 34}, Yaw: 0},
+	{Position: Vec3{X: 32, Y: 0.52, Z: -34}, Yaw: math.Pi},
 }
 
 var boostPadSpecs = [BoostPadCount]BoostPad{

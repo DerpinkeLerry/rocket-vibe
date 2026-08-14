@@ -9,6 +9,6 @@ server
 *.log
 README.md
 LAN-START.txt
-RAILWAY-DEPLOY.txt
+RENDER-DEPLOY.txt
 start-mac-linux.sh
 start-windows.bat

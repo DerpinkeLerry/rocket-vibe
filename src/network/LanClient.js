@@ -4,14 +4,17 @@ import { ALL_BOOST_PADS_MASK } from '../shared/boost-tuning.js';
 
 const MSG_INPUT = 1;
 const MSG_STATE = 2;
+const MAX_PLAYERS = 8;
+const LEGACY_PLAYERS = 4;
 const ENTITY_FLOATS = 13;
-const ENTITY_COUNT = 5; // 4 cars + ball.
-const LEGACY_STATE_HEADER_BYTES = 11;
+const STATE_HEADER_BYTES = 28;
+const FOUR_PLAYER_STATE_HEADER_BYTES = 23;
 const PREVIOUS_STATE_HEADER_BYTES = 17;
-const STATE_HEADER_BYTES = 23;
-const LEGACY_STATE_BYTES = LEGACY_STATE_HEADER_BYTES + ENTITY_FLOATS * ENTITY_COUNT * 4;
-const PREVIOUS_STATE_BYTES = PREVIOUS_STATE_HEADER_BYTES + ENTITY_FLOATS * ENTITY_COUNT * 4;
-const STATE_BYTES = STATE_HEADER_BYTES + ENTITY_FLOATS * ENTITY_COUNT * 4;
+const LEGACY_STATE_HEADER_BYTES = 11;
+const STATE_BYTES = STATE_HEADER_BYTES + ENTITY_FLOATS * (MAX_PLAYERS + 1) * 4;
+const FOUR_PLAYER_STATE_BYTES = FOUR_PLAYER_STATE_HEADER_BYTES + ENTITY_FLOATS * (LEGACY_PLAYERS + 1) * 4;
+const PREVIOUS_STATE_BYTES = PREVIOUS_STATE_HEADER_BYTES + ENTITY_FLOATS * (LEGACY_PLAYERS + 1) * 4;
+const LEGACY_STATE_BYTES = LEGACY_STATE_HEADER_BYTES + ENTITY_FLOATS * (LEGACY_PLAYERS + 1) * 4;
 
 function makeEntity() {
   return {
@@ -35,7 +38,7 @@ function normalizePlayers(players, connectedPlayers = []) {
         carStyle: normalizeCarStyle(player?.carStyle),
         boostStyle: normalizeBoostStyle(player?.boostStyle)
       }))
-      .filter((player) => Number.isInteger(player.playerId) && player.playerId >= 0 && player.playerId < 4);
+      .filter((player) => Number.isInteger(player.playerId) && player.playerId >= 0 && player.playerId < MAX_PLAYERS);
   }
   return connectedPlayers.map((playerId) => ({
     playerId: Number(playerId),
@@ -75,8 +78,8 @@ export class LanClient {
       orangeScore: 0,
       blueScore: 0,
       boostPadMask: ALL_BOOST_PADS_MASK,
-      connected: [0, 0, 0, 0],
-      cars: [makeEntity(), makeEntity(), makeEntity(), makeEntity()],
+      connected: Array.from({ length: MAX_PLAYERS }, () => 0),
+      cars: Array.from({ length: MAX_PLAYERS }, () => makeEntity()),
       ball: makeEntity()
     };
     this.onState = null;
@@ -404,37 +407,70 @@ export class LanClient {
 
   readBinaryMessage(buffer) {
     if (buffer.byteLength < LEGACY_STATE_BYTES) return;
-    const extendedLayout = buffer.byteLength >= STATE_BYTES;
-    const modernLayout = extendedLayout || buffer.byteLength >= PREVIOUS_STATE_BYTES;
+    const eightPlayerLayout = buffer.byteLength >= STATE_BYTES;
+    const fourPlayerLayout = !eightPlayerLayout && buffer.byteLength >= FOUR_PLAYER_STATE_BYTES;
+    const previousLayout = !eightPlayerLayout && !fourPlayerLayout && buffer.byteLength >= PREVIOUS_STATE_BYTES;
     const view = new DataView(buffer);
     if (view.getUint8(0) !== MSG_STATE) return;
 
     this.state.tick = view.getUint32(1, true);
-    const connectedMask = view.getUint8(5);
-    const stateFlags = view.getUint8(6);
-    const groundMask = stateFlags & 0x0f;
-    const demolishedMask = (stateFlags >> 4) & 0x0f;
-    this.state.orangeScore = view.getUint16(7, true);
-    this.state.blueScore = view.getUint16(9, true);
-    for (let i = 0; i < 4; i++) {
-      this.state.connected[i] = (connectedMask >> i) & 1;
-      this.state.cars[i].g = (groundMask >> i) & 1;
-      this.state.cars[i].d = (demolishedMask >> i) & 1;
-      this.state.cars[i].b = modernLayout ? view.getUint8(11 + i) : 100;
-    }
-    if (extendedLayout) {
-      const lowMask = view.getUint32(15, true);
-      const highMask = view.getUint32(19, true);
-      this.state.boostPadMask = lowMask + highMask * 4294967296;
-    } else {
-      this.state.boostPadMask = modernLayout ? view.getUint16(15, true) : ALL_BOOST_PADS_MASK;
+    this.state.connected.fill(0);
+    for (const car of this.state.cars) {
+      car.g = 0;
+      car.d = 0;
     }
 
-    let offset = extendedLayout
-      ? STATE_HEADER_BYTES
-      : (modernLayout ? PREVIOUS_STATE_HEADER_BYTES : LEGACY_STATE_HEADER_BYTES);
-    for (let entityIndex = 0; entityIndex < 5; entityIndex++) {
-      const entity = entityIndex < 4 ? this.state.cars[entityIndex] : this.state.ball;
+    let offset;
+    let transmittedCars;
+    if (eightPlayerLayout) {
+      const connectedMask = view.getUint8(5);
+      const groundMask = view.getUint8(6);
+      const demolishedMask = view.getUint8(7);
+      this.state.orangeScore = view.getUint16(8, true);
+      this.state.blueScore = view.getUint16(10, true);
+      for (let i = 0; i < MAX_PLAYERS; i++) {
+        this.state.connected[i] = (connectedMask >> i) & 1;
+        this.state.cars[i].g = (groundMask >> i) & 1;
+        this.state.cars[i].d = (demolishedMask >> i) & 1;
+        this.state.cars[i].b = view.getUint8(12 + i);
+      }
+      const lowMask = view.getUint32(20, true);
+      const highMask = view.getUint32(24, true);
+      this.state.boostPadMask = lowMask + highMask * 4294967296;
+      offset = STATE_HEADER_BYTES;
+      transmittedCars = MAX_PLAYERS;
+    } else {
+      // Rolling-deploy compatibility with the previous four-car packet formats.
+      const connectedMask = view.getUint8(5);
+      const stateFlags = view.getUint8(6);
+      const groundMask = stateFlags & 0x0f;
+      const demolishedMask = (stateFlags >> 4) & 0x0f;
+      this.state.orangeScore = view.getUint16(7, true);
+      this.state.blueScore = view.getUint16(9, true);
+      for (let i = 0; i < LEGACY_PLAYERS; i++) {
+        this.state.connected[i] = (connectedMask >> i) & 1;
+        this.state.cars[i].g = (groundMask >> i) & 1;
+        this.state.cars[i].d = (demolishedMask >> i) & 1;
+        this.state.cars[i].b = (fourPlayerLayout || previousLayout) ? view.getUint8(11 + i) : 100;
+      }
+      for (let i = LEGACY_PLAYERS; i < MAX_PLAYERS; i++) this.state.cars[i].b = 100;
+      if (fourPlayerLayout) {
+        const lowMask = view.getUint32(15, true);
+        const highMask = view.getUint32(19, true);
+        this.state.boostPadMask = lowMask + highMask * 4294967296;
+        offset = FOUR_PLAYER_STATE_HEADER_BYTES;
+      } else if (previousLayout) {
+        this.state.boostPadMask = view.getUint16(15, true);
+        offset = PREVIOUS_STATE_HEADER_BYTES;
+      } else {
+        this.state.boostPadMask = ALL_BOOST_PADS_MASK;
+        offset = LEGACY_STATE_HEADER_BYTES;
+      }
+      transmittedCars = LEGACY_PLAYERS;
+    }
+
+    for (let entityIndex = 0; entityIndex <= transmittedCars; entityIndex++) {
+      const entity = entityIndex < transmittedCars ? this.state.cars[entityIndex] : this.state.ball;
       for (let i = 0; i < 3; i++, offset += 4) entity.p[i] = view.getFloat32(offset, true);
       for (let i = 0; i < 4; i++, offset += 4) entity.r[i] = view.getFloat32(offset, true);
       for (let i = 0; i < 3; i++, offset += 4) entity.v[i] = view.getFloat32(offset, true);

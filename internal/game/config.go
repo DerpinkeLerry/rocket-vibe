@@ -1,9 +1,10 @@
 package game
 
 const (
-	PhysicsHz  = 120
-	SnapshotHz = 60
-	MaxPlayers = 4
+	PhysicsHz         = 120
+	SnapshotHz        = 60
+	MaxPlayers        = 8
+	DefaultMaxPlayers = 4
 
 	DemolitionRespawnSeconds = 4.0
 	DemolitionRespawnBoost   = 33.0
@@ -125,7 +126,7 @@ func DefaultConfig() Config {
 	return Config{
 		PhysicsHz:   PhysicsHz,
 		SnapshotHz:  SnapshotHz,
-		MaxPlayers:  MaxPlayers,
+		MaxPlayers:  DefaultMaxPlayers,
 		SolverSteps: 4,
 		Gravity:     20.5,
 		Arena: ArenaConfig{

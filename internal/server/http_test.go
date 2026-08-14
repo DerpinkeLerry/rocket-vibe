@@ -98,10 +98,12 @@ func TestHTTPAndWebSocketIntegration(t *testing.T) {
 	}
 }
 
-func TestFourPlayerCapacityAndFifthPlayerRejection(t *testing.T) {
+func TestEightPlayerCapacityAndNinthPlayerRejection(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	match := NewMatch(ctx, game.DefaultConfig())
+	config := game.DefaultConfig()
+	config.MaxPlayers = game.MaxPlayers
+	match := NewMatch(ctx, config)
 	defer match.Stop()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	app := NewHTTPServer(match, HTTPOptions{StaticDirectory: ".", Version: "test"}, logger)
@@ -141,12 +143,12 @@ func TestFourPlayerCapacityAndFifthPlayerRejection(t *testing.T) {
 		seenSlots[welcome.PlayerID] = true
 	}
 
-	fifth, _, err := websocket.Dial(connectionContext, webSocketURL, nil)
+	ninth, _, err := websocket.Dial(connectionContext, webSocketURL, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer fifth.CloseNow()
-	messageType, payload, err := fifth.Read(connectionContext)
+	defer ninth.CloseNow()
+	messageType, payload, err := ninth.Read(connectionContext)
 	if err != nil || messageType != websocket.MessageText {
 		t.Fatalf("server-full read failed: type=%v err=%v", messageType, err)
 	}

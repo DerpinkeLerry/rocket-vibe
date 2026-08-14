@@ -1,4 +1,11 @@
-# Rocket Vibe 1.11.5 – Lobbies, Custom Rules & VM Graphics Mode
+# Rocket Vibe 1.12.0 – Lobby Sliders, 8 Spieler & Render.com
+
+## v1.12.0
+
+- Alle numerischen Lobby-Regeln und Physics-Mutatoren werden jetzt ueber **Schieberegler** eingestellt. Jeder Slider zeigt den aktuellen Wert sowie seinen minimalen und maximalen erlaubten Bereich direkt an.
+- Lobbies koennen zwischen **1 und 8 Spielern** konfiguriert werden. Server-World, WebSocket-State-Protokoll, Client, Replays, Spawns und Teams unterstuetzen jetzt acht Slots; der Standard bleibt 4 Spieler.
+- Das binaere State-Protokoll wurde auf Version 5 erweitert: acht Fahrzeugslots sowie volle Ground-/Demolition-Bitmasken. Der Browser kann waehrend eines Rolling Deploys weiterhin die alten Vier-Spieler-Pakete lesen.
+- Deployment ist auf **Render.com** umgestellt: `render.yaml`, Docker-Web-Service, Frankfurt, `/health`, genau eine Instanz und `0.0.0.0:$PORT`. Railway-spezifische Dateien wurden entfernt.
 
 ## v1.11.5
 
@@ -29,7 +36,7 @@
 
 ## v1.11.1
 
-- Hotfix: WebSocket protocol version is now defined centrally and shared by server + integration test, fixing the Railway Docker build regression.
+- Hotfix: WebSocket protocol version is now defined centrally and shared by server + integration test, fixing the Docker build regression.
 
 ## v1.11.0
 
@@ -116,14 +123,14 @@
 - `ULTRA HIGH` verwendet eine permanente Abenddaemmerung mit Farbverlauf, statischen Sternen, Mond + Halo, Wolkenbaenken und aktivem kuehl/warmem Mehrlicht-Setup. Normal und Ultra Low behalten den hellen Tageslook.
 
 
-Browser-Spiel fuer bis zu vier Spieler mit Three.js-Rendering, lokaler Client-Prediction und einem autoritativen Go-Server. Frontend und Server werden auf Railway als **ein Service** betrieben. Dadurch verwendet der Browser dieselbe HTTPS-Domain fuer Seite und WebSocket (`/lan`); eine separate Backend-URL oder CORS-Konfiguration ist nicht erforderlich.
+Browser-Spiel fuer bis zu acht Spieler pro Lobby mit Three.js-Rendering, lokaler Client-Prediction und einem autoritativen Go-Server. Frontend und Server werden auf Render.com als **ein Docker-Web-Service** betrieben. Dadurch verwendet der Browser dieselbe HTTPS-Domain fuer Seite und WebSocket (`/lan`); eine separate Backend-URL oder CORS-Konfiguration ist nicht erforderlich.
 
 ## Architektur
 
 - Der Browser sendet nur Eingaben, niemals vertrauenswuerdige Positionen.
 - Go simuliert Autos, Ball, Schwerkraft und Kollisionen mit 120 Hz.
 - Go sendet 60 binaere Snapshots pro Sekunde.
-- Ein Snapshot fuer vier Autos, Ball, Spielstand, Booststaende und Boost-Pad-Maske ist 283 Byte gross.
+- Ein v5-Snapshot fuer acht Autos, Ball, Spielstand, Booststaende und Boost-Pad-Maske ist 496 Byte gross.
 - Der eigene Browser sagt die lokale Bewegung voraus und korrigiert sanft zum Serverzustand.
 - Andere Autos und der Ball werden zwischen Snapshots extrapoliert und geglaettet.
 - Online wird im Browser kein Rapier/WASM geladen; das spart CPU und RAM auf schwachen Geraeten.
@@ -133,7 +140,7 @@ Die Arena besitzt eine geschlossene, transparente Einfassung mit abgerundeten Ec
 
 Beim Start werden Spielername und eine von drei rein optischen, Rocket-League-inspirierten Karosserien mit Vorschau ausgewaehlt. Alle drei Varianten verwenden dieselbe Hitbox und dieselben Fahrwerte. Der Server bereinigt und begrenzt ihn, verteilt feste Orange-/Blau-Teams und sendet die Spielerliste an alle Browser. Namensschilder erscheinen ueber den Autos. Das orange Tor liegt auf +Z, das blaue auf -Z; ein Treffer zaehlt fuer das gegnerische Team, aktualisiert den zentralen Spielstand und startet alle Fahrzeuge sowie den Ball neu.
 
-Die Serverphysik rechnet intern mit `float64`. Fuer das Netzwerk werden Position, Quaternion, lineare und Winkelgeschwindigkeit als `float32` uebertragen. Bei vier Spielern sind das grob 16 KB/s je Client bzw. rund 64 KB/s Server-Ausgang plus WebSocket-Overhead.
+Die Serverphysik rechnet intern mit `float64`. Fuer das Netzwerk werden Position, Quaternion, lineare und Winkelgeschwindigkeit als `float32` uebertragen. Das v5-Paket ist 496 Byte gross und wird 60-mal pro Sekunde gesendet, also rund 30 KB/s je Client plus WebSocket-Overhead.
 ## Circular Boost HUD v1.10.17
 
 - Die bisherige Geschwindigkeitsbox wurde vollständig durch eine runde, segmentierte Boost-Anzeige ersetzt.
@@ -213,19 +220,21 @@ Fuer einen LAN-Start inklusive Frontend-Build:
 npm run lan
 ```
 
-Freunde im selben Netzwerk oeffnen `http://DEINE-LAN-IP:8080`. Die ersten vier Browser erhalten Spielerplatz 1 bis 4.
+Freunde im selben Netzwerk oeffnen `http://DEINE-LAN-IP:8080`. Je nach Lobby-Einstellung koennen bis zu acht Browser Spielerplatz 1 bis 8 erhalten.
 
-## Railway deployen
+## Render.com deployen
 
-1. Dieses Verzeichnis in ein GitHub-Repository pushen.
-2. In Railway **New Project → Deploy from GitHub repo** waehlen.
-3. Das Repository bzw. bei einem Monorepo dieses Verzeichnis als Root Directory auswaehlen.
-4. Deploy starten und unter **Networking → Generate Domain** eine Domain erzeugen.
-5. Alle Spieler verwenden dieselbe Railway-Domain.
+Empfohlen ist der enthaltene Blueprint:
 
-Railway erkennt das `Dockerfile`; `railway.json` erzwingt den Dockerfile-Builder, `/health` als Healthcheck und genau eine Amsterdam-Replica. Fuer den In-Memory-Match duerfen nicht mehrere Replicas aktiv sein, da sie sonst getrennte Spielwelten erzeugen.
+1. Dieses Verzeichnis in ein GitHub-/GitLab-/Bitbucket-Repository pushen.
+2. In Render **New → Blueprint** waehlen und das Repository verbinden.
+3. Render liest `render.yaml`, baut das vorhandene `Dockerfile` und verwendet `/health` als HTTP-Healthcheck.
+4. Nach dem Deploy die erzeugte `*.onrender.com`-Domain oeffnen.
+5. Alle Spieler verwenden dieselbe Render-Domain.
 
-Es sind keine Pflichtvariablen notwendig. Railway setzt `PORT` automatisch. Optional:
+`render.yaml` setzt bewusst **genau eine Instanz**, weil Lobbies und laufende Matches derzeit im RAM dieses einen Go-Prozesses liegen. Mehrere Instanzen wuerden ohne externen Session-/Lobby-Store voneinander getrennte Lobby-Listen erzeugen. Der Blueprint startet im Free-Plan; bei Bedarf kann der Plan in Render angepasst werden.
+
+Der Go-Server bindet auf `0.0.0.0:$PORT`. Render empfiehlt den von der Plattform gesetzten `PORT`; im Dockerfile ist `10000` nur der lokale Container-Default. Es sind keine Pflichtvariablen notwendig. Optional:
 
 - `ALLOWED_ORIGINS=spiel.example.com,*.example.com` erlaubt zusaetzliche Browser-Origin-Patterns. Ohne Wert gilt die sichere Same-Origin-Pruefung.
 - `STATIC_DIR` muss nur geaendert werden, wenn der Server ausserhalb des Dockerfiles gestartet wird und `dist` an einem anderen Ort liegt.
@@ -239,7 +248,7 @@ GET /debug/game
 WS  /lan
 ```
 
-Ein Deployment beendet laufende Matches beim Containerwechsel. Fuer spaetere Matchmaking-/Mehrraum-Unterstuetzung sollte jede Lobby an genau einen Prozess gebunden oder ueber einen externen Session-Dienst geroutet werden.
+Ein Deployment beendet laufende In-Memory-Matches beim Containerwechsel.
 
 ## Steuerung
 

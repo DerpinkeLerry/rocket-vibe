@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: rocket-vibe
+    runtime: docker
+    region: frankfurt
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    numInstances: 1
+    autoDeployTrigger: commit
+    maxShutdownDelaySeconds: 10

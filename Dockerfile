@@ -22,8 +22,8 @@ RUN addgroup -S rocket && adduser -S -G rocket rocket
 WORKDIR /app
 COPY --from=backend --chown=rocket:rocket /rocket-server ./rocket-server
 COPY --from=frontend --chown=rocket:rocket /source/dist ./dist
-ENV PORT=8080
+ENV PORT=10000
 ENV STATIC_DIR=/app/dist
 USER rocket
-EXPOSE 8080
+EXPOSE 10000
 ENTRYPOINT ["./rocket-server"]

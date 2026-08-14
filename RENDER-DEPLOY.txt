@@ -1,0 +1,27 @@
+ROCKET VIBE 1.12.0 - RENDER.COM + DOCKER
+
+Empfohlener Weg:
+1. Projekt in ein GitHub/GitLab/Bitbucket-Repository pushen.
+2. Render: New -> Blueprint und das Repository auswaehlen.
+3. Render liest render.yaml und baut das Dockerfile automatisch.
+4. Nach dem Deploy die erzeugte *.onrender.com-Domain oeffnen.
+5. Alle Spieler verwenden dieselbe Domain.
+
+Wichtig:
+- Genau 1 Instanz verwenden. Lobbies und Matches liegen aktuell im RAM dieses Prozesses.
+- /health ist als HTTP-Healthcheck konfiguriert.
+- Der Go-Server bindet auf 0.0.0.0:$PORT.
+- Render setzt PORT; das Docker-Default ist 10000.
+- WebSocket und Webseite laufen auf derselben Domain, deshalb ist keine separate Backend-URL noetig.
+- Der Free-Plan ist in render.yaml eingetragen. Bei Bedarf im Dashboard/Blueprint auf einen staerkeren Plan wechseln.
+
+Optional:
+ALLOWED_ORIGINS=spiel.example.com,*.example.com
+STATIC_DIR=/app/dist
+
+Routen:
+GET /health
+GET /config
+GET /debug/game
+GET/POST /api/lobbies
+WS /lan

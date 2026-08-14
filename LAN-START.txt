@@ -1,20 +1,18 @@
-ROCKET VIBE 1.6 - 4 SPIELER LAN / GO SERVER
+ROCKET VIBE 1.12.0 - BIS ZU 8 SPIELER LAN / GO SERVER
 
-Voraussetzungen:
-  Node.js 22.13+
-  Go 1.23+
+Windows:
+- start-windows.bat doppelklicken
 
-Start:
-  npm ci
-  npm run lan
+macOS / Linux:
+- ./start-mac-linux.sh
 
-Host:
-  http://localhost:8080
+Manuell:
+1. npm ci
+2. npm run lan
+3. Im Browser http://localhost:8080 oeffnen
+4. Freunde im selben Netzwerk verwenden http://DEINE-LAN-IP:8080
 
-Freunde:
-  http://DEINE-LAN-IP:8080
+Im Lobby-Browser erstellt ihr eine Lobby und stellt die Kapazitaet per Slider auf 1 bis 8 Spieler.
+Der Standard bleibt 4 Spieler. Die Slots wechseln automatisch zwischen Orange und Blau.
 
-Ultra / VM nur fuer einen einzelnen Browser:
-  http://DEINE-LAN-IP:8080/?perf=ultra
-
-Die ersten vier Browser werden Spieler 1-4. F2 schaltet Normal <-> Ultra / VM.
+F2 schaltet Normal / Ultra High / Ultra Low.

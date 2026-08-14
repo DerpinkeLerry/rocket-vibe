@@ -21,7 +21,7 @@ export function cloneReplayState(state) {
     blueScore: Math.max(0, Number(state?.blueScore) || 0),
     boostPadMask: Number.isFinite(Number(state?.boostPadMask)) ? Number(state.boostPadMask) : ALL_BOOST_PADS_MASK,
     connected: Array.from(state?.connected ?? [0, 0, 0, 0], (value) => Number(value) ? 1 : 0),
-    cars: Array.from({ length: 4 }, (_, index) => copyEntity(state?.cars?.[index])),
+    cars: Array.from({ length: Math.max(4, state?.cars?.length || 0) }, (_, index) => copyEntity(state?.cars?.[index])),
     ball: copyEntity(state?.ball)
   };
 }
