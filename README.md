@@ -1,13 +1,4 @@
-# Rocket Vibe 1.13.7 – Ultra-Low Ball Depth Cue
-
-## v1.13.7
-
-- **ULTRA LOW** bekommt eine extrem leichte Ball-Distanzhilfe, weil bei 0.18–0.40 Render-Scale klassische Schatten und feine Texturdetails zur Tiefenwahrnehmung fehlen.
-- Unter dem Ball liegt ab mittlerer Distanz ein klarer Boden-Ring mit Fadenkreuz. Eine senkrechte Linie vom Boden bis zum Ball zeigt die Ballhoehe sofort, ohne dass man die Distanz nur aus der scheinbaren Ballgroesse schaetzen muss.
-- Eine einzelne duenne Bodenlinie verbindet den lokalen Wagen mit der Ballprojektion; kleine Markierungen im **20-Meter-Abstand** liefern eine schnelle visuelle Entfernungsskala.
-- Ab 14 Metern erscheint direkt am Ball eine kompakte Meterangabe. Bei hoeheren Baellen wird zusaetzlich die Hoehe eingeblendet. Im Nahbereich blendet die Hilfe automatisch aus, damit Dribblings und Zweikaempfe sauber bleiben.
-- Die gesamte 3D-Hilfe besteht aus **einem einzigen dynamischen LineSegments-Draw-Call** und einem kleinen DOM-Label. Normal und Ultra High sind komplett unveraendert.
-
+# Rocket Vibe 1.13.6 – Arena Performance Pass
 
 ## v1.13.6
 

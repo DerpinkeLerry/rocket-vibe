@@ -15,7 +15,7 @@ import { ReplayBuffer, sampleReplayFrames } from './ReplayBuffer.js';
 import { GoalExplosion } from './GoalExplosion.js';
 import { DemolitionExplosion } from './DemolitionExplosion.js';
 import { HighSpeedEffects } from './HighSpeedEffects.js';
-import { UltraLowBallCue } from './UltraLowBallCue.js';
+import { BallLandingCue } from './BallLandingCue.js';
 import { ARENA_TUNING } from '../shared/arena-tuning.js';
 import { evaluateDemolitionSnapshot } from '../shared/demolition-respawn.js';
 import { DEFAULT_CAR_STYLE, normalizeCarStyle } from '../shared/car-styles.js';
@@ -228,9 +228,11 @@ export class Game {
         })
       : null;
     this.chaseCamera = new ChaseCamera(this.camera, this.car, this.ball, this.scene);
-    this.ultraLowBallCue = this.profile.ultraLow
-      ? new UltraLowBallCue(this.scene, this.root, this.ball, this.car, this.camera)
-      : null;
+    this.ballLandingCue = new BallLandingCue(this.scene, {
+      lowDetail: this.profile.lowDetail,
+      ultraHigh: this.profile.ultraHigh,
+      mobile: this.profile.mobile
+    });
     this.highSpeedEffects = this.profile.ultraHigh
       ? new HighSpeedEffects(this.scene, this.car, { mobile: this.profile.mobile })
       : null;
@@ -864,6 +866,7 @@ export class Game {
         car.updateBoostEffects?.(renderDt);
       }
       this.ball.syncVisual();
+      this.ballLandingCue?.update(this.ball, renderDt);
       if (!this.replayActive && !this.demolitionRespawnActive && this.input.consumePressed('KeyC')) {
         const cameraMode = this.chaseCamera.toggleMode();
         this.hud.setCameraMode(cameraMode);
@@ -874,7 +877,6 @@ export class Game {
       this.demolitionExplosion?.update(renderDt);
       this.updateRespawnMarkers(now);
       this.chaseCamera.update(renderDt);
-      this.ultraLowBallCue?.update();
       const highSpeedImmersionActive = !this.replayActive
         && !this.kickoffActive
         && !this.goalCelebrationActive
