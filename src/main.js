@@ -125,6 +125,8 @@ function carPreviewSvg(styleId) {
     </svg>`;
 }
 
+const BASKETBALL_MIN_CEILING = 18;
+
 const LOBBY_PHYSICS_SECTIONS = [
   {
     title: 'Welt & Solver',
@@ -310,7 +312,8 @@ function lobbyRuleSummary(lobby) {
   const time = Number(rules.matchSeconds) > 0 ? formatLobbyClock(Number(rules.matchSeconds)) : 'ohne Uhr';
   const gravity = Number(config.gravity);
   const gravityText = Number.isFinite(gravity) ? `${gravity.toFixed(1)} m/s²` : 'Standard-G';
-  return `${time} · ${score} · ${config?.demolition?.enabled ? 'Demos an' : 'Demos aus'} · G ${gravityText}`;
+  const mode = config.gameMode === 'basketball' ? 'BASKETBALL' : 'NORMAL';
+  return `${mode} · ${time} · ${score} · ${config?.demolition?.enabled ? 'Demos an' : 'Demos aus'} · G ${gravityText}`;
 }
 
 function sliderPrecision(step) {
@@ -337,8 +340,8 @@ function renderLobbyRangeControl(path, label, min, max, step, unit, value, scale
         <output data-lobby-value-for="${path}">${escapeHtml(formatSliderValue(current, step, unit))}</output>
       </div>
       <div class="lobby-range-limits" aria-hidden="true">
-        <span>${escapeHtml(formatSliderValue(min, step, unit))}</span>
-        <span>${escapeHtml(formatSliderValue(max, step, unit))}</span>
+        <span data-range-min-for="${path}">${escapeHtml(formatSliderValue(min, step, unit))}</span>
+        <span data-range-max-for="${path}">${escapeHtml(formatSliderValue(max, step, unit))}</span>
       </div>
     </label>`;
 }
@@ -356,6 +359,18 @@ function syncLobbyRangeOutputs(form) {
     if (!output) continue;
     output.textContent = formatSliderValue(input.value, input.step, input.dataset.unit || '');
   }
+}
+
+function syncLobbyModeConstraints(form) {
+  const basketball = form.elements.gameMode?.value === 'basketball';
+  const ceiling = form.querySelector('[data-lobby-setting="config.arena.ceiling"]');
+  if (!ceiling) return;
+  const minimum = basketball ? BASKETBALL_MIN_CEILING : 14;
+  ceiling.min = String(minimum);
+  if (Number(ceiling.value) < minimum) ceiling.value = String(minimum);
+  const minLabel = form.querySelector('[data-range-min-for="config.arena.ceiling"]');
+  if (minLabel) minLabel.textContent = formatSliderValue(minimum, ceiling.step, ceiling.dataset.unit || '');
+  syncLobbyRangeOutputs(form);
 }
 
 function bindLobbyRangeOutputs(form) {
@@ -394,6 +409,21 @@ function lobbyCreationMarkup(defaults) {
 
       <section class="lobby-settings-section lobby-settings-section--open">
         <h2>Lobby & Spielregeln</h2>
+        <fieldset class="lobby-mode-select">
+          <legend>Spielmodus</legend>
+          <div class="lobby-mode-select__grid">
+            <label class="lobby-mode-choice${config.gameMode === 'basketball' ? '' : ' is-selected'}" data-lobby-mode-choice="normal">
+              <input type="radio" name="gameMode" value="normal" ${config.gameMode === 'basketball' ? '' : 'checked'} />
+              <strong>NORMAL</strong>
+              <span>Soccar-Arena mit klassischen Toren und Standard-Ball.</span>
+            </label>
+            <label class="lobby-mode-choice${config.gameMode === 'basketball' ? ' is-selected' : ''}" data-lobby-mode-choice="basketball">
+              <input type="radio" name="gameMode" value="basketball" ${config.gameMode === 'basketball' ? 'checked' : ''} />
+              <strong>BASKETBALL</strong>
+              <span>Holzboden, Basketball-Ball, zwei erhöhte Körbe und Treffer von oben durch den Ring.</span>
+            </label>
+          </div>
+        </fieldset>
         <div class="lobby-settings-grid">
           <label class="lobby-setting lobby-setting--wide"><span>Lobby-Name</span><input name="lobbyName" type="text" maxlength="32" value="${escapeHtml(defaults.name || 'Neue Lobby')}" required /></label>
           ${renderLobbyRangeControl('config.maxPlayers', 'Max. Spieler', 1, 8, 1, 'Spieler', Number(config.maxPlayers) || 4)}
@@ -426,7 +456,9 @@ function lobbyCreationMarkup(defaults) {
 }
 
 function applyLobbyPreset(form, defaults, preset) {
+  const selectedMode = form.elements.gameMode?.value === 'basketball' ? 'basketball' : 'normal';
   const values = cloneSettings(defaults);
+  values.config.gameMode = selectedMode;
   if (preset === 'moon') {
     values.config.gravity = 6;
     values.config.car.jumpSpeed = 14;
@@ -458,12 +490,18 @@ function applyLobbyPreset(form, defaults, preset) {
   for (const input of form.querySelectorAll('[data-lobby-setting-bool]')) {
     input.checked = Boolean(readPath(values, input.dataset.lobbySettingBool));
   }
-  syncLobbyRangeOutputs(form);
+  const modeInput = form.querySelector(`input[name="gameMode"][value="${values.config.gameMode === 'basketball' ? 'basketball' : 'normal'}"]`);
+  if (modeInput) modeInput.checked = true;
+  form.querySelectorAll('[data-lobby-mode-choice]').forEach((choice) => {
+    choice.classList.toggle('is-selected', choice.dataset.lobbyModeChoice === values.config.gameMode);
+  });
+  syncLobbyModeConstraints(form);
 }
 
 function collectLobbySettings(form, defaults) {
   const request = cloneSettings(defaults);
   request.name = form.elements.lobbyName.value.trim().replace(/\s+/g, ' ').slice(0, 32) || 'Rocket Lobby';
+  request.config.gameMode = form.elements.gameMode?.value === 'basketball' ? 'basketball' : 'normal';
   for (const input of form.querySelectorAll('[data-lobby-setting]')) {
     const scale = Number(input.dataset.scale) || 1;
     const value = Number(input.value);
@@ -583,12 +621,19 @@ function requestLobby(root, notice = '') {
       const form = overlay.querySelector('[data-lobby-create-form]');
       const error = overlay.querySelector('[data-lobby-create-error]');
       bindLobbyRangeOutputs(form);
+      syncLobbyModeConstraints(form);
       overlay.querySelector('[data-lobby-back]').addEventListener('click', async () => {
         await showBrowser('');
         refreshTimer = setInterval(refreshList, 2500);
       });
       for (const button of overlay.querySelectorAll('[data-lobby-preset]')) {
         button.addEventListener('click', () => applyLobbyPreset(form, defaults, button.dataset.lobbyPreset));
+      }
+      for (const choice of form.querySelectorAll('[data-lobby-mode-choice]')) {
+        choice.addEventListener('change', () => {
+          form.querySelectorAll('[data-lobby-mode-choice]').forEach((entry) => entry.classList.toggle('is-selected', entry === choice));
+          syncLobbyModeConstraints(form);
+        });
       }
       form.addEventListener('submit', async (event) => {
         event.preventDefault();

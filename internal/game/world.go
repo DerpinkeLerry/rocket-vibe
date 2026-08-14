@@ -112,15 +112,16 @@ type World struct {
 	// Replay/goal attribution stays outside the snapshot protocol. The match
 	// server reads these fields after a scoring tick and tells every client which
 	// car should be used as the replay camera target.
-	LastBallTouchSlot   int
-	LastBallTouchTick   uint64
-	LastGoalScorer      int
-	LastGoalTick        uint64
-	LastGoalSign        int
-	LastGoalScoringTeam string
-	LastGoalPosition    Vec3
-	GoalSequence        uint64
-	GoalLocked          bool
+	LastBallTouchSlot    int
+	LastBallTouchTick    uint64
+	PreviousBallPosition Vec3
+	LastGoalScorer       int
+	LastGoalTick         uint64
+	LastGoalSign         int
+	LastGoalScoringTeam  string
+	LastGoalPosition     Vec3
+	GoalSequence         uint64
+	GoalLocked           bool
 
 	DemolitionsEnabled bool
 	pendingDemolitions []DemolitionEvent
@@ -372,6 +373,7 @@ func (world *World) Step(dt float64) {
 	if ballReset {
 		world.resetBall()
 	}
+	world.PreviousBallPosition = world.Ball.Position
 	world.stepBall(dt)
 
 	for iteration := 0; iteration < world.Config.SolverSteps; iteration++ {
@@ -379,9 +381,15 @@ func (world *World) Step(dt float64) {
 			car := &world.Cars[index]
 			if car.Connected && !car.Demolished {
 				resolveCarArena(car, world.Config)
+				if NormalizeGameMode(world.Config.GameMode) == GameModeBasketball {
+					resolveCarBasketballHoops(car, world.Config)
+				}
 			}
 		}
 		resolveBallArena(&world.Ball, world.Config)
+		if NormalizeGameMode(world.Config.GameMode) == GameModeBasketball {
+			resolveBallBasketballHoops(&world.Ball, world.Config)
+		}
 
 		for first := 0; first < len(world.Cars); first++ {
 			carA := &world.Cars[first]
@@ -988,6 +996,7 @@ func (world *World) resetBall() {
 		Position: Vec3{Y: world.Config.Ball.SpawnY},
 		Rotation: IdentityQuat(),
 	}
+	world.PreviousBallPosition = world.Ball.Position
 	world.LastBallTouchSlot = -1
 	world.LastBallTouchTick = 0
 }
@@ -1021,6 +1030,13 @@ func (world *World) detectGoal() bool {
 	if world.GoalLocked {
 		return false
 	}
+	if NormalizeGameMode(world.Config.GameMode) == GameModeBasketball {
+		return world.detectBasketballGoal()
+	}
+	return world.detectSoccarGoal()
+}
+
+func (world *World) detectSoccarGoal() bool {
 	halfLength := world.Config.Arena.Length * 0.5
 	ball := &world.Ball
 	// A goal only counts once the ENTIRE sphere has crossed the goal plane.
@@ -1036,12 +1052,51 @@ func (world *World) detectGoal() bool {
 
 	// Positive Z is the orange goal; negative Z is the blue goal.
 	scoringTeam := TeamOrange
+	goalSign := -1
 	if ball.Position.Z > 0 {
 		world.BlueScore++
 		scoringTeam = TeamBlue
+		goalSign = 1
 	} else {
 		world.OrangeScore++
 	}
+	world.recordGoal(scoringTeam, goalSign)
+	return true
+}
+
+func (world *World) detectBasketballGoal() bool {
+	ball := &world.Ball
+	if ball.Velocity.Y >= -0.05 {
+		return false
+	}
+	for _, sign := range []int{-1, 1} {
+		hoop := basketballHoopFor(world.Config, sign)
+		// Hoops only score on a downward pass through the rim plane. This avoids
+		// counting shots that rise through the basket from underneath.
+		if world.PreviousBallPosition.Y <= hoop.Center.Y || ball.Position.Y > hoop.Center.Y {
+			continue
+		}
+		dx := ball.Position.X - hoop.Center.X
+		dz := ball.Position.Z - hoop.Center.Z
+		if math.Hypot(dx, dz) > basketballScoreRadius(world.Config) {
+			continue
+		}
+
+		scoringTeam := TeamOrange
+		if sign > 0 {
+			world.BlueScore++
+			scoringTeam = TeamBlue
+		} else {
+			world.OrangeScore++
+		}
+		world.recordGoal(scoringTeam, sign)
+		return true
+	}
+	return false
+}
+
+func (world *World) recordGoal(scoringTeam string, goalSign int) {
+	ball := &world.Ball
 
 	// The replay follows the last meaningful car to touch the ball. If there was
 	// no recent touch (for example a debug/reset ball rolling in), fall back to a
@@ -1061,16 +1116,12 @@ func (world *World) detectGoal() bool {
 		}
 	}
 	world.LastGoalTick = world.Tick
-	world.LastGoalSign = 1
-	if ball.Position.Z < 0 {
-		world.LastGoalSign = -1
-	}
+	world.LastGoalSign = goalSign
 	world.LastGoalScoringTeam = scoringTeam
 	world.LastGoalPosition = ball.Position
 	world.GoalSequence++
 	world.GoalLocked = true
 	world.applyGoalExplosionKnockback(world.LastGoalSign)
-	return true
 }
 
 // applyGoalExplosionKnockback gives every connected car the same authoritative
@@ -1084,6 +1135,9 @@ func (world *World) applyGoalExplosionKnockback(goalSign int) {
 	origin := Vec3{
 		Y: 3.8,
 		Z: float64(goalSign) * (world.Config.Arena.Length*0.5 + 1.4),
+	}
+	if NormalizeGameMode(world.Config.GameMode) == GameModeBasketball {
+		origin = basketballHoopFor(world.Config, goalSign).Center
 	}
 	for index := range world.Cars {
 		car := &world.Cars[index]

@@ -1,10 +1,15 @@
 package game
 
+import "strings"
+
 const (
-	PhysicsHz         = 120
-	SnapshotHz        = 60
-	MaxPlayers        = 8
-	DefaultMaxPlayers = 4
+	PhysicsHz                = 120
+	SnapshotHz               = 60
+	MaxPlayers               = 8
+	DefaultMaxPlayers        = 4
+	GameModeNormal           = "normal"
+	GameModeBasketball       = "basketball"
+	BasketballMinimumCeiling = 18.0
 
 	DemolitionRespawnSeconds = 4.0
 	DemolitionRespawnBoost   = 33.0
@@ -115,6 +120,7 @@ type Config struct {
 	MaxPlayers  int              `json:"maxPlayers"`
 	SolverSteps int              `json:"solverSteps"`
 	Gravity     float64          `json:"gravity"`
+	GameMode    string           `json:"gameMode"`
 	Arena       ArenaConfig      `json:"arena"`
 	Car         CarConfig        `json:"car"`
 	Ball        BallConfig       `json:"ball"`
@@ -129,6 +135,7 @@ func DefaultConfig() Config {
 		MaxPlayers:  DefaultMaxPlayers,
 		SolverSteps: 4,
 		Gravity:     20.5,
+		GameMode:    GameModeNormal,
 		Arena: ArenaConfig{
 			Width: 110, Length: 160, Ceiling: 25, WallHeight: 25, CornerRadius: 16, RampRadius: 3.4, CeilingRampRadius: 6,
 			GoalWidth: 34, GoalHeight: 12, GoalDepth: 14, GoalRampRadius: 3.4, GoalMouthRadius: 2.8,
@@ -203,5 +210,14 @@ func DefaultConfig() Config {
 			RespawnBoost: DemolitionRespawnBoost, RespawnImmunity: 0.75, FrontDot: 0.72, MotionDot: 0.72,
 			MinClosingSpeed: 0.15, SpeedTieEpsilon: 0.05,
 		},
+	}
+}
+
+func NormalizeGameMode(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case GameModeBasketball, "hoops", "basket", "basketball-hoops":
+		return GameModeBasketball
+	default:
+		return GameModeNormal
 	}
 }

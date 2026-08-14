@@ -12,8 +12,9 @@ func resolveCarArena(car *Car, config Config) {
 	extentX, extentY, extentZ := projectedExtents(car.Rotation, half)
 
 	halfLength := config.Arena.Length * 0.5
-	goalOpeningHeight := car.Position.Y+extentY <= config.Arena.GoalHeight
-	inGoal := goalTunnelContains(car.Position, config.Arena, extentX, extentY, extentZ)
+	soccarGoals := NormalizeGameMode(config.GameMode) != GameModeBasketball
+	goalOpeningHeight := soccarGoals && car.Position.Y+extentY <= config.Arena.GoalHeight
+	inGoal := soccarGoals && goalTunnelContains(car.Position, config.Arena, extentX, extentY, extentZ)
 	boundary, hasBoundary := nearestArenaBoundary(car.Position, config.Arena, goalOpeningHeight)
 
 	if !inGoal {
@@ -23,7 +24,7 @@ func resolveCarArena(car *Car, config Config) {
 		resolveCarBoundary(car, config, boundary)
 	}
 
-	if inGoal || math.Abs(car.Position.Z)+extentZ > halfLength-surfaceContactSlop {
+	if soccarGoals && (inGoal || math.Abs(car.Position.Z)+extentZ > halfLength-surfaceContactSlop) {
 		resolveGoalCar(car, config, extentX, extentY, extentZ)
 	}
 }
@@ -446,8 +447,9 @@ func resolveGoalCarBoundary(car *Car, config Config, boundary arenaBoundary) {
 
 func resolveBallArena(ball *Ball, config Config) {
 	radius := config.Ball.Radius
-	goalOpeningHeight := ball.Position.Y+radius <= config.Arena.GoalHeight
-	inGoal := goalTunnelContains(ball.Position, config.Arena, radius, radius, radius)
+	soccarGoals := NormalizeGameMode(config.GameMode) != GameModeBasketball
+	goalOpeningHeight := soccarGoals && ball.Position.Y+radius <= config.Arena.GoalHeight
+	inGoal := soccarGoals && goalTunnelContains(ball.Position, config.Arena, radius, radius, radius)
 	boundary, hasBoundary := nearestArenaBoundary(ball.Position, config.Arena, goalOpeningHeight)
 
 	if inGoal {

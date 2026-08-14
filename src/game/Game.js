@@ -7,6 +7,7 @@ import { ChaseCamera } from './ChaseCamera.js';
 import { Input } from './Input.js';
 import { MobileControls } from './MobileControls.js';
 import { Hud } from './Hud.js';
+import { ChatPanel } from './ChatPanel.js';
 import { getPerformanceProfile, togglePerformanceProfile } from './PerformanceProfile.js';
 import { VirtualInput } from '../network/VirtualInput.js';
 import { LocalCarPredictor } from '../network/LocalCarPredictor.js';
@@ -17,6 +18,7 @@ import { ARENA_TUNING } from '../shared/arena-tuning.js';
 import { evaluateDemolitionSnapshot } from '../shared/demolition-respawn.js';
 import { DEFAULT_CAR_STYLE, normalizeCarStyle } from '../shared/car-styles.js';
 import { DEFAULT_BOOST_STYLE, normalizeBoostStyle } from '../shared/boost-styles.js';
+import { QUICK_CHAT_OPTIONS, findQuickChat } from '../shared/quick-chat.js';
 
 const CLIENT_INPUT_HEARTBEAT_HZ = 30;
 
@@ -42,6 +44,8 @@ export class Game {
     this.playerCarStyle = normalizeCarStyle(network?.carStyle || options.carStyle || DEFAULT_CAR_STYLE);
     this.playerBoostStyle = normalizeBoostStyle(network?.boostStyle || options.boostStyle || DEFAULT_BOOST_STYLE);
     this.playerTeam = network?.team === 'blue' ? 'blue' : 'orange';
+    this.gameMode = network?.matchConfig?.gameMode === 'basketball' || options.gameMode === 'basketball' ? 'basketball' : 'normal';
+    this.quickChatOptions = network?.quickChats?.length ? network.quickChats : QUICK_CHAT_OPTIONS;
     this.profile = getPerformanceProfile(this.networked, options.graphicsMode);
 
     this.fixedDt = 1 / 60;
@@ -69,6 +73,7 @@ export class Game {
     this.goalCelebrationActive = false;
     this.goalCelebrationUntil = 0;
     this.offlineGoalTimeRemaining = 0;
+    this.offlinePreviousBallPosition = new THREE.Vector3(0, 0, 0);
     this.offlineQuickChatUsed = 0;
     this.offlineQuickChatCooldownUntil = 0;
     this.demolishedPlayers = new Set();
@@ -150,7 +155,8 @@ export class Game {
       ultraHigh: this.profile.ultraHigh,
       mobile: this.profile.mobile,
       maxAnisotropy: this.renderer.capabilities.getMaxAnisotropy?.() || 1,
-      createPhysics: !this.networked
+      createPhysics: !this.networked,
+      gameMode: this.gameMode
     });
     this.boostPads = new BoostPads(this.scene, { lowDetail: this.profile.lowDetail, ultraHigh: this.profile.ultraHigh });
     this.goalExplosion = new GoalExplosion(this.scene, {
@@ -195,7 +201,8 @@ export class Game {
     this.ball = new Ball(this.scene, this.world, RAPIER, this.passiveInput, {
       lowDetail: this.profile.lowDetail,
       ultraHigh: this.profile.ultraHigh,
-      clientOnly: this.networked
+      clientOnly: this.networked,
+      gameMode: this.gameMode
     });
 
     if (this.networked) {
@@ -226,7 +233,17 @@ export class Game {
     });
     this.mobileControls = new MobileControls(this.root, this.input);
     this.mobileControls.setCameraMode?.(this.chaseCamera.getMode());
-    this.mobileControls.setQuickChatHandler?.(() => this.requestQuickChat());
+    this.chatPanel = new ChatPanel(this.root, {
+      quickChats: this.quickChatOptions,
+      mobile: this.mobileControls.enabled,
+      onQuickChat: (id) => this.requestQuickChat(id),
+      onTextChat: (text) => this.requestTextChat(text),
+      onOpenChange: (open) => {
+        this.input.setTextInputActive?.(open);
+        if (open) this.mobileControls.releaseAll?.();
+      }
+    });
+    this.mobileControls.setChatHandler?.(() => this.chatPanel.toggle('quick'));
     this.hud.setReplaySkipHandler(() => this.network?.sendReplaySkip?.());
     this.hud.setRespawnSelectionHandler?.((index) => this.selectRespawnPoint(index));
 
@@ -247,11 +264,16 @@ export class Game {
       this.network.onDemolition = (demolition) => this.handleDemolition(demolition);
       this.network.onRespawn = (respawn) => this.handleRespawn(respawn);
       this.network.onDemolitionCancel = () => this.endDemolitionRespawn();
-      this.network.onQuickChat = (chat) => this.hud.addQuickChat(chat);
+      this.network.onQuickChat = (chat) => this.hud.addChat(chat);
       this.network.onQuickChatLimit = (limit) => {
         const cooldownMs = Math.max(0, Number(limit?.cooldownMs) || 0);
         this.hud.setQuickChatCooldown(cooldownMs);
-        this.mobileControls.setQuickChatCooldown?.(cooldownMs);
+        this.chatPanel.setQuickChatCooldown(cooldownMs);
+      };
+      this.network.onChat = (chat) => this.hud.addChat(chat);
+      this.network.onChatLimit = (limit) => {
+        const cooldownMs = Math.max(0, Number(limit?.cooldownMs) || 0);
+        this.chatPanel.setTextChatCooldown(cooldownMs);
       };
       this.network.onMatchClock = (clock) => this.hud.setMatchClock?.(clock);
       this.network.onMatchOver = (result) => this.hud.showMatchOver?.(result);
@@ -301,10 +323,24 @@ export class Game {
   }
 
   onQuickChatKeyDown(event) {
-    if (this.demolitionRespawnActive) return;
-    if ((event.code !== 'Digit1' && event.code !== 'Numpad1') || event.repeat) return;
+    if (event.repeat) return;
+    if (event.code === 'KeyT') {
+      event.preventDefault();
+      this.chatPanel.toggle('text');
+      return;
+    }
+    if (event.code === 'KeyY') {
+      event.preventDefault();
+      this.chatPanel.toggle('quick');
+      return;
+    }
+    if (this.demolitionRespawnActive || this.chatPanel.isOpen()) return;
+    const shortcut = { Digit1: 0, Numpad1: 0, Digit2: 1, Numpad2: 1, Digit3: 2, Numpad3: 2, Digit4: 3, Numpad4: 3 }[event.code];
+    if (shortcut === undefined) return;
+    const option = this.quickChatOptions[shortcut];
+    if (!option) return;
     event.preventDefault();
-    this.requestQuickChat();
+    this.requestQuickChat(option.id);
   }
 
   onReplaySkipKeyDown(event) {
@@ -331,14 +367,16 @@ export class Game {
     this.selectRespawnPoint(choice);
   }
 
-  requestQuickChat() {
+  requestQuickChat(id = 'what-a-save') {
+    const option = findQuickChat(this.quickChatOptions, id);
+    if (!option) return false;
     if (this.networked) {
-      const sent = this.network?.sendQuickChat?.('what-a-save');
+      const sent = this.network?.sendQuickChat?.(option.id);
       if (!sent) {
         const remaining = this.network?.quickChatCooldownRemaining?.() || 0;
         if (remaining > 0) {
           this.hud.setQuickChatCooldown(remaining);
-          this.mobileControls.setQuickChatCooldown?.(remaining);
+          this.chatPanel.setQuickChatCooldown(remaining);
         }
       }
       return Boolean(sent);
@@ -348,18 +386,33 @@ export class Game {
     if (now < this.offlineQuickChatCooldownUntil) {
       const remaining = this.offlineQuickChatCooldownUntil - now;
       this.hud.setQuickChatCooldown(remaining);
-      this.mobileControls.setQuickChatCooldown?.(remaining);
+      this.chatPanel.setQuickChatCooldown(remaining);
       return false;
     }
 
-    this.hud.addQuickChat({ playerName: this.playerName, team: this.playerTeam, text: 'What a save!' });
+    this.hud.addChat({ kind: 'quick', playerName: this.playerName, team: this.playerTeam, text: option.text });
     this.offlineQuickChatUsed += 1;
     if (this.offlineQuickChatUsed >= 3) {
       this.offlineQuickChatUsed = 0;
       this.offlineQuickChatCooldownUntil = now + 2000;
       this.hud.setQuickChatCooldown(2000);
-      this.mobileControls.setQuickChatCooldown?.(2000);
+      this.chatPanel.setQuickChatCooldown(2000);
     }
+    return true;
+  }
+
+  requestTextChat(text) {
+    const value = Array.from(String(text || '').trim().replace(/\s+/g, ' ')).slice(0, 160).join('');
+    if (!value) return false;
+    if (this.networked) {
+      const sent = this.network?.sendTextChat?.(value);
+      if (!sent) {
+        const remaining = this.network?.textChatCooldownRemaining?.() || 0;
+        if (remaining > 0) this.chatPanel.setTextChatCooldown(remaining);
+      }
+      return Boolean(sent);
+    }
+    this.hud.addChat({ kind: 'text', playerName: this.playerName, team: this.playerTeam, text: value });
     return true;
   }
 
@@ -1268,6 +1321,7 @@ export class Game {
     if (this.offlineGoalTimeRemaining > 0) {
       this.offlineGoalTimeRemaining = Math.max(0, this.offlineGoalTimeRemaining - dt);
       this.ball.fixedUpdate(dt);
+      this.offlinePreviousBallPosition.copy(this.ball.body.translation());
       this.world.step();
       this.car0.enforceSpeedLimit();
       if (this.offlineGoalTimeRemaining <= 0) {
@@ -1285,6 +1339,7 @@ export class Game {
     this.car0.fixedUpdate(dt);
     this.ball.fixedUpdate(dt);
     this.ball.prepareCarHit(this.car0);
+    this.offlinePreviousBallPosition.copy(this.ball.body.translation());
     this.world.step();
     this.ball.applyPreparedCarHit();
     this.car0.enforceSpeedLimit();
@@ -1295,7 +1350,9 @@ export class Game {
   applyOfflineGoalKnockback(goalSign) {
     const sign = goalSign >= 0 ? 1 : -1;
     const position = this.car0.body.translation();
-    const originZ = sign * (ARENA_TUNING.length * 0.5 + 1.4);
+    const originZ = this.gameMode === 'basketball'
+      ? sign * (ARENA_TUNING.length * 0.5 - 11.5)
+      : sign * (ARENA_TUNING.length * 0.5 + 1.4);
     let x = position.x;
     let z = position.z - originZ;
     const length = Math.hypot(x, z) || 1;
@@ -1314,14 +1371,31 @@ export class Game {
   detectOfflineGoal() {
     if (this.offlineGoalTimeRemaining > 0) return;
     const position = this.ball.body.translation();
-    const halfLength = ARENA_TUNING.length * 0.5;
-    // Match the authoritative whole-ball rule: the back edge of the sphere must
-    // be completely beyond the goal plane before the score can trigger.
-    if (Math.abs(position.z) - this.ball.radius <= halfLength) return;
-    if (Math.abs(position.x) + this.ball.radius > ARENA_TUNING.goalWidth * 0.5
-      || position.y + this.ball.radius > ARENA_TUNING.goalHeight) return;
+    let goalSign = 0;
 
-    const goalSign = position.z >= 0 ? 1 : -1;
+    if (this.gameMode === 'basketball') {
+      const velocity = this.ball.body.linvel();
+      const hoopY = 10.5;
+      if (velocity.y >= -0.05 || this.offlinePreviousBallPosition.y <= hoopY || position.y > hoopY) return;
+      const hoopZ = ARENA_TUNING.length * 0.5 - 11.5;
+      const scoreRadius = Math.max(0.05, 6.6 - 0.42 - this.ball.radius + 0.08);
+      for (const sign of [-1, 1]) {
+        if (Math.hypot(position.x, position.z - sign * hoopZ) <= scoreRadius) {
+          goalSign = sign;
+          break;
+        }
+      }
+      if (!goalSign) return;
+    } else {
+      const halfLength = ARENA_TUNING.length * 0.5;
+      // Match the authoritative whole-ball rule: the back edge of the sphere must
+      // be completely beyond the goal plane before the score can trigger.
+      if (Math.abs(position.z) - this.ball.radius <= halfLength) return;
+      if (Math.abs(position.x) + this.ball.radius > ARENA_TUNING.goalWidth * 0.5
+        || position.y + this.ball.radius > ARENA_TUNING.goalHeight) return;
+      goalSign = position.z >= 0 ? 1 : -1;
+    }
+
     const scoringTeam = goalSign > 0 ? 'blue' : 'orange';
     if (goalSign > 0) this.blueScore += 1;
     else this.orangeScore += 1;

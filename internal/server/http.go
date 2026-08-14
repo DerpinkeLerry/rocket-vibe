@@ -55,6 +55,11 @@ type quickChatInputMessage struct {
 	ID   string `json:"id"`
 }
 
+type textChatInputMessage struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
 type respawnSelectionMessage struct {
 	Type  string `json:"type"`
 	Index int    `json:"index"`
@@ -356,8 +361,15 @@ func (server *HTTPServer) handleTextMessage(match *Match, connected *client, pay
 		match.SubmitReplaySkip(connected.id)
 	case "quick-chat":
 		var message quickChatInputMessage
-		if json.Unmarshal(payload, &message) == nil && message.ID == quickChatMessageID {
-			match.SubmitQuickChat(connected.id)
+		if json.Unmarshal(payload, &message) == nil {
+			if _, ok := quickChatOptionFor(message.ID); ok {
+				match.SubmitQuickChat(connected.id, message.ID)
+			}
+		}
+	case "chat":
+		var message textChatInputMessage
+		if json.Unmarshal(payload, &message) == nil {
+			match.SubmitTextChat(connected.id, message.Text)
 		}
 	case "respawn-select":
 		var message respawnSelectionMessage

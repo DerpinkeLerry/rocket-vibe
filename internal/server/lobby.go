@@ -188,10 +188,14 @@ func sanitizeLobbyConfig(input game.Config) game.Config {
 	config.MaxPlayers = boundedInt(config.MaxPlayers, defaults.MaxPlayers, 1, game.MaxPlayers)
 	config.SolverSteps = boundedInt(config.SolverSteps, defaults.SolverSteps, 1, 8)
 	config.Gravity = bounded(config.Gravity, defaults.Gravity, -40, 80)
+	config.GameMode = game.NormalizeGameMode(config.GameMode)
 
 	config.Arena.Width = bounded(config.Arena.Width, defaults.Arena.Width, 110, 240)
 	config.Arena.Length = bounded(config.Arena.Length, defaults.Arena.Length, 160, 360)
 	config.Arena.Ceiling = bounded(config.Arena.Ceiling, defaults.Arena.Ceiling, 14, 80)
+	if config.GameMode == game.GameModeBasketball {
+		config.Arena.Ceiling = math.Max(config.Arena.Ceiling, game.BasketballMinimumCeiling)
+	}
 	config.Arena.WallHeight = bounded(config.Arena.WallHeight, defaults.Arena.WallHeight, 8, config.Arena.Ceiling)
 	maxCorner := math.Min(config.Arena.Width, config.Arena.Length)*0.5 - 2
 	config.Arena.CornerRadius = bounded(config.Arena.CornerRadius, defaults.Arena.CornerRadius, 4, math.Min(40, maxCorner))

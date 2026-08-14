@@ -1,4 +1,14 @@
-# Rocket Vibe 1.12.0 – Lobby Sliders, 8 Spieler & Render.com
+# Rocket Vibe 1.13.0 – Basketball/Hoops & Match-Chat
+
+## v1.13.0
+
+- Neue Lobbies koennen zwischen **NORMAL** und **BASKETBALL** waehlen. Basketball nutzt eine eigene Hardwood-Court-Grafik, zwei erhoehte Koerbe mit Ring, Backboard, Netz und Traeger sowie eine serverautoritative Hoop-Kollision und Treffererkennung von oben durch den Ring.
+- Der Basketball-Ball besitzt eine eigene prozedurale orange Leder-/Noppen-Textur mit dunklen Naehten. Dafuer werden keine externen oder aus Rocket League kopierten Texturen verwendet.
+- **Quick Chat** wurde auf 20 serverseitig validierte Phrasen erweitert. Desktop: `1` bis `4` fuer Favoriten, `Y` fuer die komplette Quick-Chat-Auswahl.
+- **Text Chat** ist im Match verfuegbar. Desktop: `T` oeffnet die Texteingabe; Nachrichten werden serverseitig bereinigt, auf 160 Zeichen begrenzt und gegen Spam rate-limitiert.
+- Auf Touchgeraeten ersetzt ein kompakter **CHAT**-Button den einzelnen Quick-Chat-Knopf. Er oeffnet ein mobiles Chat-Menue mit allen Quick Chats und einem separaten Text-Chat-Tab samt Bildschirmtastatur.
+- Beim Oeffnen der Texteingabe wird Gameplay-Input neutralisiert, damit Tippen keine Fahr-/Sprungbefehle ausloest.
+- Basketball und Normalmodus verwenden dieselbe bestehende Lobby-, Replay-, Score-, Demo- und 8-Spieler-Infrastruktur; benutzerdefinierte Physics-Mutatoren bleiben erhalten.
 
 ## v1.12.0
 
@@ -161,9 +171,15 @@ Gas und Bremse verwenden eine progressivere Analogkurve: mittlerer Stickweg lief
 
 Im Startmenue kann neben Auto und Grafikprofil einer von vier rein optischen Boost-Trails gewaehlt werden: **SOLAR**, **ION**, **PLASMA** und **STARFALL**. Die Auswahl wird lokal gespeichert und ueber die Lobby-Roster-Daten an alle Spieler verteilt, damit jeder die gewaehlte Spur der anderen sieht. In Ultra High wird hinter jedem boostenden Auto ein gepoolter Partikel-Trail mit Additive-Blending gerendert; Normal verwendet weiterhin nur die leichte Auspuffflamme und Ultra Low verzichtet auf die Partikelspur. Die vier Varianten aendern keinerlei Schub, Verbrauch oder Geschwindigkeit. Die runde Boost-Anzeige besitzt in Ultra High waehrend aktivem Boost zusaetzlich einen kleinen Energie-/Spark-Effekt am Segmentring.
 
-## Quick Chat
+## Match-Chat
 
-Mit `1` bzw. `Numpad 1` wird der feste Multiplayer-Quickchat **What a save!** gesendet. Jeder Spieler darf drei Nachrichten direkt hintereinander senden; nach der dritten Nachricht erzwingt der Server zwei Sekunden Cooldown. Der Server akzeptiert dabei keinen freien Chattext, sondern nur den festen Quickchat-Befehl. Auf Smartphones gibt es rechts oberhalb der Fahrbuttons einen eigenen **WHAT A SAVE!**-Button, der waehrend des Cooldowns automatisch gesperrt wird. Nachrichten erscheinen fuer alle Spieler mit Name und Teamfarbe in einem kompakten Feed.
+Der Multiplayer bietet 20 serverseitig validierte Quick Chats und zusaetzlich normalen Text Chat. Auf Desktop senden `1` bis `4` die ersten vier Favoriten direkt, `Y` oeffnet die komplette Quick-Chat-Auswahl und `T` oeffnet die Texteingabe. Quick Chat bleibt auf drei Nachrichten pro Burst mit zwei Sekunden Cooldown begrenzt. Freier Text ist auf 160 Unicode-Zeichen begrenzt, wird serverseitig bereinigt und besitzt einen separaten Spam-Cooldown.
+
+Auf Smartphones gibt es einen permanent erreichbaren **CHAT**-Button. Er oeffnet ein Touch-Menue mit allen Quick Chats und einem eigenen Text-Tab; beim Tippen werden Fahr-, Boost- und Sprungeingaben neutralisiert, damit die Bildschirmtastatur keine Gameplay-Befehle ausloest. Chat-Nachrichten erscheinen fuer alle Spieler mit Name und Teamfarbe im kompakten Match-Feed.
+
+## Basketball / Hoops
+
+Beim Erstellen einer Lobby kann zwischen **NORMAL** und **BASKETBALL** gewaehlt werden. Basketball schliesst die Soccar-Tore, zeichnet einen eigenen Hardwood-Court, verwendet einen prozeduralen Basketball und erzeugt an beiden Enden physische Ringe, Backboards, Netze und Traeger. Der Go-Server berechnet Ball- und Autokollisionen mit Ring/Backboard autoritativ. Ein Punkt zaehlt nur, wenn der Ball die Ringebene von oben nach unten innerhalb des Korbradius durchquert. Dieselbe Logik ist fuer den lokalen Offline-Modus gespiegelt.
 
 ## Ball-Optik
 

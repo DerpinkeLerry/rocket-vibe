@@ -17,6 +17,12 @@ const INPUT_FLAG_ANALOG = 1 << 1;
 
 const clampAxis = (value) => Math.max(-1, Math.min(1, Number(value) || 0));
 
+function isEditableTarget(target) {
+  if (!target || typeof target !== 'object') return false;
+  const tagName = String(target.tagName || '').toLowerCase();
+  return tagName === 'input' || tagName === 'textarea' || tagName === 'select' || Boolean(target.isContentEditable);
+}
+
 export class Input {
   constructor() {
     this.down = new Set();
@@ -26,8 +32,10 @@ export class Input {
     this.networkChangeHandler = null;
     this.analogDrive = { active: false, throttle: 0, steer: 0, source: null };
     this.lastAnalogNotify = { throttle: 0, steer: 0, active: false };
+    this.textInputActive = false;
 
     window.addEventListener('keydown', (event) => {
+      if (this.textInputActive || isEditableTarget(event.target)) return;
       if ([
         'Space', 'ControlLeft', 'ControlRight',
         'KeyW', 'KeyS', 'KeyA', 'KeyD', 'KeyQ', 'KeyE',
@@ -50,6 +58,7 @@ export class Input {
     }, { passive: false });
 
     window.addEventListener('keyup', (event) => {
+      if (this.textInputActive || isEditableTarget(event.target)) return;
       const wasDown = this.isCodeDown(event.code);
       this.down.delete(event.code);
       if (wasDown && !this.isCodeDown(event.code)) this.networkChangeHandler?.();
@@ -71,6 +80,20 @@ export class Input {
     this.networkChangeHandler = typeof handler === 'function' ? handler : null;
   }
 
+  setTextInputActive(active) {
+    const next = Boolean(active);
+    if (next === this.textInputActive) return;
+    this.textInputActive = next;
+    if (!next) return;
+    this.down.clear();
+    this.virtualDown.clear();
+    this.pressed.clear();
+    this.networkPressed.clear();
+    this.analogDrive = { active: false, throttle: 0, steer: 0, source: null };
+    this.lastAnalogNotify = { throttle: 0, steer: 0, active: false };
+    this.networkChangeHandler?.();
+  }
+
   isCodeDown(code) {
     return this.down.has(code) || Boolean(this.virtualDown.get(code)?.size);
   }
@@ -79,6 +102,7 @@ export class Input {
   // Multiple sources may hold one code simultaneously without releasing each
   // other. Movement itself uses setAnalogDrive() on mobile.
   setVirtualKey(code, active, source = 'virtual') {
+    if (this.textInputActive && active) return;
     const wasDown = this.isCodeDown(code);
     let sources = this.virtualDown.get(code);
 
@@ -172,6 +196,10 @@ export class Input {
   }
 
   takeNetworkPacket() {
+    if (this.textInputActive) {
+      this.networkPressed.clear();
+      return { mask: 0, edges: 0, flags: 0, throttle: 0, steer: 0 };
+    }
     let mask = 0;
     for (const [code, bit] of NETWORK_DOWN_BITS) {
       if (this.isCodeDown(code)) mask |= bit;

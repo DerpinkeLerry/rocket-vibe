@@ -25,6 +25,25 @@ func TestLobbyConfigSupportsEightPlayersWhileDefaultStaysFour(t *testing.T) {
 	}
 }
 
+func TestSanitizeLobbyConfigNormalizesBasketballModeAndCeiling(t *testing.T) {
+	config := game.DefaultConfig()
+	config.GameMode = "HOOPS"
+	config.Arena.Ceiling = 14
+
+	got := sanitizeLobbyConfig(config)
+	if got.GameMode != game.GameModeBasketball {
+		t.Fatalf("game mode = %q, want %q", got.GameMode, game.GameModeBasketball)
+	}
+	if got.Arena.Ceiling < game.BasketballMinimumCeiling {
+		t.Fatalf("basketball ceiling = %f, want >= %f", got.Arena.Ceiling, game.BasketballMinimumCeiling)
+	}
+
+	config.GameMode = "unknown-mode"
+	if normal := sanitizeLobbyConfig(config).GameMode; normal != game.GameModeNormal {
+		t.Fatalf("unknown mode = %q, want %q", normal, game.GameModeNormal)
+	}
+}
+
 func TestSanitizeLobbyConfigKeepsValidCustomPhysics(t *testing.T) {
 	config := game.DefaultConfig()
 	config.MaxPlayers = 2

@@ -156,7 +156,7 @@ export class MobileControls {
           <button class="mobile-btn mobile-btn--utility mobile-btn--fullscreen" type="button" data-fullscreen aria-label="Vollbild">⛶</button>
         </div>
         <div class="mobile-controls__quickchat">
-          <button class="mobile-btn mobile-btn--quickchat" type="button" data-quick-chat aria-label="Quick Chat: What a save!">WHAT A SAVE!</button>
+          <button class="mobile-btn mobile-btn--quickchat" type="button" data-quick-chat aria-label="Chat öffnen">CHAT</button>
         </div>
         <div class="mobile-controls__roll">
           <button class="mobile-btn mobile-btn--small mobile-btn--drift" type="button" data-key="ControlLeft" aria-label="Drift / Handbremse">DRIFT</button>
@@ -371,7 +371,7 @@ export class MobileControls {
 
     const onQuickChat = (event) => {
       event.preventDefault();
-      if (this.quickChatButton?.disabled || !this.quickChatHandler) return;
+      if (!this.quickChatHandler) return;
       vibrate(5);
       this.quickChatHandler();
     };
@@ -414,35 +414,17 @@ export class MobileControls {
     this.quickChatHandler = typeof handler === 'function' ? handler : null;
   }
 
-  setQuickChatCooldown(milliseconds = 0) {
-    if (!this.quickChatButton) return;
-    if (this.quickChatCooldownTimer) clearTimeout(this.quickChatCooldownTimer);
-    if (this.quickChatCooldownInterval) clearInterval(this.quickChatCooldownInterval);
-    this.quickChatCooldownTimer = null;
-    this.quickChatCooldownInterval = null;
+  setChatHandler(handler) {
+    this.setQuickChatHandler(handler);
+  }
 
-    const duration = Math.max(0, Number(milliseconds) || 0);
-    if (duration <= 0) {
+  setQuickChatCooldown(_milliseconds = 0) {
+    // The mobile CHAT button must always stay usable: text chat is independent
+    // from the server-side quick-chat cooldown. The ChatPanel shows cooldowns.
+    if (this.quickChatButton) {
       this.quickChatButton.disabled = false;
-      this.quickChatButton.textContent = 'WHAT A SAVE!';
-      return;
+      this.quickChatButton.textContent = 'CHAT';
     }
-
-    const deadline = performance.now() + duration;
-    this.quickChatButton.disabled = true;
-    const update = () => {
-      const remaining = Math.max(0, deadline - performance.now());
-      this.quickChatButton.textContent = remaining > 0 ? `WAIT ${(remaining / 1000).toFixed(1)}s` : 'WHAT A SAVE!';
-    };
-    update();
-    this.quickChatCooldownInterval = setInterval(update, 100);
-    this.quickChatCooldownTimer = setTimeout(() => {
-      if (this.quickChatCooldownInterval) clearInterval(this.quickChatCooldownInterval);
-      this.quickChatCooldownInterval = null;
-      this.quickChatCooldownTimer = null;
-      this.quickChatButton.disabled = false;
-      this.quickChatButton.textContent = 'WHAT A SAVE!';
-    }, duration);
   }
 
   setCameraMode(mode) {

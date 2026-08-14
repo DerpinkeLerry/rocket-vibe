@@ -33,3 +33,7 @@ All assets below were supplied for this project by the user. The original GLB fi
 - License: CC BY 4.0
 - License URL: https://creativecommons.org/licenses/by/4.0/
 - Local asset: `src/assets/rocket-league-ball.glb`
+
+## Basketball / Hoops mode
+
+The basketball court markings, hoops, backboards, nets, supports, and basketball surface are generated procedurally in source code. The user-provided Rocket League reference screenshot is used only as a visual reference and is not bundled as a project asset.

@@ -41,7 +41,7 @@ export class Hud {
           <button type="button" data-respawn-choice="2"><kbd>3</kbd><span>RECHTS</span></button>
         </div>
       </div>
-      <div class="hud__quickchat" aria-label="Quick Chat">
+      <div class="hud__quickchat" aria-label="Spielchat">
         <div class="hud__quickchat-feed" data-quickchat-feed aria-live="polite" aria-relevant="additions"></div>
         <div class="hud__quickchat-status" data-quickchat-status hidden>QUICK CHAT COOLDOWN</div>
       </div>
@@ -59,7 +59,9 @@ export class Hud {
         <kbd>SPACE</kbd><span>Jump / Double Jump</span>
         <kbd>SHIFT</kbd><span>Boost</span>
         <kbd>STRG</kbd><span>Drift / Handbremse</span>
-        <kbd>1</kbd><span>Quick Chat · What a save! (3×, dann 2 s Cooldown)</span>
+        <kbd>1–4</kbd><span>Quick-Chat Favoriten</span>
+        <kbd>Y</kbd><span>Alle Quick Chats öffnen</span>
+        <kbd>T</kbd><span>Text Chat öffnen</span>
         <kbd>Q / E</kbd><span>Air Roll</span>
         <kbd>B</kbd><span>Ball Reset</span>
         <kbd>R</kbd><span>Eigenes Auto Reset</span>
@@ -137,20 +139,21 @@ export class Hud {
     });
   }
 
-  addQuickChat(chat) {
+  addChat(chat) {
     if (!this.quickChatFeed) return;
     const line = document.createElement('div');
     const team = chat?.team === 'blue' ? 'blue' : 'orange';
-    line.className = `hud__quickchat-line hud__quickchat-line--${team}`;
+    const kind = chat?.kind === 'text' ? 'text' : 'quick';
+    line.className = `hud__quickchat-line hud__quickchat-line--${team} hud__quickchat-line--${kind}`;
 
     const name = document.createElement('span');
     name.textContent = String(chat?.playerName || 'Spieler').slice(0, 16);
     const text = document.createElement('strong');
-    text.textContent = 'What a save!';
+    text.textContent = String(chat?.text || '').slice(0, 160);
     line.append(name, text);
     this.quickChatFeed.appendChild(line);
 
-    while (this.quickChatFeed.children.length > 6) {
+    while (this.quickChatFeed.children.length > 8) {
       this.quickChatFeed.firstElementChild?.remove();
     }
     if (globalThis.requestAnimationFrame) globalThis.requestAnimationFrame(() => line.classList.add('is-visible'));
@@ -158,7 +161,11 @@ export class Hud {
     setTimeout(() => {
       line.classList.remove('is-visible');
       setTimeout(() => line.remove(), 180);
-    }, 4200);
+    }, kind === 'text' ? 6200 : 4600);
+  }
+
+  addQuickChat(chat) {
+    this.addChat({ ...chat, kind: 'quick' });
   }
 
   setQuickChatCooldown(milliseconds = 0) {

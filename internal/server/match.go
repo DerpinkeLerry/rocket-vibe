@@ -56,6 +56,12 @@ type inputEvent struct {
 
 type quickChatEvent struct {
 	clientID string
+	id       string
+}
+
+type textChatEvent struct {
+	clientID string
+	text     string
 }
 
 type respawnSelectionEvent struct {
@@ -101,6 +107,7 @@ type Match struct {
 	inputs            chan inputEvent
 	replaySkips       chan string
 	quickChats        chan quickChatEvent
+	textChats         chan textChatEvent
 	respawnSelections chan respawnSelectionEvent
 
 	playerCount    atomic.Int32
@@ -127,6 +134,7 @@ func NewMatchWithRules(parent context.Context, config game.Config, rules MatchRu
 		inputs:            make(chan inputEvent, 256),
 		replaySkips:       make(chan string, 32),
 		quickChats:        make(chan quickChatEvent, 64),
+		textChats:         make(chan textChatEvent, 64),
 		respawnSelections: make(chan respawnSelectionEvent, 64),
 	}
 	match.latestState.Store(match.world.Snapshot())
@@ -183,9 +191,17 @@ func (match *Match) SubmitReplaySkip(clientID string) {
 	}
 }
 
-func (match *Match) SubmitQuickChat(clientID string) {
+func (match *Match) SubmitQuickChat(clientID, id string) {
 	select {
-	case match.quickChats <- quickChatEvent{clientID: clientID}:
+	case match.quickChats <- quickChatEvent{clientID: clientID, id: id}:
+	case <-match.ctx.Done():
+	default:
+	}
+}
+
+func (match *Match) SubmitTextChat(clientID, text string) {
+	select {
+	case match.textChats <- textChatEvent{clientID: clientID, text: text}:
 	case <-match.ctx.Done():
 	default:
 	}
@@ -249,6 +265,7 @@ func (match *Match) run() {
 	replayGoalTick := uint64(0)
 	replayResetScoreAfter := false
 	quickChatLimits := make(map[string]*quickChatLimiter, match.config.MaxPlayers)
+	textChatLimits := make(map[string]*textChatLimiter, match.config.MaxPlayers)
 	demolitionRespawns := make(map[string]*demolitionRespawnState, match.config.MaxPlayers)
 
 	participantCount := func() int {
@@ -430,7 +447,7 @@ func (match *Match) run() {
 				"playerName": request.client.name, "team": request.client.team, "carStyle": request.client.carStyle, "boostStyle": request.client.boostStyle,
 				"connectedPlayers": connectedSlots(clients), "players": rosterPlayers(clients), "protocol": protocol.Version,
 				"serverHz": match.config.PhysicsHz, "snapshotHz": match.config.SnapshotHz,
-				"config": match.config, "rules": match.rules,
+				"config": match.config, "rules": match.rules, "quickChats": quickChatCatalog(),
 			})
 			request.client.offerJSON(welcome)
 			match.broadcastRoster(clients)
@@ -475,6 +492,7 @@ func (match *Match) run() {
 			}
 			delete(clients, clientID)
 			delete(quickChatLimits, clientID)
+			delete(textChatLimits, clientID)
 			delete(demolitionRespawns, clientID)
 			match.world.SetConnected(connected.slot, false)
 			match.playerCount.Store(int32(len(clients)))
@@ -513,6 +531,10 @@ func (match *Match) run() {
 			if !exists {
 				continue
 			}
+			option, ok := quickChatOptionFor(event.id)
+			if !ok {
+				continue
+			}
 			limiter := quickChatLimits[event.clientID]
 			if limiter == nil {
 				limiter = &quickChatLimiter{}
@@ -520,9 +542,29 @@ func (match *Match) run() {
 			}
 			decision := limiter.allow(time.Now())
 			if decision.Allowed {
-				match.broadcastQuickChat(clients, connected)
+				match.broadcastQuickChat(clients, connected, option)
 			}
 			match.sendQuickChatLimit(connected, decision)
+
+		case event := <-match.textChats:
+			connected, exists := clients[event.clientID]
+			if !exists {
+				continue
+			}
+			text := sanitizeTextChat(event.text)
+			if text == "" {
+				continue
+			}
+			limiter := textChatLimits[event.clientID]
+			if limiter == nil {
+				limiter = &textChatLimiter{}
+				textChatLimits[event.clientID] = limiter
+			}
+			decision := limiter.allow(time.Now())
+			if decision.Allowed {
+				match.broadcastTextChat(clients, connected, text)
+			}
+			match.sendTextChatLimit(connected, decision)
 
 		case clientID := <-match.replaySkips:
 			if !replayActive || !replayParticipants[clientID] || replaySkipped[clientID] {
@@ -867,9 +909,19 @@ func (match *Match) broadcastDemolitionCancel(clients map[string]*client, reason
 	}
 }
 
-func (match *Match) broadcastQuickChat(clients map[string]*client, sender *client) {
+func (match *Match) broadcastQuickChat(clients map[string]*client, sender *client, option quickChatOption) {
 	message, _ := json.Marshal(map[string]any{
-		"type": "quick-chat", "id": quickChatMessageID, "text": quickChatMessage,
+		"type": "quick-chat", "id": option.ID, "text": option.Text,
+		"playerId": sender.slot, "playerName": sender.name, "team": sender.team,
+	})
+	for _, connected := range clients {
+		connected.offerJSON(message)
+	}
+}
+
+func (match *Match) broadcastTextChat(clients map[string]*client, sender *client, text string) {
+	message, _ := json.Marshal(map[string]any{
+		"type": "chat", "text": text,
 		"playerId": sender.slot, "playerName": sender.name, "team": sender.team,
 	})
 	for _, connected := range clients {
@@ -882,6 +934,14 @@ func (match *Match) sendQuickChatLimit(connected *client, decision quickChatDeci
 	message, _ := json.Marshal(map[string]any{
 		"type": "quick-chat-limit", "allowed": decision.Allowed,
 		"remaining": decision.Remaining, "cooldownMs": cooldownMs,
+	})
+	connected.offerJSON(message)
+}
+
+func (match *Match) sendTextChatLimit(connected *client, decision textChatDecision) {
+	cooldownMs := max(int64(0), decision.CooldownLeft.Milliseconds())
+	message, _ := json.Marshal(map[string]any{
+		"type": "chat-limit", "allowed": decision.Allowed, "cooldownMs": cooldownMs,
 	})
 	connected.offerJSON(message)
 }

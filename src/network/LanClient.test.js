@@ -193,18 +193,18 @@ test('replay messages keep scorer metadata and unanimous skip progress', () => {
   assert.equal(received[2].reason, 'all-skipped');
 });
 
-test('quick chat messages are normalized to the fixed What a save phrase', () => {
+test('quick chat messages use the authoritative catalog instead of trusting message text', () => {
   const client = new LanClient('Quick Pilot');
   let received = null;
   client.onQuickChat = (chat) => { received = chat; };
 
   const chat = client.applyQuickChatMessage({
-    type: 'quick-chat', id: 'what-a-save', text: '<unsafe>',
+    type: 'quick-chat', id: 'nice-shot', text: '<unsafe>',
     playerId: 2, playerName: 'Saver', team: 'blue'
   });
 
   assert.deepEqual(chat, {
-    id: 'what-a-save', text: 'What a save!', playerId: 2, playerName: 'Saver', team: 'blue'
+    kind: 'quick', id: 'nice-shot', text: 'Nice shot!', playerId: 2, playerName: 'Saver', team: 'blue'
   });
   assert.deepEqual(received, chat);
 });
@@ -251,6 +251,40 @@ test('client packs analog throttle and steering into the extended 10-byte input 
   }
 });
 
+
+test('client sends any catalog quick chat and sanitizes normal text chat', () => {
+  const previousWebSocket = globalThis.WebSocket;
+  globalThis.WebSocket = { OPEN: 1 };
+  try {
+    const client = new LanClient('Chat Pilot');
+    const sent = [];
+    client.connected = true;
+    client.socket = { readyState: 1, send(value) { sent.push(value); } };
+
+    assert.equal(client.sendQuickChat('great-pass'), true);
+    assert.deepEqual(JSON.parse(sent[0]), { type: 'quick-chat', id: 'great-pass' });
+    assert.equal(client.sendTextChat('  Hallo\n   zusammen!  '), true);
+    assert.deepEqual(JSON.parse(sent[1]), { type: 'chat', text: 'Hallo zusammen!' });
+  } finally {
+    if (previousWebSocket === undefined) delete globalThis.WebSocket;
+    else globalThis.WebSocket = previousWebSocket;
+  }
+});
+
+test('normal chat messages preserve safe server text and expose text-chat cooldown', () => {
+  const client = new LanClient('Text Pilot');
+  let received = null;
+  client.onChat = (chat) => { received = chat; };
+  const chat = client.applyTextChatMessage({ type: 'chat', text: 'GG zusammen', playerId: 4, playerName: 'Writer', team: 'orange' });
+  assert.deepEqual(chat, { kind: 'text', text: 'GG zusammen', playerId: 4, playerName: 'Writer', team: 'orange' });
+  assert.deepEqual(received, chat);
+
+  const before = performance.now();
+  const limit = client.applyTextChatLimitMessage({ type: 'chat-limit', allowed: false, cooldownMs: 4000 });
+  assert.equal(limit.allowed, false);
+  assert.ok(client.chatCooldownUntil >= before + 3900);
+  assert.ok(client.textChatCooldownRemaining() > 0);
+});
 
 test('demolition and respawn control messages carry the spawn-selection data', () => {
   const client = new LanClient('Demo Pilot');

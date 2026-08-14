@@ -117,6 +117,79 @@ function createSoccarBallTextures(lowDetail, ultraHigh) {
   return { map, bumpMap };
 }
 
+function createBasketballTextures(lowDetail, ultraHigh) {
+  const width = lowDetail ? 384 : (ultraHigh ? 1536 : 768);
+  const height = Math.round(width / 2);
+  const colorCanvas = document.createElement('canvas');
+  const bumpCanvas = document.createElement('canvas');
+  colorCanvas.width = bumpCanvas.width = width;
+  colorCanvas.height = bumpCanvas.height = height;
+  const ctx = colorCanvas.getContext('2d');
+  const bump = bumpCanvas.getContext('2d');
+
+  const gradient = ctx.createLinearGradient(0, 0, 0, height);
+  gradient.addColorStop(0, '#d86b1d');
+  gradient.addColorStop(0.46, '#c75413');
+  gradient.addColorStop(1, '#e37b24');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+  bump.fillStyle = '#a8a8a8';
+  bump.fillRect(0, 0, width, height);
+
+  // Deterministic pebble texture: small leather dimples without external assets.
+  const step = lowDetail ? 12 : (ultraHigh ? 6 : 8);
+  for (let y = step / 2; y < height; y += step) {
+    for (let x = step / 2; x < width; x += step) {
+      const n = ((x * 17 + y * 31) % 19) / 19;
+      const radius = step * (0.12 + n * 0.07);
+      ctx.fillStyle = `rgba(76,25,8,${0.10 + n * 0.07})`;
+      ctx.beginPath();
+      ctx.arc(x + (n - .5) * step * .28, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+      bump.fillStyle = `rgb(${118 + Math.round(n * 28)},${118 + Math.round(n * 28)},${118 + Math.round(n * 28)})`;
+      bump.beginPath();
+      bump.arc(x + (n - .5) * step * .28, y, radius, 0, Math.PI * 2);
+      bump.fill();
+    }
+  }
+
+  const seamWidth = Math.max(5, width / 118);
+  const drawSeam = (target, stroke, lineWidth, path) => {
+    target.save();
+    target.strokeStyle = stroke;
+    target.lineWidth = lineWidth;
+    target.lineCap = 'round';
+    target.lineJoin = 'round';
+    target.beginPath();
+    path(target);
+    target.stroke();
+    target.restore();
+  };
+  const seamPaths = [
+    (g) => { g.moveTo(0, height * .5); g.lineTo(width, height * .5); },
+    (g) => { g.moveTo(width * .25, 0); g.bezierCurveTo(width * .10, height * .24, width * .10, height * .76, width * .25, height); },
+    (g) => { g.moveTo(width * .75, 0); g.bezierCurveTo(width * .90, height * .24, width * .90, height * .76, width * .75, height); },
+    (g) => { g.moveTo(0, height * .14); g.bezierCurveTo(width * .24, height * .36, width * .76, height * .36, width, height * .14); },
+    (g) => { g.moveTo(0, height * .86); g.bezierCurveTo(width * .24, height * .64, width * .76, height * .64, width, height * .86); }
+  ];
+  for (const path of seamPaths) {
+    drawSeam(ctx, '#20130d', seamWidth, path);
+    drawSeam(ctx, 'rgba(255,145,55,.22)', Math.max(1, seamWidth * .20), path);
+    drawSeam(bump, '#4a4a4a', seamWidth * 1.05, path);
+  }
+
+  const map = new THREE.CanvasTexture(colorCanvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.wrapS = THREE.RepeatWrapping;
+  map.wrapT = THREE.ClampToEdgeWrapping;
+  map.anisotropy = ultraHigh ? 8 : 4;
+  const bumpMap = new THREE.CanvasTexture(bumpCanvas);
+  bumpMap.wrapS = THREE.RepeatWrapping;
+  bumpMap.wrapT = THREE.ClampToEdgeWrapping;
+  bumpMap.anisotropy = ultraHigh ? 8 : 4;
+  return { map, bumpMap };
+}
+
 function createSoccarBallGeometry(radius, lowDetail, ultraHigh) {
   return new THREE.SphereGeometry(
     radius,
@@ -134,6 +207,8 @@ export class Ball {
     this.lowDetail = Boolean(options.lowDetail);
     this.ultraHigh = Boolean(options.ultraHigh) && !this.lowDetail;
     this.clientOnly = Boolean(options.clientOnly);
+    this.gameMode = options.gameMode === 'basketball' ? 'basketball' : 'normal';
+    this.basketballMode = this.gameMode === 'basketball';
     this.radius = BALL_TUNING.radius;
     this.spawn = new THREE.Vector3(0, BALL_TUNING.spawnY, 0);
     this.maxSpeed = BALL_TUNING.maxSpeed;
@@ -192,7 +267,7 @@ export class Ball {
   createVisual() {
     this.mesh = new THREE.Group();
     this.proceduralVisual = new THREE.Group();
-    this.proceduralVisual.name = 'ProceduralSoccarBallVisual';
+    this.proceduralVisual.name = this.basketballMode ? 'ProceduralBasketballVisual' : 'ProceduralSoccarBallVisual';
     this.mesh.add(this.proceduralVisual);
 
     if (this.lowDetail) {
@@ -201,7 +276,7 @@ export class Ball {
       // minimizing both texture bandwidth and fragment-shader work.
       const body = new THREE.Mesh(
         new THREE.IcosahedronGeometry(this.radius, 1),
-        new THREE.MeshBasicMaterial({ color: 0xe9edf0 })
+        new THREE.MeshBasicMaterial({ color: this.basketballMode ? 0xd8661c : 0xe9edf0 })
       );
       this.proceduralVisual.add(body);
       this.scene.add(this.mesh);
@@ -213,9 +288,18 @@ export class Ball {
     // loaded, so keep the hidden fallback at Normal detail to avoid wasting a
     // 1536px texture and 64-segment sphere in memory.
     const fallbackUltraHigh = false;
-    const { map, bumpMap } = createSoccarBallTextures(this.lowDetail, fallbackUltraHigh);
-    const ballMaterial = this.lowDetail
-      ? new THREE.MeshBasicMaterial({ map, color: 0xe5e7e9 })
+    const { map, bumpMap } = this.basketballMode
+      ? createBasketballTextures(this.lowDetail, fallbackUltraHigh)
+      : createSoccarBallTextures(this.lowDetail, fallbackUltraHigh);
+    const ballMaterial = this.basketballMode
+      ? (this.ultraHigh
+        ? new THREE.MeshPhysicalMaterial({
+            map, bumpMap, bumpScale: this.radius * 0.020, color: 0xffffff,
+            roughness: 0.70, metalness: 0.02, clearcoat: 0.035, clearcoatRoughness: 0.74, envMapIntensity: 0.24
+          })
+        : new THREE.MeshStandardMaterial({
+            map, bumpMap, bumpScale: this.radius * 0.018, color: 0xffffff, roughness: 0.78, metalness: 0.0
+          }))
       : (this.ultraHigh
         ? new THREE.MeshPhysicalMaterial({
             map,
@@ -247,7 +331,7 @@ export class Ball {
 
     // A very subtle dark inner shell prevents bright environment light from
     // washing the ball out and gives the seams more depth in Normal/Ultra High.
-    if (!this.lowDetail) {
+    if (!this.lowDetail && !this.basketballMode) {
       const inner = new THREE.Mesh(
         createSoccarBallGeometry(this.radius * 0.986, false, false),
         new THREE.MeshBasicMaterial({ color: 0x151b20, side: THREE.BackSide })
@@ -256,7 +340,7 @@ export class Ball {
     }
 
     this.scene.add(this.mesh);
-    if (this.ultraHigh) this.ensurePremiumBallVisual();
+    if (this.ultraHigh && !this.basketballMode) this.ensurePremiumBallVisual();
 
     if (this.lowDetail || this.ultraHigh) {
       this.shadow = null;

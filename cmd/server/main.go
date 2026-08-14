@@ -15,7 +15,7 @@ import (
 	gameserver "rocket-vibe/internal/server"
 )
 
-const version = "1.12.0-sliders-8p-render"
+const version = "1.13.0-hoops-chat"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))

@@ -35,3 +35,12 @@ test('green turf is replaced by deterministic high-resolution hardwood', () => {
   assert.doesNotMatch(source, /createUltraTurfBumpTexture\s*\(/);
   assert.doesNotMatch(source, /broadcast-style turf/);
 });
+
+test('basketball mode closes soccar goals and renders physical hoops and court graphics', () => {
+  assert.match(source, /this\.basketballMode = this\.gameMode === 'basketball'/);
+  assert.match(source, /drawBasketballSurfaceGraphics\s*\(/);
+  assert.match(source, /createBasketballHoop\s*\(/);
+  assert.match(source, /basketball-rim-orange/);
+  assert.match(source, /createBasketballPhysics\s*\(/);
+  assert.match(source, /roundedOpeningHalfWidth = this\.basketballMode \? 0/);
+});

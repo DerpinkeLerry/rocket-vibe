@@ -65,3 +65,12 @@ test('drift is serialized as an independent held input flag beside analog mode',
   assert.equal(released.flags & 1, 0);
   assert.equal(released.flags & 2, 2);
 });
+
+test('text entry suspends gameplay input and sends a zero packet', () => {
+  const input = new Input();
+  input.setVirtualKey('ShiftLeft', true, 'boost');
+  input.setAnalogDrive(1, 0.5, true, 'stick');
+  input.setTextInputActive(true);
+  assert.deepEqual(input.takeNetworkPacket(), { mask: 0, edges: 0, flags: 0, throttle: 0, steer: 0 });
+  assert.deepEqual(input.getDriveAxes(), { throttle: 0, steer: 0, analog: false });
+});

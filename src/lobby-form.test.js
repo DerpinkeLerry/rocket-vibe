@@ -31,3 +31,10 @@ test('lobby browser exposes public delete action', () => {
   assert.match(source, /method: 'DELETE'/);
   assert.match(source, /\/api\/lobbies\/\$\{encodeURIComponent\(lobby\.id\)\}/);
 });
+
+test('lobby creation exposes normal and basketball game modes', () => {
+  assert.match(source, /name="gameMode" value="normal"/);
+  assert.match(source, /name="gameMode" value="basketball"/);
+  assert.match(source, /request\.config\.gameMode/);
+  assert.match(source, /config\.gameMode === 'basketball' \? 'BASKETBALL' : 'NORMAL'/);
+});

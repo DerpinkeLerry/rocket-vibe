@@ -1,6 +1,7 @@
 import { DEFAULT_CAR_STYLE, normalizeCarStyle } from '../shared/car-styles.js';
 import { DEFAULT_BOOST_STYLE, normalizeBoostStyle } from '../shared/boost-styles.js';
 import { ALL_BOOST_PADS_MASK } from '../shared/boost-tuning.js';
+import { QUICK_CHAT_OPTIONS, findQuickChat, normalizeQuickChatOptions } from '../shared/quick-chat.js';
 
 const MSG_INPUT = 1;
 const MSG_STATE = 2;
@@ -99,10 +100,15 @@ export class LanClient {
     this.onDemolitionCancel = null;
     this.onQuickChat = null;
     this.onQuickChatLimit = null;
+    this.onChat = null;
+    this.onChatLimit = null;
+    this.quickChats = QUICK_CHAT_OPTIONS.map((entry) => ({ ...entry }));
     this.onMatchClock = null;
     this.onMatchOver = null;
     this.quickChatLimit = { remaining: 3, cooldownMs: 0 };
     this.quickChatCooldownUntil = 0;
+    this.chatLimit = { cooldownMs: 0, allowed: true };
+    this.chatCooldownUntil = 0;
   }
 
   async connect() {
@@ -155,6 +161,7 @@ export class LanClient {
           this.snapshotHz = Math.max(1, Number(message.snapshotHz) || 20);
           this.matchConfig = message.config && typeof message.config === 'object' ? message.config : null;
           this.matchRules = message.rules && typeof message.rules === 'object' ? message.rules : null;
+          this.quickChats = normalizeQuickChatOptions(message.quickChats);
           this.connectedPlayers = Array.isArray(message.connectedPlayers) ? message.connectedPlayers : [this.playerId];
           this.players = normalizePlayers(message.players, this.connectedPlayers);
           this.connected = true;
@@ -224,6 +231,16 @@ export class LanClient {
 
         if (message.type === 'quick-chat-limit') {
           this.applyQuickChatLimitMessage(message);
+          return;
+        }
+
+        if (message.type === 'chat') {
+          this.applyTextChatMessage(message);
+          return;
+        }
+
+        if (message.type === 'chat-limit') {
+          this.applyTextChatLimitMessage(message);
           return;
         }
 
@@ -357,9 +374,12 @@ export class LanClient {
   }
 
   applyQuickChatMessage(message) {
+    const option = findQuickChat(this.quickChats, message?.id);
+    if (!option) return null;
     const chat = {
-      id: message?.id === 'what-a-save' ? 'what-a-save' : 'what-a-save',
-      text: 'What a save!',
+      kind: 'quick',
+      id: option.id,
+      text: option.text,
       playerId: Number.isInteger(Number(message?.playerId)) ? Number(message.playerId) : -1,
       playerName: String(message?.playerName || 'Spieler').slice(0, 16),
       team: message?.team === 'blue' ? 'blue' : 'orange'
@@ -375,6 +395,29 @@ export class LanClient {
     this.quickChatCooldownUntil = cooldownMs > 0 ? performance.now() + cooldownMs : 0;
     this.onQuickChatLimit?.(this.quickChatLimit);
     return this.quickChatLimit;
+  }
+
+
+  applyTextChatMessage(message) {
+    const text = String(message?.text || '').trim().replace(/\s+/g, ' ');
+    if (!text) return null;
+    const chat = {
+      kind: 'text',
+      text: Array.from(text).slice(0, 160).join(''),
+      playerId: Number.isInteger(Number(message?.playerId)) ? Number(message.playerId) : -1,
+      playerName: String(message?.playerName || 'Spieler').slice(0, 16),
+      team: message?.team === 'blue' ? 'blue' : 'orange'
+    };
+    this.onChat?.(chat);
+    return chat;
+  }
+
+  applyTextChatLimitMessage(message) {
+    const cooldownMs = Math.max(0, Math.min(30_000, Number(message?.cooldownMs) || 0));
+    this.chatLimit = { cooldownMs, allowed: message?.allowed !== false };
+    this.chatCooldownUntil = cooldownMs > 0 ? performance.now() + cooldownMs : 0;
+    this.onChatLimit?.(this.chatLimit);
+    return this.chatLimit;
   }
 
   applyReplayMessage(message) {
@@ -523,8 +566,23 @@ export class LanClient {
 
   sendQuickChat(id = 'what-a-save') {
     if (!this.connected || this.socket?.readyState !== WebSocket.OPEN) return false;
-    if (id !== 'what-a-save' || this.quickChatCooldownRemaining() > 0) return false;
-    this.socket.send(JSON.stringify({ type: 'quick-chat', id }));
+    const option = findQuickChat(this.quickChats, id);
+    if (!option || this.quickChatCooldownRemaining() > 0) return false;
+    this.socket.send(JSON.stringify({ type: 'quick-chat', id: option.id }));
+    return true;
+  }
+
+  textChatCooldownRemaining() {
+    return Math.max(0, this.chatCooldownUntil - performance.now());
+  }
+
+  sendTextChat(value) {
+    if (!this.connected || this.socket?.readyState !== WebSocket.OPEN) return false;
+    if (this.textChatCooldownRemaining() > 0) return false;
+    const normalized = String(value || '').trim().replace(/\s+/g, ' ');
+    const text = Array.from(normalized).slice(0, 160).join('');
+    if (!text) return false;
+    this.socket.send(JSON.stringify({ type: 'chat', text }));
     return true;
   }
 
