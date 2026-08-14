@@ -17,15 +17,18 @@ let GOAL_R = ARENA_TUNING.goalRampRadius;
 let GOAL_MOUTH_R = ARENA_TUNING.goalMouthRadius;
 const CORNER_SEGMENTS = 10;
 const BASKETBALL_HOOP = Object.freeze({
-  height: 10.5,
-  rimRadius: 6.6,
-  rimTubeRadius: 0.42,
+  height: 6.1,
+  rimRadius: 12.5,
+  rimTubeRadius: 0.96,
   wallInset: 11.5,
-  backboardOffset: 4.2,
-  backboardWidth: 20.0,
-  backboardHeight: 9.2,
-  backboardBottom: 7.2,
-  backboardDepth: 0.55
+  backboardOffset: 6.8,
+  backboardWidth: 10.4,
+  backboardHeight: 5.9,
+  backboardBottom: 6.3,
+  backboardDepth: 0.72,
+  backboardBeamThickness: 0.9,
+  netBottomRadius: 14.2,
+  netDepth: 6.1
 });
 // A compact quarter-pipe plus a short solid kick-wall makes the glass begin
 // much earlier than in the previous seven-metre ramp layout.
@@ -311,9 +314,15 @@ export class Arena {
     const signZ = sign >= 0 ? 1 : -1;
     const rimZ = signZ * (FIELD_L * 0.5 - BASKETBALL_HOOP.wallInset);
     const backboardZ = rimZ + signZ * BASKETBALL_HOOP.backboardOffset;
+    const supportZ = signZ * (FIELD_L * 0.5 - 2.0);
+    const frameHalfW = BASKETBALL_HOOP.backboardWidth * 0.5;
+    const frameBottom = BASKETBALL_HOOP.backboardBottom;
+    const frameTop = frameBottom + BASKETBALL_HOOP.backboardHeight;
+    const frameCenterY = frameBottom + BASKETBALL_HOOP.backboardHeight * 0.5;
+    const netBottomY = BASKETBALL_HOOP.height - BASKETBALL_HOOP.netDepth;
     const points = [];
     const add = (a, b) => points.push(a, b);
-    const segments = 20;
+    const segments = 24;
     for (let index = 0; index < segments; index++) {
       const a0 = index / segments * Math.PI * 2;
       const a1 = (index + 1) / segments * Math.PI * 2;
@@ -321,14 +330,22 @@ export class Arena {
         new THREE.Vector3(Math.cos(a0) * BASKETBALL_HOOP.rimRadius, BASKETBALL_HOOP.height, rimZ + Math.sin(a0) * BASKETBALL_HOOP.rimRadius),
         new THREE.Vector3(Math.cos(a1) * BASKETBALL_HOOP.rimRadius, BASKETBALL_HOOP.height, rimZ + Math.sin(a1) * BASKETBALL_HOOP.rimRadius)
       );
+      add(
+        new THREE.Vector3(Math.cos(a0) * BASKETBALL_HOOP.netBottomRadius, netBottomY, rimZ + Math.sin(a0) * BASKETBALL_HOOP.netBottomRadius),
+        new THREE.Vector3(Math.cos(a1) * BASKETBALL_HOOP.netBottomRadius, netBottomY, rimZ + Math.sin(a1) * BASKETBALL_HOOP.netBottomRadius)
+      );
+      add(
+        new THREE.Vector3(Math.cos(a0) * BASKETBALL_HOOP.rimRadius * 0.96, BASKETBALL_HOOP.height - 0.1, rimZ + Math.sin(a0) * BASKETBALL_HOOP.rimRadius * 0.96),
+        new THREE.Vector3(Math.cos(a0) * BASKETBALL_HOOP.netBottomRadius, netBottomY, rimZ + Math.sin(a0) * BASKETBALL_HOOP.netBottomRadius)
+      );
     }
-    const halfW = BASKETBALL_HOOP.backboardWidth * 0.5;
-    const bottom = BASKETBALL_HOOP.backboardBottom;
-    const top = bottom + BASKETBALL_HOOP.backboardHeight;
-    add(new THREE.Vector3(-halfW, bottom, backboardZ), new THREE.Vector3(halfW, bottom, backboardZ));
-    add(new THREE.Vector3(halfW, bottom, backboardZ), new THREE.Vector3(halfW, top, backboardZ));
-    add(new THREE.Vector3(halfW, top, backboardZ), new THREE.Vector3(-halfW, top, backboardZ));
-    add(new THREE.Vector3(-halfW, top, backboardZ), new THREE.Vector3(-halfW, bottom, backboardZ));
+    add(new THREE.Vector3(-frameHalfW, frameBottom, backboardZ), new THREE.Vector3(frameHalfW, frameBottom, backboardZ));
+    add(new THREE.Vector3(frameHalfW, frameBottom, backboardZ), new THREE.Vector3(frameHalfW, frameTop, backboardZ));
+    add(new THREE.Vector3(frameHalfW, frameTop, backboardZ), new THREE.Vector3(-frameHalfW, frameTop, backboardZ));
+    add(new THREE.Vector3(-frameHalfW, frameTop, backboardZ), new THREE.Vector3(-frameHalfW, frameBottom, backboardZ));
+    add(new THREE.Vector3(0, 2.2, supportZ), new THREE.Vector3(0, frameCenterY, supportZ));
+    add(new THREE.Vector3(0, frameCenterY, supportZ), new THREE.Vector3(-frameHalfW * 0.9, frameTop, backboardZ));
+    add(new THREE.Vector3(0, frameCenterY, supportZ), new THREE.Vector3(frameHalfW * 0.9, frameTop, backboardZ));
     const wire = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color }));
     wire.name = signZ > 0 ? 'vm-orange-basketball-hoop' : 'vm-blue-basketball-hoop';
     wire.frustumCulled = false;
@@ -2094,16 +2111,21 @@ export class Arena {
     const rimZ = signZ * (FIELD_L * 0.5 - BASKETBALL_HOOP.wallInset);
     const backboardZ = rimZ + signZ * BASKETBALL_HOOP.backboardOffset;
     const backboardY = BASKETBALL_HOOP.backboardBottom + BASKETBALL_HOOP.backboardHeight * 0.5;
+    const supportZ = signZ * (FIELD_L * 0.5 - 2.0);
+    const halfW = BASKETBALL_HOOP.backboardWidth * 0.5;
+    const halfH = BASKETBALL_HOOP.backboardHeight * 0.5;
+    const frameThickness = BASKETBALL_HOOP.backboardBeamThickness;
+    const beamHalf = frameThickness * 0.5;
 
     const rimMaterial = new THREE.MeshStandardMaterial({
-      color: teamColor,
+      color: 0x1d242d,
       emissive: teamColor,
-      emissiveIntensity: this.ultraHigh ? 0.30 : 0.15,
-      roughness: 0.38,
-      metalness: 0.58
+      emissiveIntensity: this.ultraHigh ? 0.24 : 0.12,
+      roughness: 0.32,
+      metalness: 0.82
     });
     const rim = new THREE.Mesh(
-      new THREE.TorusGeometry(BASKETBALL_HOOP.rimRadius, BASKETBALL_HOOP.rimTubeRadius, this.ultraHigh ? 14 : 9, this.ultraHigh ? 52 : 32),
+      new THREE.TorusGeometry(BASKETBALL_HOOP.rimRadius, BASKETBALL_HOOP.rimTubeRadius, this.ultraHigh ? 20 : 14, this.ultraHigh ? 72 : 48),
       rimMaterial
     );
     rim.rotation.x = Math.PI * 0.5;
@@ -2111,81 +2133,120 @@ export class Arena {
     rim.name = isOrange ? 'basketball-rim-orange' : 'basketball-rim-blue';
     this.group.add(rim);
 
-    const glass = new THREE.Mesh(
-      new THREE.BoxGeometry(BASKETBALL_HOOP.backboardWidth, BASKETBALL_HOOP.backboardHeight, BASKETBALL_HOOP.backboardDepth),
-      new THREE.MeshPhysicalMaterial({
-        color: 0xd9efff,
-        transparent: true,
-        opacity: this.ultraHigh ? 0.24 : 0.18,
-        roughness: 0.22,
-        metalness: 0.02,
-        transmission: this.ultraHigh ? 0.25 : 0,
-        depthWrite: false
-      })
+    const rimGlow = new THREE.Mesh(
+      new THREE.TorusGeometry(BASKETBALL_HOOP.rimRadius + 0.12, Math.max(0.12, BASKETBALL_HOOP.rimTubeRadius * 0.18), 10, this.ultraHigh ? 72 : 48),
+      new THREE.MeshBasicMaterial({ color: teamColor, transparent: true, opacity: this.ultraHigh ? 0.95 : 0.78 })
     );
-    glass.position.set(0, backboardY, backboardZ);
-    glass.name = 'basketball-backboard-glass';
-    this.group.add(glass);
+    rimGlow.rotation.x = Math.PI * 0.5;
+    rimGlow.position.set(0, BASKETBALL_HOOP.height + BASKETBALL_HOOP.rimTubeRadius * 0.58, rimZ);
+    rimGlow.name = isOrange ? 'basketball-rim-glow-orange' : 'basketball-rim-glow-blue';
+    this.group.add(rimGlow);
 
-    const frameMaterial = new THREE.MeshStandardMaterial({ color: 0x18222e, roughness: 0.43, metalness: 0.72 });
-    const frameThickness = 0.34;
-    const halfW = BASKETBALL_HOOP.backboardWidth * 0.5;
-    const halfH = BASKETBALL_HOOP.backboardHeight * 0.5;
-    const addFrame = (x, y, w, h) => {
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, BASKETBALL_HOOP.backboardDepth + 0.22), frameMaterial);
-      mesh.position.set(x, y, backboardZ - signZ * 0.04);
-      this.group.add(mesh);
+    const frameMaterial = new THREE.MeshStandardMaterial({
+      color: 0x1a232d,
+      emissive: teamColor,
+      emissiveIntensity: this.ultraHigh ? 0.28 : 0.18,
+      roughness: 0.44,
+      metalness: 0.76
+    });
+    const lightMaterial = new THREE.MeshBasicMaterial({ color: teamColor, transparent: true, opacity: this.ultraHigh ? 0.90 : 0.72 });
+    const addFrameBeam = (x, y, w, h) => {
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(w, h, BASKETBALL_HOOP.backboardDepth), frameMaterial);
+      beam.position.set(x, y, backboardZ);
+      beam.name = 'basketball-backboard-frame';
+      this.group.add(beam);
+
+      const lightDepth = 0.08;
+      const lightInsetX = Math.min(0.20, w * 0.16);
+      const lightInsetY = Math.min(0.20, h * 0.16);
+      const light = new THREE.Mesh(
+        new THREE.BoxGeometry(Math.max(0.12, w - lightInsetX * 2), Math.max(0.12, h - lightInsetY * 2), lightDepth),
+        lightMaterial
+      );
+      light.position.set(x, y, backboardZ - signZ * (BASKETBALL_HOOP.backboardDepth * 0.5 - lightDepth * 0.5));
+      light.name = 'basketball-backboard-light';
+      this.group.add(light);
     };
-    addFrame(0, backboardY - halfH, BASKETBALL_HOOP.backboardWidth + frameThickness, frameThickness);
-    addFrame(0, backboardY + halfH, BASKETBALL_HOOP.backboardWidth + frameThickness, frameThickness);
-    addFrame(-halfW, backboardY, frameThickness, BASKETBALL_HOOP.backboardHeight);
-    addFrame(halfW, backboardY, frameThickness, BASKETBALL_HOOP.backboardHeight);
+    addFrameBeam(0, BASKETBALL_HOOP.backboardBottom + beamHalf, BASKETBALL_HOOP.backboardWidth, frameThickness);
+    addFrameBeam(0, BASKETBALL_HOOP.backboardBottom + BASKETBALL_HOOP.backboardHeight - beamHalf, BASKETBALL_HOOP.backboardWidth, frameThickness);
+    addFrameBeam(-halfW + beamHalf, backboardY, frameThickness, BASKETBALL_HOOP.backboardHeight - frameThickness * 0.2);
+    addFrameBeam(halfW - beamHalf, backboardY, frameThickness, BASKETBALL_HOOP.backboardHeight - frameThickness * 0.2);
 
     const targetMaterial = new THREE.LineBasicMaterial({ color: 0xf7fbff, transparent: true, opacity: 0.92 });
-    const targetW = 7.4;
-    const targetH = 4.6;
-    const targetY = BASKETBALL_HOOP.height + 2.25;
+    const targetW = BASKETBALL_HOOP.backboardWidth * 0.52;
+    const targetH = targetW * 0.58;
+    const targetY = backboardY + BASKETBALL_HOOP.backboardHeight * 0.02;
     const targetZ = backboardZ - signZ * (BASKETBALL_HOOP.backboardDepth * 0.5 + 0.025);
     const targetPoints = [
-      new THREE.Vector3(-targetW/2, targetY-targetH/2, targetZ), new THREE.Vector3(targetW/2, targetY-targetH/2, targetZ),
-      new THREE.Vector3(targetW/2, targetY-targetH/2, targetZ), new THREE.Vector3(targetW/2, targetY+targetH/2, targetZ),
-      new THREE.Vector3(targetW/2, targetY+targetH/2, targetZ), new THREE.Vector3(-targetW/2, targetY+targetH/2, targetZ),
-      new THREE.Vector3(-targetW/2, targetY+targetH/2, targetZ), new THREE.Vector3(-targetW/2, targetY-targetH/2, targetZ)
+      new THREE.Vector3(-targetW / 2, targetY - targetH / 2, targetZ), new THREE.Vector3(targetW / 2, targetY - targetH / 2, targetZ),
+      new THREE.Vector3(targetW / 2, targetY - targetH / 2, targetZ), new THREE.Vector3(targetW / 2, targetY + targetH / 2, targetZ),
+      new THREE.Vector3(targetW / 2, targetY + targetH / 2, targetZ), new THREE.Vector3(-targetW / 2, targetY + targetH / 2, targetZ),
+      new THREE.Vector3(-targetW / 2, targetY + targetH / 2, targetZ), new THREE.Vector3(-targetW / 2, targetY - targetH / 2, targetZ)
     ];
     const target = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(targetPoints), targetMaterial);
     target.name = 'basketball-backboard-target';
     this.group.add(target);
 
-    // Tapered net represented as one LineSegments mesh: low draw count on mobile.
     const netPoints = [];
-    const netTop = BASKETBALL_HOOP.rimRadius * 0.88;
-    const netBottom = BASKETBALL_HOOP.rimRadius * 0.42;
-    const netDepth = 4.8;
-    const netSegments = this.ultraHigh ? 16 : 12;
-    for (let index = 0; index < netSegments; index++) {
-      const angle = index / netSegments * Math.PI * 2;
-      const next = (index + 1) / netSegments * Math.PI * 2;
-      const top = new THREE.Vector3(Math.cos(angle)*netTop, BASKETBALL_HOOP.height - 0.15, rimZ + Math.sin(angle)*netTop);
-      const bottom = new THREE.Vector3(Math.cos(angle)*netBottom, BASKETBALL_HOOP.height - netDepth, rimZ + Math.sin(angle)*netBottom);
-      const bottomNext = new THREE.Vector3(Math.cos(next)*netBottom, BASKETBALL_HOOP.height - netDepth, rimZ + Math.sin(next)*netBottom);
-      netPoints.push(top, bottom, bottom, bottomNext);
+    const ringLevels = 5;
+    const netSegments = this.ultraHigh ? 22 : 16;
+    const topRadius = BASKETBALL_HOOP.rimRadius * 0.98;
+    const bottomRadius = BASKETBALL_HOOP.netBottomRadius;
+    for (let level = 0; level < ringLevels; level++) {
+      const t = level / (ringLevels - 1);
+      const radius = THREE.MathUtils.lerp(topRadius, bottomRadius, Math.pow(t, 0.82));
+      const y = BASKETBALL_HOOP.height - THREE.MathUtils.lerp(0.12, BASKETBALL_HOOP.netDepth, Math.pow(t, 1.08));
+      for (let index = 0; index < netSegments; index++) {
+        const angle = index / netSegments * Math.PI * 2;
+        const next = (index + 1) / netSegments * Math.PI * 2;
+        const point = new THREE.Vector3(Math.cos(angle) * radius, y, rimZ + Math.sin(angle) * radius);
+        const pointNext = new THREE.Vector3(Math.cos(next) * radius, y, rimZ + Math.sin(next) * radius);
+        netPoints.push(point, pointNext);
+        if (level < ringLevels - 1) {
+          const nextT = (level + 1) / (ringLevels - 1);
+          const nextRadius = THREE.MathUtils.lerp(topRadius, bottomRadius, Math.pow(nextT, 0.82));
+          const nextY = BASKETBALL_HOOP.height - THREE.MathUtils.lerp(0.12, BASKETBALL_HOOP.netDepth, Math.pow(nextT, 1.08));
+          const down = new THREE.Vector3(Math.cos(angle) * nextRadius, nextY, rimZ + Math.sin(angle) * nextRadius);
+          const skew = new THREE.Vector3(Math.cos(next) * nextRadius, nextY, rimZ + Math.sin(next) * nextRadius);
+          netPoints.push(point, down, point, skew);
+        }
+      }
     }
     const net = new THREE.LineSegments(
       new THREE.BufferGeometry().setFromPoints(netPoints),
-      new THREE.LineBasicMaterial({ color: 0xf4f7f7, transparent: true, opacity: this.ultraHigh ? 0.72 : 0.55 })
+      new THREE.LineBasicMaterial({ color: 0xf3f6f6, transparent: true, opacity: this.ultraHigh ? 0.58 : 0.48 })
     );
     net.name = 'basketball-net';
     this.group.add(net);
 
-    const supportMaterial = new THREE.MeshStandardMaterial({ color: 0x263746, roughness: 0.56, metalness: 0.58 });
-    const supportZ = signZ * (FIELD_L * 0.5 - 2.8);
-    const post = new THREE.Mesh(new THREE.BoxGeometry(1.25, 9.5, 1.25), supportMaterial);
-    post.position.set(0, 4.75, supportZ);
+    const supportMaterial = new THREE.MeshStandardMaterial({ color: 0x263746, roughness: 0.52, metalness: 0.66 });
+    const postHeight = backboardY + halfH + 1.4;
+    const post = new THREE.Mesh(new THREE.BoxGeometry(1.45, postHeight, 1.45), supportMaterial);
+    post.position.set(0, postHeight * 0.5, supportZ);
+    post.name = 'basketball-support-post';
     this.group.add(post);
-    const armLength = Math.max(1, Math.abs(backboardZ - supportZ));
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(1.15, 1.15, armLength), supportMaterial);
-    arm.position.set(0, backboardY + 0.8, (backboardZ + supportZ) * 0.5);
-    this.group.add(arm);
+
+    const upperJointY = backboardY + halfH + 0.7;
+    const rearJointY = upperJointY + 0.3;
+    const spineLength = Math.max(1.2, Math.abs(backboardZ - supportZ));
+    const spine = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.1, spineLength), supportMaterial);
+    spine.position.set(0, rearJointY, (backboardZ + supportZ) * 0.5);
+    spine.name = 'basketball-support-spine';
+    this.group.add(spine);
+
+    const createBrace = (targetX, targetY, targetZ) => {
+      const start = new THREE.Vector3(0, rearJointY, supportZ);
+      const end = new THREE.Vector3(targetX, targetY, targetZ);
+      const delta = end.clone().sub(start);
+      const length = delta.length();
+      const brace = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.72, length), supportMaterial);
+      brace.position.copy(start.clone().add(end).multiplyScalar(0.5));
+      brace.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), delta.normalize());
+      brace.name = 'basketball-support-brace';
+      this.group.add(brace);
+    };
+    createBrace(-halfW * 0.92, backboardY + halfH * 0.76, backboardZ - signZ * 0.12);
+    createBrace(halfW * 0.92, backboardY + halfH * 0.76, backboardZ - signZ * 0.12);
   }
 
   createGoal(sign) {
@@ -2388,14 +2449,37 @@ export class Arena {
   createBasketballPhysics() {
     const R = this.RAPIER;
     const halfLength = FIELD_L * 0.5;
+    const beamHalf = BASKETBALL_HOOP.backboardBeamThickness * 0.5;
     for (const sign of [-1, 1]) {
       const signZ = sign >= 0 ? 1 : -1;
       const rimZ = signZ * (halfLength - BASKETBALL_HOOP.wallInset);
       const backboardZ = rimZ + signZ * BASKETBALL_HOOP.backboardOffset;
       const backboardY = BASKETBALL_HOOP.backboardBottom + BASKETBALL_HOOP.backboardHeight * 0.5;
+      const halfW = BASKETBALL_HOOP.backboardWidth * 0.5;
       this.addFixedCollider(
-        0, backboardY, backboardZ,
-        BASKETBALL_HOOP.backboardWidth * 0.5,
+        0, BASKETBALL_HOOP.backboardBottom + beamHalf, backboardZ,
+        halfW,
+        beamHalf,
+        BASKETBALL_HOOP.backboardDepth * 0.5,
+        0.45, 0.34
+      );
+      this.addFixedCollider(
+        0, BASKETBALL_HOOP.backboardBottom + BASKETBALL_HOOP.backboardHeight - beamHalf, backboardZ,
+        halfW,
+        beamHalf,
+        BASKETBALL_HOOP.backboardDepth * 0.5,
+        0.45, 0.34
+      );
+      this.addFixedCollider(
+        -halfW + beamHalf, backboardY, backboardZ,
+        beamHalf,
+        BASKETBALL_HOOP.backboardHeight * 0.5,
+        BASKETBALL_HOOP.backboardDepth * 0.5,
+        0.45, 0.34
+      );
+      this.addFixedCollider(
+        halfW - beamHalf, backboardY, backboardZ,
+        beamHalf,
         BASKETBALL_HOOP.backboardHeight * 0.5,
         BASKETBALL_HOOP.backboardDepth * 0.5,
         0.45, 0.34
@@ -2403,7 +2487,7 @@ export class Arena {
 
       // Approximate the torus with small fixed spheres. This keeps local Rapier
       // practice close to the authoritative Go torus collision without a mesh collider.
-      const segments = 24;
+      const segments = 28;
       for (let index = 0; index < segments; index++) {
         const angle = index / segments * Math.PI * 2;
         const x = Math.cos(angle) * BASKETBALL_HOOP.rimRadius;
@@ -2416,6 +2500,31 @@ export class Arena {
             .setContactSkin(0.01),
           body
         );
+      }
+
+      // The visual net is approximated with several ring levels of tiny fixed
+      // spheres so offline practice also gets a tangible bounce from the mesh.
+      const netLevels = 5;
+      const netSegments = 18;
+      const topRadius = BASKETBALL_HOOP.rimRadius * 0.98;
+      const colliderRadius = 0.18;
+      for (let level = 0; level < netLevels; level++) {
+        const t = level / (netLevels - 1);
+        const radius = THREE.MathUtils.lerp(topRadius, BASKETBALL_HOOP.netBottomRadius, Math.pow(t, 0.82));
+        const y = BASKETBALL_HOOP.height - THREE.MathUtils.lerp(0.12, BASKETBALL_HOOP.netDepth, Math.pow(t, 1.08));
+        for (let index = 0; index < netSegments; index++) {
+          const angle = index / netSegments * Math.PI * 2;
+          const x = Math.cos(angle) * radius;
+          const z = rimZ + Math.sin(angle) * radius;
+          const body = this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(x, y, z));
+          this.world.createCollider(
+            R.ColliderDesc.ball(colliderRadius)
+              .setFriction(0.36)
+              .setRestitution(0.30)
+              .setContactSkin(0.005),
+            body
+          );
+        }
       }
     }
   }

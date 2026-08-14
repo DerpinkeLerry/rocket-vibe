@@ -98,3 +98,45 @@ func TestBasketballRimDeflectsCar(t *testing.T) {
 		t.Fatalf("rim did not stop/reflect incoming car: %+v", car.Velocity)
 	}
 }
+
+func TestBasketballNetFlaresOutward(t *testing.T) {
+	config := DefaultConfig()
+	config.GameMode = GameModeBasketball
+	hoop := basketballHoopFor(config, 1)
+	topRadius, _ := basketballNetProfile(hoop, 0)
+	bottomRadius, _ := basketballNetProfile(hoop, 1)
+	if bottomRadius <= topRadius {
+		t.Fatalf("net should flare outward: top=%f bottom=%f", topRadius, bottomRadius)
+	}
+}
+
+func TestBasketballNetTouchesFloor(t *testing.T) {
+	config := DefaultConfig()
+	config.GameMode = GameModeBasketball
+	hoop := basketballHoopFor(config, 1)
+	_, y := basketballNetProfile(hoop, 1)
+	if y < -1e-6 || y > 1e-6 {
+		t.Fatalf("net bottom y = %f, want 0", y)
+	}
+}
+
+func TestBasketballNetDeflectsBall(t *testing.T) {
+	config := DefaultConfig()
+	config.GameMode = GameModeBasketball
+	hoop := basketballHoopFor(config, -1)
+	netRadius, netY := basketballNetProfile(hoop, 0.55)
+	startX := netRadius + config.Ball.Radius + basketballNetThickness - 0.05
+	ball := Ball{Body: Body{
+		Position: Vec3{X: startX, Y: netY, Z: hoop.Center.Z},
+		Velocity: Vec3{X: -6},
+		Rotation: IdentityQuat(),
+	}}
+
+	resolveBallBasketballHoops(&ball, config)
+	if ball.Position.X <= startX {
+		t.Fatalf("net did not separate ball: x=%f start=%f", ball.Position.X, startX)
+	}
+	if ball.Velocity.X <= 0 {
+		t.Fatalf("net did not reflect incoming ball: %+v", ball.Velocity)
+	}
+}

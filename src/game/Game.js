@@ -1375,10 +1375,10 @@ export class Game {
 
     if (this.gameMode === 'basketball') {
       const velocity = this.ball.body.linvel();
-      const hoopY = 10.5;
+      const hoopY = 6.1;
       if (velocity.y >= -0.05 || this.offlinePreviousBallPosition.y <= hoopY || position.y > hoopY) return;
       const hoopZ = ARENA_TUNING.length * 0.5 - 11.5;
-      const scoreRadius = Math.max(0.05, 6.6 - 0.42 - this.ball.radius + 0.08);
+      const scoreRadius = Math.max(0.05, 12.5 - 0.96 - this.ball.radius + 0.08);
       for (const sign of [-1, 1]) {
         if (Math.hypot(position.x, position.z - sign * hoopZ) <= scoreRadius) {
           goalSign = sign;
