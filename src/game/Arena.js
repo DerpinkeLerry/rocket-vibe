@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ARENA_TUNING } from '../shared/arena-tuning.js';
 import { BOOST_PADS } from '../shared/boost-tuning.js';
 
@@ -164,12 +165,126 @@ export class Arena {
       this.createLights();
     }
 
+    // Collapse compatible static meshes into spatial render batches. The arena is
+    // immutable after construction, so baking transforms into shared geometry removes
+    // draw-call/object overhead without changing materials, silhouettes or gameplay.
+    if (!this.lowDetail) this.optimizeStaticRenderMeshes();
+
     // The whole arena is static. Avoid rebuilding local matrices every frame.
     this.group.traverse((object) => {
       object.updateMatrix();
       object.matrixAutoUpdate = false;
     });
     this.group.updateMatrixWorld(true);
+  }
+
+  optimizeStaticRenderMeshes() {
+    this.group.updateMatrixWorld(true);
+    const rootInverse = this.group.matrixWorld.clone().invert();
+    const buckets = new Map();
+    const bucketSize = 48;
+    let sourceMeshCount = 0;
+
+    const attributeSignature = (geometry) => Object.entries(geometry.attributes)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([name, attribute]) => `${name}:${attribute.itemSize}:${attribute.normalized ? 1 : 0}:${attribute.isInterleavedBufferAttribute ? 1 : 0}`)
+      .join('|');
+
+    this.group.traverse((object) => {
+      if (!object?.isMesh || object.isInstancedMesh || object.isSkinnedMesh) return;
+      if (!object.visible || !object.geometry || Array.isArray(object.material) || !object.material) return;
+      if (object.children.length > 0 || object.userData?.noStaticBatch) return;
+      const material = object.material;
+      // Transparent surfaces need individual depth sorting. Keep glass, labels,
+      // glows and other blended details separate so batching cannot alter the look.
+      if (material.transparent || material.opacity < 0.999 || material.depthWrite === false || material.alphaTest > 0) return;
+      if (Object.keys(object.geometry.morphAttributes || {}).length > 0) return;
+
+      const geometry = object.geometry;
+      if (!geometry.attributes?.position) return;
+      if (!geometry.boundingSphere) geometry.computeBoundingSphere();
+      const center = geometry.boundingSphere.center.clone().applyMatrix4(object.matrixWorld);
+      const cellX = Math.floor(center.x / bucketSize);
+      const cellZ = Math.floor(center.z / bucketSize);
+      const shadowRole = object.userData?.shadowRole || '';
+      const cameraIgnore = object.userData?.cameraOcclusionIgnore ? 1 : 0;
+      const indexed = geometry.index ? 1 : 0;
+      const signature = attributeSignature(geometry);
+      const key = [
+        material.uuid,
+        object.renderOrder,
+        object.frustumCulled ? 1 : 0,
+        shadowRole,
+        cameraIgnore,
+        indexed,
+        signature,
+        cellX,
+        cellZ
+      ].join('::');
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(object);
+      sourceMeshCount += 1;
+    });
+
+    let batchCount = 0;
+    let mergedSourceCount = 0;
+    for (const meshes of buckets.values()) {
+      if (meshes.length < 2) continue;
+      const baked = [];
+      for (const mesh of meshes) {
+        const relativeMatrix = rootInverse.clone().multiply(mesh.matrixWorld);
+        const geometry = mesh.geometry.clone();
+        geometry.applyMatrix4(relativeMatrix);
+        baked.push(geometry);
+      }
+
+      let geometry = null;
+      try {
+        geometry = mergeGeometries(baked, false);
+      } catch {
+        geometry = null;
+      }
+      for (const bakedGeometry of baked) bakedGeometry.dispose();
+      if (!geometry) continue;
+
+      geometry.computeBoundingBox();
+      geometry.computeBoundingSphere();
+      const template = meshes[0];
+      const batch = new THREE.Mesh(geometry, template.material);
+      batch.name = `arena-static-batch-${batchCount + 1}`;
+      batch.renderOrder = template.renderOrder;
+      batch.frustumCulled = template.frustumCulled;
+      batch.castShadow = template.castShadow;
+      batch.receiveShadow = template.receiveShadow;
+      batch.userData = {
+        ...template.userData,
+        staticBatch: true,
+        sourceMeshCount: meshes.length
+      };
+      this.group.add(batch);
+
+      for (const mesh of meshes) mesh.parent?.remove(mesh);
+      batchCount += 1;
+      mergedSourceCount += meshes.length;
+    }
+
+    // Empty transform-only groups still cost traversal work. Remove only groups
+    // that became completely empty as a result of the static bake.
+    const groups = [];
+    this.group.traverse((object) => {
+      if (object !== this.group && object.isGroup) groups.push(object);
+    });
+    for (let index = groups.length - 1; index >= 0; index--) {
+      const group = groups[index];
+      if (group.children.length === 0) group.parent?.remove(group);
+    }
+
+    this.optimizationStats = Object.freeze({
+      staticMeshCandidates: sourceMeshCount,
+      staticMeshBatches: batchCount,
+      staticMeshesMerged: mergedSourceCount,
+      staticDrawCallsSaved: Math.max(0, mergedSourceCount - batchCount)
+    });
   }
 
   panelTeamSign(panel) {
@@ -2345,13 +2460,17 @@ export class Arena {
 
   createPhysics() {
     const R = this.RAPIER;
-    const floorBody = this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(0, -0.2, 0));
+    // The arena never moves, so all static colliders can share one fixed rigid
+    // body. Rapier still keeps every collider/query shape intact, but avoids
+    // hundreds of redundant fixed-body allocations and body bookkeeping entries.
+    this.staticPhysicsBody = this.world.createRigidBody(R.RigidBodyDesc.fixed());
     this.world.createCollider(
       R.ColliderDesc.cuboid(FIELD_W / 2, 0.2, FIELD_L / 2)
+        .setTranslation(0, -0.2, 0)
         .setFriction(0.72)
         .setRestitution(0)
         .setContactSkin(0.01),
-      floorBody
+      this.staticPhysicsBody
     );
 
     const halfWidth = FIELD_W * 0.5;
@@ -2492,13 +2611,13 @@ export class Arena {
         const angle = index / segments * Math.PI * 2;
         const x = Math.cos(angle) * BASKETBALL_HOOP.rimRadius;
         const z = rimZ + Math.sin(angle) * BASKETBALL_HOOP.rimRadius;
-        const body = this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(x, BASKETBALL_HOOP.height, z));
         this.world.createCollider(
           R.ColliderDesc.ball(BASKETBALL_HOOP.rimTubeRadius)
+            .setTranslation(x, BASKETBALL_HOOP.height, z)
             .setFriction(0.42)
             .setRestitution(0.46)
             .setContactSkin(0.01),
-          body
+          this.staticPhysicsBody
         );
       }
 
@@ -2516,13 +2635,13 @@ export class Arena {
           const angle = index / netSegments * Math.PI * 2;
           const x = Math.cos(angle) * radius;
           const z = rimZ + Math.sin(angle) * radius;
-          const body = this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(x, y, z));
           this.world.createCollider(
             R.ColliderDesc.ball(colliderRadius)
+              .setTranslation(x, y, z)
               .setFriction(0.36)
               .setRestitution(0.30)
               .setContactSkin(0.005),
-            body
+            this.staticPhysicsBody
           );
         }
       }
@@ -2656,46 +2775,40 @@ export class Arena {
 
   addFixedCollider(x, y, z, hx, hy, hz, friction, restitution) {
     const R = this.RAPIER;
-    const body = this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(x, y, z));
     this.world.createCollider(
       R.ColliderDesc.cuboid(hx, hy, hz)
+        .setTranslation(x, y, z)
         .setFriction(friction)
         .setRestitution(restitution)
         .setContactSkin(0.01),
-      body
+      this.staticPhysicsBody
     );
   }
 
   addFixedColliderRotated(x, y, z, hx, hy, hz, yaw, friction, restitution) {
     const R = this.RAPIER;
     const halfYaw = yaw * 0.5;
-    const body = this.world.createRigidBody(
-      R.RigidBodyDesc.fixed()
-        .setTranslation(x, y, z)
-        .setRotation({ x: 0, y: Math.sin(halfYaw), z: 0, w: Math.cos(halfYaw) })
-    );
     this.world.createCollider(
       R.ColliderDesc.cuboid(hx, hy, hz)
+        .setTranslation(x, y, z)
+        .setRotation({ x: 0, y: Math.sin(halfYaw), z: 0, w: Math.cos(halfYaw) })
         .setFriction(friction)
         .setRestitution(restitution)
         .setContactSkin(0.01),
-      body
+      this.staticPhysicsBody
     );
   }
 
   addFixedColliderQuaternion(x, y, z, hx, hy, hz, quaternion, friction, restitution) {
     const R = this.RAPIER;
-    const body = this.world.createRigidBody(
-      R.RigidBodyDesc.fixed()
-        .setTranslation(x, y, z)
-        .setRotation({ x: quaternion.x, y: quaternion.y, z: quaternion.z, w: quaternion.w })
-    );
     this.world.createCollider(
       R.ColliderDesc.cuboid(hx, hy, hz)
+        .setTranslation(x, y, z)
+        .setRotation({ x: quaternion.x, y: quaternion.y, z: quaternion.z, w: quaternion.w })
         .setFriction(friction)
         .setRestitution(restitution)
         .setContactSkin(0.01),
-      body
+      this.staticPhysicsBody
     );
   }
 

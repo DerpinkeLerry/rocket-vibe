@@ -1,4 +1,12 @@
-# Rocket Vibe 1.13.5 – Ultra-High Speed Immersion
+# Rocket Vibe 1.13.6 – Arena Performance Pass
+
+## v1.13.6
+
+- Die statische Arena fasst kompatible, opake Einzelmeshes jetzt automatisch in **raeumliche Render-Batches** zusammen. Materialien und Geometrie bleiben identisch; transparente Flaechen wie Glas, Glow und Labels werden bewusst nicht zusammengelegt, damit Tiefensortierung und Optik unveraendert bleiben.
+- Das Batching arbeitet in 48-Meter-Zellen statt die komplette Map in ein einziges riesiges Mesh zu verwandeln. Dadurch sinken Draw Calls und Object-Traversal, waehrend Frustum-Culling weiterhin sinnvoll arbeiten kann.
+- Die lokale Rapier-Arenaphysik nutzt fuer alle statischen Map-Collider jetzt **einen gemeinsamen Fixed Rigid Body**. Wand-, Rampen-, Dach-, Ring- und Netz-Collider bleiben einzeln und geometrisch unveraendert, aber hunderte redundante statische Rigid-Body-Objekte entfallen.
+- Bestehendes Instancing fuer Stadionstreben, Glasgitter, Skyline, Baeume und Lampen bleibt erhalten und wird durch das neue Batching ergaenzt.
+- Keine Gameplay-Werte, Basketball-Geometrie, Texturen, Beleuchtung oder High-Speed-Effekte wurden fuer diesen Performance-Pass reduziert.
 
 ## v1.13.5
 
