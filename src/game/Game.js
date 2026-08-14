@@ -44,7 +44,7 @@ export class Game {
     this.accumulator = 0;
     this.lastTime = performance.now() / 1000;
     this.lastRenderTime = 0;
-    this.renderInterval = 1 / 60;
+    this.renderInterval = 1 / Math.max(1, Number(this.profile?.renderHz) || 60);
     this.inputAccumulator = 0;
     this.hudAccumulator = 0;
     this.latestNetworkState = null;
@@ -81,7 +81,7 @@ export class Game {
 
     this.perfElapsed = 0;
     this.perfFrames = 0;
-    this.measuredFps = 60;
+    this.measuredFps = this.profile.ultraLow ? this.profile.renderHz : 60;
     this.shadowFrameCounter = 0;
     this.renderPixelRatio = this.profile.ultraHigh
       ? this.profile.initialPixelRatio
@@ -737,7 +737,6 @@ export class Game {
     this.lastTime = now;
 
     this.perfElapsed += frameDt;
-    this.perfFrames += 1;
     this.updateAdaptivePerformance();
 
     if (!this.networked && this.goalCelebrationActive && now >= this.goalCelebrationUntil) {
@@ -783,6 +782,7 @@ export class Game {
     if (this.demolitionRespawnActive) this.updateDemolitionRespawn(now);
 
     if (this.lastRenderTime === 0 || now - this.lastRenderTime >= this.renderInterval - 0.001) {
+      this.perfFrames += 1;
       const renderDt = this.lastRenderTime === 0 ? frameDt : Math.min(now - this.lastRenderTime, 0.08);
       this.lastRenderTime = now;
 
@@ -802,7 +802,7 @@ export class Game {
       this.demolitionExplosion?.update(renderDt);
       this.updateRespawnMarkers(now);
       this.chaseCamera.update(renderDt);
-      this.arena.updateVisuals?.(this.camera);
+      if (!this.profile.ultraLow) this.arena.updateVisuals?.(this.camera);
 
       this.hudAccumulator += renderDt;
       if (this.hudAccumulator >= 1 / this.profile.hudHz) {
@@ -810,7 +810,7 @@ export class Game {
         this.hud.update(this.replayActive ? this.chaseCamera.car : this.car);
       }
 
-      this.chaseCamera.prepareRender();
+      if (!this.profile.ultraLow) this.chaseCamera.prepareRender();
       try {
         if (this.profile.useShadows) {
           this.shadowFrameCounter += 1;
@@ -823,7 +823,7 @@ export class Game {
         if (this.composer) this.composer.render();
         else this.renderer.render(this.scene, this.camera);
       } finally {
-        this.chaseCamera.restoreOccluders();
+        if (!this.profile.ultraLow) this.chaseCamera.restoreOccluders();
       }
     }
 
@@ -840,10 +840,18 @@ export class Game {
 
     if (this.profile.adaptiveResolution) {
       let next = this.renderPixelRatio;
-      const lowThreshold = this.profile.ultraHigh ? (this.profile.mobile ? 44 : 52) : (this.profile.mobile ? 46 : 52);
-      const highThreshold = this.profile.ultraHigh ? (this.profile.mobile ? 57 : 59) : (this.profile.mobile ? 57 : 59);
-      const downStep = this.profile.ultraHigh ? (this.profile.mobile ? 0.05 : 0.08) : (this.profile.mobile ? 0.05 : 0.06);
-      const upStep = this.profile.ultraHigh ? (this.profile.mobile ? 0.03 : 0.035) : (this.profile.mobile ? 0.03 : 0.02);
+      const lowThreshold = this.profile.ultraLow
+        ? 24
+        : (this.profile.ultraHigh ? (this.profile.mobile ? 44 : 52) : (this.profile.mobile ? 46 : 52));
+      const highThreshold = this.profile.ultraLow
+        ? 29
+        : (this.profile.ultraHigh ? (this.profile.mobile ? 57 : 59) : (this.profile.mobile ? 57 : 59));
+      const downStep = this.profile.ultraLow
+        ? 0.04
+        : (this.profile.ultraHigh ? (this.profile.mobile ? 0.05 : 0.08) : (this.profile.mobile ? 0.05 : 0.06));
+      const upStep = this.profile.ultraLow
+        ? 0.015
+        : (this.profile.ultraHigh ? (this.profile.mobile ? 0.03 : 0.035) : (this.profile.mobile ? 0.03 : 0.02));
       if (this.measuredFps < lowThreshold) next -= downStep;
       else if (this.measuredFps > highThreshold) next += upStep;
 

@@ -15,7 +15,7 @@ import (
 	gameserver "rocket-vibe/internal/server"
 )
 
-const version = "1.11.4-lobbies"
+const version = "1.11.5-vm-low"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))

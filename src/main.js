@@ -632,7 +632,7 @@ function requestPlayerIdentity(root, lobby = null) {
             <label class="graphics-choice${selectedGraphics === 'ultra-low' ? ' is-selected' : ''}" data-graphics-choice="ultra-low">
               <input type="radio" name="graphicsMode" value="ultra-low" ${selectedGraphics === 'ultra-low' ? 'checked' : ''} />
               <span class="graphics-choice__title">ULTRA LOW</span>
-              <span class="graphics-choice__desc">Maximale FPS · schwache Geräte / VM</span>
+              <span class="graphics-choice__desc">VM / ohne GPU · 30 FPS · stark vereinfacht</span>
             </label>
             <label class="graphics-choice${selectedGraphics === 'normal' ? ' is-selected' : ''}" data-graphics-choice="normal">
               <input type="radio" name="graphicsMode" value="normal" ${selectedGraphics === 'normal' ? 'checked' : ''} />

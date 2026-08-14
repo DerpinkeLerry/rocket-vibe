@@ -349,41 +349,19 @@ export class Car {
     this.group = new THREE.Group();
     this.scene.add(this.group);
 
+    // Software WebGL cares about draw calls more than cosmetic polygon detail.
+    // Two opaque, unlit boxes are enough to preserve car/team/style readability
+    // while avoiding wheels, bumpers, transparency, lights and animated parts.
     const paint = new THREE.MeshBasicMaterial({ color: this.paintColor });
-    const dark = new THREE.MeshBasicMaterial({ color: 0x071019 });
-    const glass = new THREE.MeshBasicMaterial({ color: 0x18354d });
+    const cabinMaterial = new THREE.MeshBasicMaterial({ color: 0x17324a });
 
     const body = new THREE.Mesh(new THREE.BoxGeometry(1.66, 0.62, 2.95), paint);
     body.position.y = 0.02;
     this.group.add(body);
 
-    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.38, 0.52, 1.12), glass);
-    cabin.position.set(0, 0.60, 0.18);
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.34, 0.50, 1.06), cabinMaterial);
+    cabin.position.set(0, 0.58, 0.22);
     this.group.add(cabin);
-
-    const bumper = new THREE.Mesh(new THREE.BoxGeometry(1.72, 0.18, 0.22), dark);
-    bumper.position.set(0, -0.12, -1.50);
-    this.group.add(bumper);
-    const rear = bumper.clone();
-    rear.position.z = 1.50;
-    this.group.add(rear);
-
-    const wheelGeo = new THREE.CylinderGeometry(0.34, 0.34, 0.26, 8);
-    const wheels = new THREE.InstancedMesh(wheelGeo, dark, 4);
-    const dummy = new THREE.Object3D();
-    const positions = [
-      [-0.86, -0.20, -0.92], [0.86, -0.20, -0.92],
-      [-0.86, -0.20, 0.96], [0.86, -0.20, 0.96]
-    ];
-    for (let i = 0; i < positions.length; i++) {
-      const [x, y, z] = positions[i];
-      dummy.position.set(x, y, z);
-      dummy.rotation.set(0, 0, Math.PI / 2);
-      dummy.updateMatrix();
-      wheels.setMatrixAt(i, dummy.matrix);
-    }
-    wheels.instanceMatrix.needsUpdate = true;
-    this.group.add(wheels);
 
     this.wheels = [];
     this.frontWheelPivots = [];
@@ -393,18 +371,24 @@ export class Car {
     this.exhaustMaterial = null;
     this.boostTrail = null;
     this.shadow = null;
-    this.visualParts = { body, cabin, frontBumper: bumper, rearBumper: rear, wheelMesh: wheels, lowDetail: true };
+    this.visualParts = {
+      body,
+      cabin,
+      frontBumper: null,
+      rearBumper: null,
+      wheelMesh: null,
+      lowDetail: true
+    };
     this.applyCarStyleVisual();
 
-    // Ultra car parts never animate independently. Freeze their local matrices;
-    // only the root group moves each render frame.
+    // Low-detail parts never animate independently. Freeze local matrices; only
+    // the root transform is changed when a network snapshot is rendered.
     this.group.traverse((object) => {
       if (object === this.group) return;
       object.updateMatrix();
       object.matrixAutoUpdate = false;
     });
   }
-
 
   applyCarStyleVisual() {
     const style = this.carStyle || getCarStyle();
@@ -416,29 +400,36 @@ export class Car {
       parts.body.position.y = style.bodyY;
       parts.cabin.scale.set(...style.cabinScale);
       parts.cabin.position.set(...style.cabinPosition);
-      parts.frontBumper.scale.set(...style.bumperScale);
-      parts.frontBumper.position.z = -style.bumperZ;
-      parts.rearBumper.scale.set(...style.bumperScale);
-      parts.rearBumper.position.z = style.bumperZ;
-
-      const dummy = new THREE.Object3D();
-      const wheelPositions = [
-        [-style.wheelX, -0.20, style.frontWheelZ],
-        [ style.wheelX, -0.20, style.frontWheelZ],
-        [-style.wheelX, -0.20, style.rearWheelZ],
-        [ style.wheelX, -0.20, style.rearWheelZ]
-      ];
-      for (let index = 0; index < wheelPositions.length; index++) {
-        const [x, y, z] = wheelPositions[index];
-        dummy.position.set(x, y, z);
-        dummy.rotation.set(0, 0, Math.PI / 2);
-        dummy.scale.set(style.wheelRadiusScale, 1, style.wheelRadiusScale);
-        dummy.updateMatrix();
-        parts.wheelMesh.setMatrixAt(index, dummy.matrix);
+      if (parts.frontBumper) {
+        parts.frontBumper.scale.set(...style.bumperScale);
+        parts.frontBumper.position.z = -style.bumperZ;
       }
-      parts.wheelMesh.instanceMatrix.needsUpdate = true;
+      if (parts.rearBumper) {
+        parts.rearBumper.scale.set(...style.bumperScale);
+        parts.rearBumper.position.z = style.bumperZ;
+      }
+
+      if (parts.wheelMesh) {
+        const dummy = new THREE.Object3D();
+        const wheelPositions = [
+          [-style.wheelX, -0.20, style.frontWheelZ],
+          [ style.wheelX, -0.20, style.frontWheelZ],
+          [-style.wheelX, -0.20, style.rearWheelZ],
+          [ style.wheelX, -0.20, style.rearWheelZ]
+        ];
+        for (let index = 0; index < wheelPositions.length; index++) {
+          const [x, y, z] = wheelPositions[index];
+          dummy.position.set(x, y, z);
+          dummy.rotation.set(0, 0, Math.PI / 2);
+          dummy.scale.set(style.wheelRadiusScale, 1, style.wheelRadiusScale);
+          dummy.updateMatrix();
+          parts.wheelMesh.setMatrixAt(index, dummy.matrix);
+        }
+        parts.wheelMesh.instanceMatrix.needsUpdate = true;
+      }
+
       for (const object of [parts.body, parts.cabin, parts.frontBumper, parts.rearBumper, parts.wheelMesh]) {
-        object.updateMatrix();
+        object?.updateMatrix?.();
       }
       return;
     }
@@ -1116,6 +1107,7 @@ export class Car {
   }
 
   updateBoostEffects(dt) {
+    if (this.lowDetail) return;
     this.boostVisualHold = Math.max(0, this.boostVisualHold - dt);
     const active = Boolean(this.boosting || this.boostVisualHold > 0) && this.getBoost() > 0.001;
     const style = this.boostStyle || getBoostStyle();

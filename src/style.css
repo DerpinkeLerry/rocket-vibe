@@ -2418,3 +2418,89 @@ section.lobby-settings-section .lobby-settings-grid { padding: 0; }
   .hud__match-clock { top: 59px; min-width: 62px; padding: 3px 8px; font-size: 11px; }
   .hud__match-over { top: 31%; font-size: 17px; padding: 10px 12px; }
 }
+
+
+/* v1.11.5 — Ultra Low is a real VM/software-WebGL mode ------------------
+   Keep gameplay readable, but avoid compositor effects and continuous DOM
+   animation. This selector only exists while the lowest graphics preset is in
+   the active game root; Normal and Ultra High remain untouched. */
+.perf-ultra-low canvas {
+  image-rendering: pixelated;
+}
+
+.perf-ultra-low .hud *,
+.perf-ultra-low .mobile-controls * {
+  animation: none !important;
+  transition: none !important;
+}
+
+.perf-ultra-low .hud__boost-gauge-glow,
+.perf-ultra-low .hud__boost-segments,
+.perf-ultra-low .hud__boost-gauge-sparks {
+  display: none !important;
+}
+
+.perf-ultra-low .hud__boost-gauge {
+  right: 14px;
+  bottom: 14px;
+  width: 88px;
+  height: 54px;
+  filter: none !important;
+}
+
+.perf-ultra-low .hud__boost-core {
+  width: 88px;
+  height: 54px;
+  border-radius: 6px;
+  background: rgba(7, 12, 18, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.perf-ultra-low .hud__boost-core strong {
+  min-width: 0;
+  font-size: 28px;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  text-shadow: none !important;
+  transform: none;
+}
+
+.perf-ultra-low .hud__boost-core span {
+  margin-top: 2px;
+  font-size: 8px;
+}
+
+.perf-ultra-low .hud__kickoff,
+.perf-ultra-low .hud__replay-top,
+.perf-ultra-low .hud__respawn,
+.perf-ultra-low .hud__controls,
+.perf-ultra-low .hud__quickchat-line {
+  filter: none !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
+}
+
+.perf-ultra-low .hud__kickoff strong,
+.perf-ultra-low .hud__respawn-title {
+  text-shadow: none !important;
+}
+
+.perf-ultra-low.mobile-active .hud__boost-gauge {
+  left: calc(env(safe-area-inset-left, 0px) + 7px);
+  right: auto;
+  top: calc(env(safe-area-inset-top, 0px) + 7px);
+  bottom: auto;
+  width: 78px;
+  height: 48px;
+}
+
+.perf-ultra-low.mobile-active .hud__boost-core {
+  width: 78px;
+  height: 48px;
+}
+
+.perf-ultra-low.mobile-active .hud__boost-core strong {
+  font-size: 24px;
+}

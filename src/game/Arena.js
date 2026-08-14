@@ -129,16 +129,24 @@ export class Arena {
     this.group = new THREE.Group();
     this.scene.add(this.group);
 
-    this.createExteriorGround();
-    this.createField();
-    if (this.enablePhysics) this.createPhysics();
-    // All decoration below is static and mostly instanced/unlit. Keeping it in
-    // low-detail mode makes the arena feel alive without adding shadow cost.
-    // Grandstands/crowd were intentionally removed. Keep only the exterior
-    // skyline, buildings and trees so the stadium stays open and uncluttered.
-    this.createExteriorDecoration();
-    if (this.ultraHigh) this.createUltraHighStadiumDetails();
-    this.createLights();
+    if (this.lowDetail) {
+      // VM/software-WebGL path: the normal arena contains many separate wall,
+      // glass, ramp and decorative meshes. Even when they use cheap materials,
+      // their draw-call overhead is expensive when WebGL is rasterized on the
+      // CPU. Keep the authoritative physics unchanged, but render only a flat
+      // pitch plus batched line geometry for boundaries and goals.
+      this.createUltraLowVisual();
+      if (this.enablePhysics) this.createPhysics();
+    } else {
+      this.createExteriorGround();
+      this.createField();
+      if (this.enablePhysics) this.createPhysics();
+      // Grandstands/crowd were intentionally removed. Keep only the exterior
+      // skyline, buildings and trees so the stadium stays open and uncluttered.
+      this.createExteriorDecoration();
+      if (this.ultraHigh) this.createUltraHighStadiumDetails();
+      this.createLights();
+    }
 
     // The whole arena is static. Avoid rebuilding local matrices every frame.
     this.group.traverse((object) => {
@@ -182,6 +190,103 @@ export class Arena {
       result.push({ ...panel, teamSign: this.panelTeamSign(panel) });
     }
     return result;
+  }
+
+  createUltraLowVisual() {
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(FIELD_W + 18, FIELD_L + 18, 1, 1),
+      new THREE.MeshBasicMaterial({ color: 0x244734 })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -0.025;
+    floor.userData.cameraOcclusionIgnore = true;
+    floor.name = 'vm-flat-pitch';
+    this.group.add(floor);
+
+    const lineY = 0.035;
+    const halfW = FIELD_W * 0.5;
+    const halfL = FIELD_L * 0.5;
+    const topY = Math.min(WALL_H, 8);
+    const points = [];
+    const segment = (ax, ay, az, bx, by, bz) => {
+      points.push(new THREE.Vector3(ax, ay, az), new THREE.Vector3(bx, by, bz));
+    };
+
+    // Floor boundary + midfield.
+    segment(-halfW, lineY, -halfL, halfW, lineY, -halfL);
+    segment(halfW, lineY, -halfL, halfW, lineY, halfL);
+    segment(halfW, lineY, halfL, -halfW, lineY, halfL);
+    segment(-halfW, lineY, halfL, -halfW, lineY, -halfL);
+    segment(-halfW, lineY, 0, halfW, lineY, 0);
+
+    // A single batched wire outline communicates the playable wall volume
+    // without any transparent glass surfaces or extra lighting passes.
+    segment(-halfW, topY, -halfL, halfW, topY, -halfL);
+    segment(halfW, topY, -halfL, halfW, topY, halfL);
+    segment(halfW, topY, halfL, -halfW, topY, halfL);
+    segment(-halfW, topY, halfL, -halfW, topY, -halfL);
+    for (const [x, z] of [[-halfW, -halfL], [halfW, -halfL], [halfW, halfL], [-halfW, halfL]]) {
+      segment(x, lineY, z, x, topY, z);
+    }
+
+    // Center circle is folded into the same LineSegments draw call.
+    const circleSegments = 20;
+    const circleRadius = Math.min(10.5, halfW * 0.28);
+    for (let i = 0; i < circleSegments; i++) {
+      const a0 = i / circleSegments * Math.PI * 2;
+      const a1 = (i + 1) / circleSegments * Math.PI * 2;
+      segment(
+        Math.cos(a0) * circleRadius, lineY, Math.sin(a0) * circleRadius,
+        Math.cos(a1) * circleRadius, lineY, Math.sin(a1) * circleRadius
+      );
+    }
+
+    const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+    const fieldLines = new THREE.LineSegments(
+      lineGeometry,
+      new THREE.LineBasicMaterial({ color: 0xd9e7df })
+    );
+    fieldLines.frustumCulled = false;
+    fieldLines.userData.cameraOcclusionIgnore = true;
+    fieldLines.name = 'vm-field-lines';
+    this.group.add(fieldLines);
+
+    const createGoalWire = (sign, color) => {
+      const zFront = sign * halfL;
+      const zBack = sign * (halfL + GOAL_D);
+      const halfGoal = GOAL_W * 0.5;
+      const goalPoints = [];
+      const goalSegment = (ax, ay, az, bx, by, bz) => {
+        goalPoints.push(new THREE.Vector3(ax, ay, az), new THREE.Vector3(bx, by, bz));
+      };
+      const corners = [
+        [-halfGoal, 0, zFront], [halfGoal, 0, zFront],
+        [-halfGoal, GOAL_H, zFront], [halfGoal, GOAL_H, zFront],
+        [-halfGoal, 0, zBack], [halfGoal, 0, zBack],
+        [-halfGoal, GOAL_H, zBack], [halfGoal, GOAL_H, zBack]
+      ];
+      const edges = [
+        [0,1],[2,3],[4,5],[6,7],
+        [0,2],[1,3],[4,6],[5,7],
+        [0,4],[1,5],[2,6],[3,7]
+      ];
+      for (const [a, b] of edges) {
+        const p0 = corners[a];
+        const p1 = corners[b];
+        goalSegment(p0[0], p0[1] + lineY, p0[2], p1[0], p1[1] + lineY, p1[2]);
+      }
+      const wire = new THREE.LineSegments(
+        new THREE.BufferGeometry().setFromPoints(goalPoints),
+        new THREE.LineBasicMaterial({ color })
+      );
+      wire.frustumCulled = false;
+      wire.userData.cameraOcclusionIgnore = true;
+      wire.name = sign > 0 ? 'vm-orange-goal' : 'vm-blue-goal';
+      this.group.add(wire);
+    };
+
+    createGoalWire(1, 0xff8a22);
+    createGoalWire(-1, 0x268dff);
   }
 
   createExteriorGround() {

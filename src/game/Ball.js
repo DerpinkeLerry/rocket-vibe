@@ -195,6 +195,20 @@ export class Ball {
     this.proceduralVisual.name = 'ProceduralSoccarBallVisual';
     this.mesh.add(this.proceduralVisual);
 
+    if (this.lowDetail) {
+      // No generated canvas texture, bump map or transparent shell in the VM
+      // profile. One low-poly unlit sphere keeps the ball easy to read while
+      // minimizing both texture bandwidth and fragment-shader work.
+      const body = new THREE.Mesh(
+        new THREE.IcosahedronGeometry(this.radius, 1),
+        new THREE.MeshBasicMaterial({ color: 0xe9edf0 })
+      );
+      this.proceduralVisual.add(body);
+      this.scene.add(this.mesh);
+      this.shadow = null;
+      return;
+    }
+
     // Ultra High replaces this fallback with the real GLB as soon as it is
     // loaded, so keep the hidden fallback at Normal detail to avoid wasting a
     // 1536px texture and 64-segment sphere in memory.

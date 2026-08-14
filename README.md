@@ -1,4 +1,13 @@
-# Rocket Vibe 1.11.4 – Lobbies, Custom Rules & Physics Mutators
+# Rocket Vibe 1.11.5 – Lobbies, Custom Rules & VM Graphics Mode
+
+## v1.11.5
+
+- **ULTRA LOW** ist jetzt gezielt fuer virtuelle Maschinen bzw. Browser ohne echte GPU ausgelegt. Der 3D-Renderpfad ist auf 30 FPS begrenzt, waehrend Netzwerk, Input und Client-Prediction weiter unabhaengig davon laufen.
+- Die interne Renderaufloesung startet bei 0,32x und kann bei Last bis 0,18x absinken. Die adaptive Messung zaehlt dafuer echte Renderframes statt nur `requestAnimationFrame`-Callbacks.
+- Die Ultra-Low-Arena verwendet keine Holz-/Wandtexturen, kein Glas, keine Lichter, keinen Himmel und keine Aussendekoration mehr. Stattdessen wird ein flaches Spielfeld mit gebatchten Linien und einfachen Torrahmen gerendert; die autoritative Arena-Physik bleibt unveraendert.
+- Alle 34 Boostpads werden in Ultra Low als **ein** statischer `InstancedMesh` gezeichnet. Rotation, Pulsieren und transparente Ringeffekte entfallen; Aktiv/Inaktiv aktualisiert nur noch die jeweilige Instanzmatrix.
+- Ultra-Low-Autos bestehen nur noch aus zwei unbeleuchteten Box-Meshes; der Ball ist eine einzelne untexturierte Low-Poly-Kugel. Premium-Modelle, Schatten, Boost-Partikel und Explosionseffekte bleiben dort deaktiviert.
+- Das Ultra-Low-HUD erstellt die 42 animierten Boostsegmente nicht mehr, blendet Glow/Sparks aus und deaktiviert CSS-Animationen, Blur-, Filter- und Shadow-Effekte im laufenden Spiel. NORMAL und ULTRA HIGH wurden nicht veraendert.
 
 ## v1.11.4
 

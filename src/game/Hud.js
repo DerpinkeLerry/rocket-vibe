@@ -2,6 +2,7 @@ import { CAR_TUNING } from '../shared/game-tuning.js';
 
 export class Hud {
   constructor(root, options = {}) {
+    this.lowDetail = String(options.performanceProfile || '').toUpperCase() === 'ULTRA LOW';
     const playerCount = options.playerCount ?? 1;
     const maxPlayers = options.maxPlayers ?? 4;
 
@@ -95,7 +96,7 @@ export class Hud {
     this.boostSegmentsRoot = this.el.querySelector('[data-boost-segments]');
     this.boostSegments = [];
     this.lastBoostSegmentCount = -1;
-    this.buildBoostGaugeSegments();
+    if (!this.lowDetail) this.buildBoostGaugeSegments();
     this.orangeScore = this.el.querySelector('[data-orange-score]');
     this.blueScore = this.el.querySelector('[data-blue-score]');
     this.matchClock = this.el.querySelector('[data-match-clock]');
@@ -364,6 +365,7 @@ export class Hud {
   }
 
   pulseKickoff() {
+    if (this.lowDetail) return;
     this.kickoff?.animate?.([
       { transform: 'translate(-50%, -50%) scale(0.72)', opacity: 0.2 },
       { transform: 'translate(-50%, -50%) scale(1.08)', opacity: 1, offset: 0.55 },

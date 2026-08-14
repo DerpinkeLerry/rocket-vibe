@@ -8,7 +8,57 @@ export class BoostPads {
     this.ultraHigh = Boolean(options.ultraHigh) && !this.lowDetail;
     this.elapsed = 0;
     this.activeMask = ALL_BOOST_PADS_MASK;
-    this.pads = BOOST_PADS.map((spec) => this.createPad(spec));
+    this.lowMesh = null;
+    this.lowDummy = null;
+    this.pads = this.lowDetail ? this.createUltraLowPads() : BOOST_PADS.map((spec) => this.createPad(spec));
+  }
+
+  createUltraLowPads() {
+    // One unlit instanced disc replaces 34 groups x 3 animated meshes.  This is
+    // intentionally static: active/inactive state is the only matrix update.
+    const geometry = new THREE.CircleGeometry(1, 8);
+    geometry.rotateX(-Math.PI / 2);
+    const material = new THREE.MeshBasicMaterial({ vertexColors: true });
+    this.lowMesh = new THREE.InstancedMesh(geometry, material, BOOST_PADS.length);
+    this.lowMesh.name = 'vm-boost-pads';
+    this.lowMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.lowMesh.userData.cameraOcclusionIgnore = true;
+    this.lowDummy = new THREE.Object3D();
+
+    const pads = BOOST_PADS.map((spec, index) => ({
+      spec,
+      index,
+      group: null,
+      base: null,
+      ring: null,
+      pickup: null,
+      active: true,
+      respawnRemaining: 0
+    }));
+
+    for (const pad of pads) {
+      this.writeUltraLowInstance(pad);
+      this.lowMesh.setColorAt(
+        pad.index,
+        new THREE.Color(pad.spec.kind === 'large' ? 0xff8a22 : 0xffcf59)
+      );
+    }
+    this.lowMesh.instanceMatrix.needsUpdate = true;
+    if (this.lowMesh.instanceColor) this.lowMesh.instanceColor.needsUpdate = true;
+    this.lowMesh.computeBoundingSphere?.();
+    this.scene.add(this.lowMesh);
+    return pads;
+  }
+
+  writeUltraLowInstance(pad) {
+    if (!this.lowMesh || !this.lowDummy || !pad) return;
+    const radius = pad.spec.kind === 'large' ? 1.55 : 0.68;
+    const scale = pad.active ? radius : 0.001;
+    this.lowDummy.position.set(pad.spec.x, 0.045, pad.spec.z);
+    this.lowDummy.rotation.set(0, 0, 0);
+    this.lowDummy.scale.set(scale, scale, scale);
+    this.lowDummy.updateMatrix();
+    this.lowMesh.setMatrixAt(pad.index, this.lowDummy.matrix);
   }
 
   createPad(spec) {
@@ -123,6 +173,7 @@ export class BoostPads {
   }
 
   update(dt) {
+    if (this.lowDetail) return;
     this.elapsed += dt;
     for (const pad of this.pads) {
       if (!pad.active) continue;
@@ -140,6 +191,11 @@ export class BoostPads {
   }
 
   applyVisualState(pad) {
+    if (this.lowDetail) {
+      this.writeUltraLowInstance(pad);
+      if (this.lowMesh) this.lowMesh.instanceMatrix.needsUpdate = true;
+      return;
+    }
     pad.pickup.visible = pad.active;
     pad.ring.visible = pad.active;
     pad.base.material.opacity = pad.active ? 0.5 : 0.16;
