@@ -6,6 +6,8 @@ import { Car } from './Car.js';
 import { ChaseCamera } from './ChaseCamera.js';
 import { Input } from './Input.js';
 import { MobileControls } from './MobileControls.js';
+import { MobileGameMenu } from './MobileGameMenu.js';
+import { loadCameraSettings } from './CameraSettings.js';
 import { Hud } from './Hud.js';
 import { ChatPanel } from './ChatPanel.js';
 import { getPerformanceProfile, togglePerformanceProfile } from './PerformanceProfile.js';
@@ -46,6 +48,8 @@ export class Game {
     this.playerCarStyle = normalizeCarStyle(network?.carStyle || options.carStyle || DEFAULT_CAR_STYLE);
     this.playerBoostStyle = normalizeBoostStyle(network?.boostStyle || options.boostStyle || DEFAULT_BOOST_STYLE);
     this.playerTeam = network?.team === 'blue' ? 'blue' : 'orange';
+    this.accountName = String(options.accountUsername || this.playerName || 'Gast');
+    this.cameraSettings = loadCameraSettings(this.accountName);
     this.gameMode = network?.matchConfig?.gameMode === 'basketball' || options.gameMode === 'basketball' ? 'basketball' : 'normal';
     this.quickChatOptions = network?.quickChats?.length ? network.quickChats : QUICK_CHAT_OPTIONS;
     this.profile = getPerformanceProfile(this.networked, options.graphicsMode);
@@ -108,7 +112,7 @@ export class Game {
       ? new THREE.Fog(this.profile.ultraHigh ? 0x30344d : 0x9bb9c5, this.profile.ultraHigh ? 135 : 155, this.profile.ultraHigh ? 350 : 360)
       : null;
 
-    this.camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, this.profile.ultraLow ? 230 : (this.profile.ultraHigh ? 520 : 390));
+    this.camera = new THREE.PerspectiveCamera(this.cameraSettings.fov, window.innerWidth / window.innerHeight, 0.08, this.profile.ultraLow ? 230 : (this.profile.ultraHigh ? 520 : 390));
     this.camera.position.set(0, 5, 10);
 
     this.renderer = new THREE.WebGLRenderer({
@@ -141,7 +145,7 @@ export class Game {
     this.ultraBloomPass = null;
     this.ultraBloomBaseStrength = this.profile.mobile ? 0.08 : 0.16;
     this.ultraBloomBaseRadius = this.profile.mobile ? 0.18 : 0.24;
-    this.baseCameraFov = 72;
+    this.baseCameraFov = this.cameraSettings.fov;
 
     // In online mode the Go server owns all real physics. The browser uses tiny JS
     // transform stores instead of loading/stepping Rapier/WASM.
@@ -230,7 +234,7 @@ export class Game {
           lowLatency: this.profile.ultraLow
         })
       : null;
-    this.chaseCamera = new ChaseCamera(this.camera, this.car, this.ball, this.scene);
+    this.chaseCamera = new ChaseCamera(this.camera, this.car, this.ball, this.scene, this.cameraSettings);
     this.ballLandingCue = new BallLandingCue(this.scene, {
       lowDetail: this.profile.lowDetail,
       ultraHigh: this.profile.ultraHigh,
@@ -261,6 +265,21 @@ export class Game {
       }
     });
     this.mobileControls.setChatHandler?.(() => this.chatPanel.toggle('quick'));
+    this.mobileGameMenu = new MobileGameMenu(this.root, {
+      enabled: this.mobileControls.enabled,
+      accountName: this.accountName,
+      getCameraSettings: () => this.chaseCamera.getSettings(),
+      onCameraPreview: (settings) => this.applyCameraSettings(settings),
+      onCameraMode: (mode) => this.setCameraMode(mode),
+      onOpenChange: (open) => {
+        if (open) {
+          this.chatPanel.close?.();
+          this.mobileControls.releaseAll?.();
+        }
+        this.input.setTextInputActive?.(open);
+      },
+      onLeave: () => this.leaveMatch()
+    });
     this.hud.setReplaySkipHandler(() => this.network?.sendReplaySkip?.());
     this.hud.setRespawnSelectionHandler?.((index) => this.selectRespawnPoint(index));
 
@@ -832,6 +851,27 @@ export class Game {
     this.renderer.render(this.scene, this.camera);
   }
 
+  setCameraMode(mode) {
+    const cameraMode = this.chaseCamera.setMode(mode);
+    this.cameraSettings = this.chaseCamera.getSettings();
+    this.hud.setCameraMode(cameraMode);
+    this.mobileControls.setCameraMode?.(cameraMode);
+    return cameraMode;
+  }
+
+  applyCameraSettings(settings) {
+    this.cameraSettings = this.chaseCamera.setSettings(settings);
+    this.setCameraMode(this.cameraSettings.mode);
+    this.onResize();
+    return this.cameraSettings;
+  }
+
+  leaveMatch() {
+    this.mobileControls?.releaseAll?.();
+    this.network?.disconnect?.();
+    window.location.reload();
+  }
+
   start() {
     for (const car of this.cars) car.syncVisual();
     this.ball.syncVisual();
@@ -905,9 +945,7 @@ export class Game {
       this.ball.syncVisual();
       this.ballLandingCue?.update(this.ball, renderDt);
       if (!this.replayActive && !this.demolitionRespawnActive && this.input.consumePressed('KeyC')) {
-        const cameraMode = this.chaseCamera.toggleMode();
-        this.hud.setCameraMode(cameraMode);
-        this.mobileControls.setCameraMode?.(cameraMode);
+        this.setCameraMode(this.chaseCamera.toggleMode());
       }
       this.boostPads.update(renderDt);
       this.goalExplosion?.update(renderDt);
@@ -1564,7 +1602,7 @@ export class Game {
     const intensity = enabled && this.profile.ultraHigh
       ? THREE.MathUtils.clamp(this.highSpeedEffects?.intensity || 0, 0, 1)
       : 0;
-    const fovGain = this.profile.mobile ? 3.8 : 5.2;
+    const fovGain = (this.profile.mobile ? 3.8 : 5.2) * this.cameraSettings.dynamicFov;
     const targetFov = this.baseCameraFov + intensity * fovGain;
     const fovBlend = 1 - Math.exp(-5.4 * Math.max(0, Number(dt) || 0));
     const nextFov = THREE.MathUtils.lerp(this.camera.fov, targetFov, fovBlend);
@@ -1586,8 +1624,10 @@ export class Game {
     const width = Math.max(1, this.root.clientWidth || window.innerWidth);
     const height = Math.max(1, this.root.clientHeight || window.innerHeight);
     this.camera.aspect = width / height;
-    this.baseCameraFov = this.mobileControls?.enabled && height > width ? 78 : 72;
-    const liveGain = this.profile.ultraHigh ? (this.highSpeedEffects?.intensity || 0) * (this.profile.mobile ? 3.8 : 5.2) : 0;
+    this.baseCameraFov = this.cameraSettings.fov;
+    const liveGain = this.profile.ultraHigh
+      ? (this.highSpeedEffects?.intensity || 0) * (this.profile.mobile ? 3.8 : 5.2) * this.cameraSettings.dynamicFov
+      : 0;
     this.camera.fov = this.baseCameraFov + liveGain;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height, false);

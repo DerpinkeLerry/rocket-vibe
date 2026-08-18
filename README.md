@@ -2,6 +2,9 @@
 
 ## v1.13.6
 
+- Online startet jetzt mit **Login oder Registrierung**, bevor Lobby-Daten oder der Match-WebSocket erreichbar sind. Accounts werden in der konfigurierbaren Serverdatei gespeichert; Passwörter stehen dort ausschließlich als zufällig gesalzene PBKDF2-SHA256-Hashes, niemals im Klartext.
+- Touchgeräte besitzen oben rechts ein neues **Match-Menü** zum Weiterspielen, Verlassen des Matches und Bearbeiten der Kamera. Der alte kleine Vollbildknopf innerhalb der Touch-Steuerung wurde entfernt.
+- Die mobilen Kameraeinstellungen umfassen Ball-/Car-Cam, FOV, Abstand, Höhe, Blickhöhe, drei Reaktionsgeschwindigkeiten, Tempo-Abstand/-Höhe, High-Ball Assist, dynamisches FOV und Sichtschutz. Änderungen lassen sich live testen, zurücksetzen und pro Account lokal speichern.
 - Beim Beitritt bleibt jetzt eine eigene **Match-Ladesequenz** sichtbar, bis Verbindung/Physics, benoetigte 3D-Modelle, Arena-Objekte, Materialien und GPU-Shader bereit sind. Erst nach einem verdeckten Warm-up-Frame blendet die Sequenz ins Spiel.
 - `ULTRA HIGH` laedt vor Matchbeginn nur die Premium-GLBs der tatsaechlich vorhandenen Fahrzeugtypen sowie im Normalmodus den Premium-Ball. Gleiche Modelle teilen weiterhin Template, Geometrie und Texturen; leere/unsichtbare Fahrzeugslots starten keine unnoetigen Downloads.
 - `NORMAL` und `ULTRA LOW` ueberspringen die grossen Premium-Downloads und durchlaufen direkt den leichten Aufbaupfad. Schlaegt ein optionales GLB fehl, startet das Match kontrolliert mit dem vorhandenen prozeduralen Fallback.
@@ -274,6 +277,7 @@ Der Go-Server bindet auf `0.0.0.0:$PORT`. Render empfiehlt den von der Plattform
 
 - `ALLOWED_ORIGINS=spiel.example.com,*.example.com` erlaubt zusaetzliche Browser-Origin-Patterns. Ohne Wert gilt die sichere Same-Origin-Pruefung.
 - `STATIC_DIR` muss nur geaendert werden, wenn der Server ausserhalb des Dockerfiles gestartet wird und `dist` an einem anderen Ort liegt.
+- `AUTH_DATA_FILE` legt die JSON-Datei für Accounts fest (Docker-Default: `/app/data/users.json`, lokal: `data/users.json`). Für dauerhaft erhaltene Accounts benötigt ein Hosting-Deployment ein persistentes Volume an diesem Pfad; das freie ephemere Render-Dateisystem überlebt keinen Instanz-Ersatz.
 
 Healthcheck und Diagnose:
 

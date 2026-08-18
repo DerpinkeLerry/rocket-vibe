@@ -20,10 +20,12 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /rocket-serv
 FROM alpine:3.21 AS runtime
 RUN addgroup -S rocket && adduser -S -G rocket rocket
 WORKDIR /app
+RUN mkdir -p /app/data && chown rocket:rocket /app/data
 COPY --from=backend --chown=rocket:rocket /rocket-server ./rocket-server
 COPY --from=frontend --chown=rocket:rocket /source/dist ./dist
 ENV PORT=10000
 ENV STATIC_DIR=/app/dist
+ENV AUTH_DATA_FILE=/app/data/users.json
 USER rocket
 EXPOSE 10000
 ENTRYPOINT ["./rocket-server"]

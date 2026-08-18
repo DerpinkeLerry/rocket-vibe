@@ -26,7 +26,7 @@ test('speed immersion is created only in ultra-high graphics and disabled during
 });
 
 test('ultra-high speed adds only a modest FOV gain and gently raises bloom', () => {
-  assert.match(gameSource, /const fovGain = this\.profile\.mobile \? 3\.8 : 5\.2;/);
+  assert.match(gameSource, /const fovGain = \(this\.profile\.mobile \? 3\.8 : 5\.2\) \* this\.cameraSettings\.dynamicFov;/);
   assert.match(gameSource, /this\.ultraBloomPass\.strength = this\.ultraBloomBaseStrength \+ intensity/);
   assert.match(gameSource, /toneMappingExposure = 1\.00 \+ intensity \* 0\.012/);
 });

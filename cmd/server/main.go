@@ -15,7 +15,7 @@ import (
 	gameserver "rocket-vibe/internal/server"
 )
 
-const version = "1.13.0-hoops-chat"
+const version = "1.13.6-auth-camera"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -29,6 +29,7 @@ func main() {
 		StaticDirectory: environment("STATIC_DIR", "dist"),
 		Version:         version,
 		AllowedOrigins:  commaSeparated(os.Getenv("ALLOWED_ORIGINS")),
+		AuthDataFile:    environment("AUTH_DATA_FILE", "data/users.json"),
 	}, logger)
 
 	server := &http.Server{

@@ -10,6 +10,7 @@ import { Game } from './game/Game.js';
 import { refreshArenaRuntimeTuning } from './game/Arena.js';
 import { preloadInitialGameAssets } from './game/InitialGameLoader.js';
 import { JoinLoadingScreen } from './game/JoinLoadingScreen.js';
+import { requestAuthentication } from './auth/AccountGate.js';
 import './style.css';
 
 function installMobileBrowserGuards() {
@@ -671,7 +672,7 @@ function requestLobby(root, notice = '') {
   });
 }
 
-function requestPlayerIdentity(root, lobby = null) {
+function requestPlayerIdentity(root, lobby = null, account = null) {
   return new Promise((resolve) => {
     const selectedStyle = rememberedCarStyle();
     const selectedBoostStyle = rememberedBoostStyle();
@@ -690,9 +691,9 @@ function requestPlayerIdentity(root, lobby = null) {
           <button class="join-card__fullscreen" type="button" data-start-fullscreen>⛶ VOLLBILD STARTEN</button>
           <span class="join-card__fullscreen-status" data-fullscreen-status aria-live="polite"></span>
         </div>
-        <label for="player-name">Spielername</label>
+        <label for="player-name">${account ? 'Account & Spielername' : 'Spielername'}</label>
         <input id="player-name" name="playerName" type="text" minlength="2" maxlength="16"
-          autocomplete="nickname" enterkeyhint="go" spellcheck="false" placeholder="z. B. Goofy" required />
+          autocomplete="nickname" enterkeyhint="go" spellcheck="false" placeholder="z. B. Goofy" ${account ? 'readonly' : ''} required />
 
         <fieldset class="car-select">
           <legend>Auto auswählen</legend>
@@ -780,7 +781,7 @@ function requestPlayerIdentity(root, lobby = null) {
     document.addEventListener('webkitfullscreenchange', updateFullscreenUi);
     updateFullscreenUi();
 
-    input.value = rememberedPlayerName();
+    input.value = account?.username || rememberedPlayerName();
     if (!prefersMobileControls()) requestAnimationFrame(() => input.focus());
 
     form.addEventListener('change', (event) => {
@@ -826,7 +827,13 @@ function requestPlayerIdentity(root, lobby = null) {
       document.removeEventListener('fullscreenchange', updateFullscreenUi);
       document.removeEventListener('webkitfullscreenchange', updateFullscreenUi);
       overlay.remove();
-      resolve({ playerName: name.slice(0, 16), carStyle, boostStyle, graphicsMode });
+      resolve({
+        playerName: name.slice(0, 16),
+        accountUsername: account?.username || name.slice(0, 16),
+        carStyle,
+        boostStyle,
+        graphicsMode
+      });
     });
   });
 }
@@ -839,13 +846,15 @@ async function boot() {
   let network = null;
   let RAPIER = null;
   let identity = null;
+  let account = null;
   let loadingScreen = null;
 
   if (multiplayerEnabled) {
+    account = await requestAuthentication(app);
     let lobbyNotice = '';
     while (!network) {
       const lobby = await requestLobby(app, lobbyNotice);
-      identity = await requestPlayerIdentity(app, lobby);
+      identity = await requestPlayerIdentity(app, lobby, account);
       loadingScreen = new JoinLoadingScreen(app);
       loadingScreen.setStage('LOBBY WIRD VERBUNDEN', 0.08, lobby.name || 'Online-Match');
       await loadingScreen.nextPaint();

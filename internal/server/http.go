@@ -23,14 +23,24 @@ type HTTPOptions struct {
 	StaticDirectory string
 	Version         string
 	AllowedOrigins  []string
+	AuthDataFile    string
+	DisableAuth     bool
 }
 
 type HTTPServer struct {
-	match   *Match
-	manager *LobbyManager
-	options HTTPOptions
-	logger  *slog.Logger
-	handler http.Handler
+	match    *Match
+	manager  *LobbyManager
+	options  HTTPOptions
+	logger   *slog.Logger
+	handler  http.Handler
+	accounts *accountStore
+}
+
+const accountSessionCookie = "rocket_vibe_session"
+
+type accountCredentials struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 type textInputMessage struct {
@@ -66,13 +76,13 @@ type respawnSelectionMessage struct {
 }
 
 func NewHTTPServer(match *Match, options HTTPOptions, logger *slog.Logger) *HTTPServer {
-	server := &HTTPServer{match: match, options: options, logger: logger}
+	server := &HTTPServer{match: match, options: options, logger: logger, accounts: newAccountStore(options.AuthDataFile)}
 	server.installRoutes()
 	return server
 }
 
 func NewLobbyHTTPServer(manager *LobbyManager, options HTTPOptions, logger *slog.Logger) *HTTPServer {
-	server := &HTTPServer{manager: manager, options: options, logger: logger}
+	server := &HTTPServer{manager: manager, options: options, logger: logger, accounts: newAccountStore(options.AuthDataFile)}
 	server.installRoutes()
 	return server
 }
@@ -82,6 +92,7 @@ func (server *HTTPServer) installRoutes() {
 	mux.HandleFunc("/health", server.health)
 	mux.HandleFunc("/config", server.config)
 	mux.HandleFunc("/debug/game", server.debugGame)
+	mux.HandleFunc("/api/auth/", server.authentication)
 	mux.HandleFunc("/api/lobbies/defaults", server.lobbyDefaults)
 	mux.HandleFunc("/api/lobbies/", server.lobbyByID)
 	mux.HandleFunc("/api/lobbies", server.lobbies)
@@ -91,6 +102,159 @@ func (server *HTTPServer) installRoutes() {
 }
 
 func (server *HTTPServer) Handler() http.Handler { return server.handler }
+
+func (server *HTTPServer) authentication(writer http.ResponseWriter, request *http.Request) {
+	if server.options.DisableAuth {
+		writeJSON(writer, http.StatusNotFound, map[string]string{"error": "accounts are disabled"})
+		return
+	}
+	action := strings.Trim(strings.TrimPrefix(request.URL.Path, "/api/auth/"), "/")
+	switch action {
+	case "register":
+		server.registerAccount(writer, request)
+	case "login":
+		server.loginAccount(writer, request)
+	case "session":
+		server.accountSession(writer, request)
+	case "logout":
+		server.logoutAccount(writer, request)
+	default:
+		writeJSON(writer, http.StatusNotFound, map[string]string{"error": "account endpoint not found"})
+	}
+}
+
+func (server *HTTPServer) readAccountCredentials(writer http.ResponseWriter, request *http.Request) (accountCredentials, bool) {
+	request.Body = http.MaxBytesReader(writer, request.Body, 8<<10)
+	var credentials accountCredentials
+	decoder := json.NewDecoder(request.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&credentials); err != nil {
+		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "Ungültige Account-Daten."})
+		return accountCredentials{}, false
+	}
+	return credentials, true
+}
+
+func publicAccount(account storedAccount) map[string]string {
+	return map[string]string{"username": account.Username}
+}
+
+func (server *HTTPServer) beginAccountSession(writer http.ResponseWriter, request *http.Request, account storedAccount) bool {
+	token, err := server.accounts.createSession(strings.ToLower(account.Username))
+	if err != nil {
+		server.logger.Error("account session creation failed", "error", err)
+		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Sitzung konnte nicht erstellt werden."})
+		return false
+	}
+	secure := request.TLS != nil || strings.EqualFold(request.Header.Get("X-Forwarded-Proto"), "https")
+	http.SetCookie(writer, &http.Cookie{
+		Name: accountSessionCookie, Value: token, Path: "/", HttpOnly: true, Secure: secure,
+		SameSite: http.SameSiteStrictMode, MaxAge: int(accountSessionLifetime.Seconds()),
+		Expires: time.Now().Add(accountSessionLifetime),
+	})
+	return true
+}
+
+func (server *HTTPServer) registerAccount(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeJSON(writer, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	credentials, ok := server.readAccountCredentials(writer, request)
+	if !ok {
+		return
+	}
+	account, err := server.accounts.register(credentials.Username, credentials.Password)
+	if err != nil {
+		status := http.StatusBadRequest
+		message := "Account konnte nicht erstellt werden."
+		if errors.Is(err, errAccountExists) {
+			status = http.StatusConflict
+			message = "Dieser Benutzername ist bereits vergeben."
+		} else if errors.Is(err, errInvalidUsername) || errors.Is(err, errInvalidPassword) {
+			message = err.Error()
+		} else {
+			status = http.StatusServiceUnavailable
+			server.logger.Error("account registration failed", "error", err)
+		}
+		writeJSON(writer, status, map[string]string{"error": message})
+		return
+	}
+	if !server.beginAccountSession(writer, request, account) {
+		return
+	}
+	writeJSON(writer, http.StatusCreated, map[string]any{"user": publicAccount(account)})
+}
+
+func (server *HTTPServer) loginAccount(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeJSON(writer, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	credentials, ok := server.readAccountCredentials(writer, request)
+	if !ok {
+		return
+	}
+	account, err := server.accounts.authenticate(credentials.Username, credentials.Password)
+	if err != nil {
+		if !errors.Is(err, errInvalidCredentials) {
+			server.logger.Error("account login failed", "error", err)
+		}
+		writeJSON(writer, http.StatusUnauthorized, map[string]string{"error": "Benutzername oder Passwort ist falsch."})
+		return
+	}
+	if !server.beginAccountSession(writer, request, account) {
+		return
+	}
+	writeJSON(writer, http.StatusOK, map[string]any{"user": publicAccount(account)})
+}
+
+func (server *HTTPServer) authenticatedAccount(request *http.Request) (storedAccount, bool) {
+	cookie, err := request.Cookie(accountSessionCookie)
+	if err != nil || cookie.Value == "" {
+		return storedAccount{}, false
+	}
+	return server.accounts.session(cookie.Value)
+}
+
+func (server *HTTPServer) requireAccount(writer http.ResponseWriter, request *http.Request) bool {
+	if server.options.DisableAuth {
+		return true
+	}
+	if _, ok := server.authenticatedAccount(request); ok {
+		return true
+	}
+	writeJSON(writer, http.StatusUnauthorized, map[string]string{"error": "Bitte zuerst anmelden."})
+	return false
+}
+
+func (server *HTTPServer) accountSession(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet && request.Method != http.MethodHead {
+		writeJSON(writer, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	account, ok := server.authenticatedAccount(request)
+	if !ok {
+		writeJSON(writer, http.StatusUnauthorized, map[string]string{"error": "Keine aktive Anmeldung."})
+		return
+	}
+	writeJSON(writer, http.StatusOK, map[string]any{"user": publicAccount(account)})
+}
+
+func (server *HTTPServer) logoutAccount(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeJSON(writer, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	if cookie, err := request.Cookie(accountSessionCookie); err == nil {
+		server.accounts.deleteSession(cookie.Value)
+	}
+	http.SetCookie(writer, &http.Cookie{
+		Name: accountSessionCookie, Value: "", Path: "/", HttpOnly: true,
+		SameSite: http.SameSiteStrictMode, MaxAge: -1, Expires: time.Unix(1, 0),
+	})
+	writeJSON(writer, http.StatusOK, map[string]bool{"loggedOut": true})
+}
 
 func (server *HTTPServer) health(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet && request.Method != http.MethodHead {
@@ -118,6 +282,9 @@ func (server *HTTPServer) health(writer http.ResponseWriter, request *http.Reque
 }
 
 func (server *HTTPServer) config(writer http.ResponseWriter, request *http.Request) {
+	if !server.requireAccount(writer, request) {
+		return
+	}
 	if request.Method != http.MethodGet && request.Method != http.MethodHead {
 		writeJSON(writer, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
@@ -135,6 +302,9 @@ func (server *HTTPServer) config(writer http.ResponseWriter, request *http.Reque
 }
 
 func (server *HTTPServer) debugGame(writer http.ResponseWriter, request *http.Request) {
+	if !server.requireAccount(writer, request) {
+		return
+	}
 	if request.Method != http.MethodGet && request.Method != http.MethodHead {
 		writeJSON(writer, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
@@ -151,6 +321,9 @@ func (server *HTTPServer) debugGame(writer http.ResponseWriter, request *http.Re
 }
 
 func (server *HTTPServer) lobbyDefaults(writer http.ResponseWriter, request *http.Request) {
+	if !server.requireAccount(writer, request) {
+		return
+	}
 	if server.manager == nil {
 		writeJSON(writer, http.StatusNotFound, map[string]string{"error": "lobbies are disabled"})
 		return
@@ -163,6 +336,9 @@ func (server *HTTPServer) lobbyDefaults(writer http.ResponseWriter, request *htt
 }
 
 func (server *HTTPServer) lobbies(writer http.ResponseWriter, request *http.Request) {
+	if !server.requireAccount(writer, request) {
+		return
+	}
 	if server.manager == nil {
 		writeJSON(writer, http.StatusNotFound, map[string]string{"error": "lobbies are disabled"})
 		return
@@ -194,6 +370,9 @@ func (server *HTTPServer) lobbies(writer http.ResponseWriter, request *http.Requ
 }
 
 func (server *HTTPServer) lobbyByID(writer http.ResponseWriter, request *http.Request) {
+	if !server.requireAccount(writer, request) {
+		return
+	}
 	if server.manager == nil {
 		writeJSON(writer, http.StatusNotFound, map[string]string{"error": "lobbies are disabled"})
 		return
@@ -243,6 +422,9 @@ func (server *HTTPServer) matchForRequest(request *http.Request) (*Match, bool) 
 }
 
 func (server *HTTPServer) webSocket(writer http.ResponseWriter, request *http.Request) {
+	if !server.requireAccount(writer, request) {
+		return
+	}
 	if request.Method != http.MethodGet {
 		writeJSON(writer, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
@@ -268,9 +450,17 @@ func (server *HTTPServer) webSocket(writer http.ResponseWriter, request *http.Re
 		_ = connection.Close(websocket.StatusInternalError, "could not create player id")
 		return
 	}
+	playerName := request.URL.Query().Get("name")
+	if !server.options.DisableAuth {
+		if account, authenticated := server.authenticatedAccount(request); authenticated {
+			// The authenticated account is the multiplayer identity. Do not trust a
+			// caller-supplied websocket query to impersonate another display name.
+			playerName = account.Username
+		}
+	}
 	connected := newClient(
 		clientID, connection,
-		sanitizePlayerName(request.URL.Query().Get("name")),
+		sanitizePlayerName(playerName),
 		sanitizeCarStyle(request.URL.Query().Get("car")),
 		sanitizeBoostStyle(request.URL.Query().Get("boost")),
 	)

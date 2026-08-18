@@ -897,11 +897,6 @@ html, body, #app {
   background: rgba(4, 12, 24, 0.62);
 }
 
-.mobile-btn--fullscreen {
-  min-width: 38px;
-  font-size: 15px;
-}
-
 .mobile-orientation-hint {
   display: none;
   position: absolute;
@@ -2904,4 +2899,183 @@ section.lobby-settings-section .lobby-settings-grid { padding: 0; }
 
 @media (max-width: 620px) {
   .lobby-mode-select__grid { grid-template-columns: 1fr; }
+}
+
+/* Account gate ----------------------------------------------------------- */
+.account-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 340;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: max(22px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(22px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+  background:
+    radial-gradient(circle at 18% 18%, rgba(21, 168, 255, .24), transparent 38%),
+    radial-gradient(circle at 84% 78%, rgba(255, 130, 37, .20), transparent 36%),
+    linear-gradient(145deg, #07111f, #0a1828 52%, #120d12);
+  color: #f6fbff;
+  box-sizing: border-box;
+}
+.account-card {
+  width: min(470px, 100%);
+  padding: clamp(24px, 5vw, 42px);
+  border: 1px solid rgba(124, 205, 255, .28);
+  border-radius: 24px;
+  background: linear-gradient(155deg, rgba(10, 24, 42, .97), rgba(7, 15, 28, .97));
+  box-shadow: 0 32px 100px rgba(0, 0, 0, .52), inset 0 1px rgba(255, 255, 255, .07);
+}
+.account-card h1 { margin: 8px 0 8px; font-size: clamp(38px, 9vw, 62px); line-height: .95; letter-spacing: -.045em; }
+.account-card > p { margin: 0 0 22px; color: rgba(224, 239, 251, .62); font-size: 13px; line-height: 1.5; }
+.account-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-bottom: 18px; }
+.account-tabs button,
+.account-session button {
+  min-height: 42px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 10px;
+  color: rgba(236,247,255,.66);
+  background: rgba(255,255,255,.045);
+  font: 900 10px/1 system-ui, sans-serif;
+  letter-spacing: .1em;
+  cursor: pointer;
+}
+.account-tabs button.is-selected { color: #fff; border-color: rgba(80, 204, 255, .64); background: rgba(36, 144, 211, .28); }
+.account-form { display: grid; gap: 13px; }
+.account-form label { display: grid; gap: 7px; color: rgba(230,242,252,.72); font-size: 11px; font-weight: 850; letter-spacing: .05em; }
+.account-form input {
+  min-height: 48px;
+  padding: 0 13px;
+  box-sizing: border-box;
+  border: 1px solid rgba(132,196,239,.24);
+  border-radius: 10px;
+  outline: none;
+  color: #fff;
+  background: rgba(1, 8, 17, .66);
+  font: 700 16px/1 system-ui, sans-serif;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.account-form input:focus { border-color: #55ceff; box-shadow: 0 0 0 3px rgba(66, 190, 242, .12); }
+.account-form__hint { color: rgba(205,224,239,.45); font-size: 10px; line-height: 1.45; }
+.account-form__error { min-height: 17px; color: #ffb19e; font-size: 11px; font-weight: 750; }
+.account-form__submit {
+  min-height: 50px;
+  border: 1px solid rgba(87, 211, 255, .64);
+  border-radius: 11px;
+  color: #fff;
+  background: linear-gradient(180deg, #199ad7, #10679f);
+  font: 950 11px/1 system-ui, sans-serif;
+  letter-spacing: .13em;
+  cursor: pointer;
+}
+.account-form__submit:disabled { opacity: .55; cursor: wait; }
+.account-session { display: grid; gap: 7px; margin: 0 0 18px; padding: 14px; border: 1px solid rgba(79, 207, 255, .25); border-radius: 12px; background: rgba(26, 130, 184, .12); }
+.account-session > span { color: rgba(223,241,252,.55); font-size: 9px; font-weight: 850; letter-spacing: .12em; }
+.account-session > strong { font-size: 20px; }
+.account-session > div { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.account-session button:first-child { color: #fff; border-color: rgba(68,203,255,.48); background: rgba(28,141,198,.3); }
+
+/* Mobile match menu + persistent camera editor --------------------------- */
+.mobile-game-menu { display: none; }
+.mobile-active .mobile-game-menu { display: block; }
+.mobile-game-menu__trigger {
+  position: fixed;
+  z-index: 82;
+  right: calc(env(safe-area-inset-right, 0px) + 8px);
+  top: calc(env(safe-area-inset-top, 0px) + 7px);
+  width: 42px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(132, 215, 255, .35);
+  border-radius: 11px;
+  color: #fff;
+  background: rgba(5, 18, 34, .82);
+  box-shadow: 0 7px 22px rgba(0,0,0,.28);
+  backdrop-filter: blur(7px);
+  font: 900 21px/1 system-ui, sans-serif;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+.mobile-game-menu__overlay[hidden] { display: none !important; }
+.mobile-game-menu__overlay { position: fixed; inset: 0; z-index: 110; display: flex; justify-content: flex-end; }
+.mobile-game-menu__backdrop { position: absolute; inset: 0; border: 0; background: rgba(0, 5, 13, .62); backdrop-filter: blur(3px); }
+.mobile-game-menu__sheet {
+  position: relative;
+  width: min(480px, 92vw);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: max(12px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) 14px;
+  box-sizing: border-box;
+  border-left: 1px solid rgba(111, 204, 255, .28);
+  color: #f6fbff;
+  background: linear-gradient(155deg, rgba(7, 18, 33, .99), rgba(9, 27, 45, .99));
+  box-shadow: -24px 0 70px rgba(0,0,0,.48);
+  pointer-events: auto;
+  touch-action: pan-y;
+  user-select: none;
+}
+.mobile-game-menu__header { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 2px 2px 12px; border-bottom: 1px solid rgba(255,255,255,.09); }
+.mobile-game-menu__header > div { display: grid; gap: 2px; }
+.mobile-game-menu__header span { color: #67d4ff; font-size: 8px; font-weight: 900; letter-spacing: .16em; }
+.mobile-game-menu__header strong { font-size: 22px; letter-spacing: -.02em; }
+.mobile-game-menu__header button { width: 38px; height: 38px; border: 1px solid rgba(255,255,255,.13); border-radius: 10px; color: #fff; background: rgba(255,255,255,.06); font-size: 24px; }
+.mobile-game-menu__account { padding: 13px 2px; color: rgba(222,238,250,.48); font-size: 10px; }
+.mobile-game-menu__account strong { color: #b9ecff; }
+.mobile-game-menu__home { display: grid; gap: 10px; margin-top: auto; margin-bottom: auto; }
+.mobile-game-menu__home button,
+.mobile-game-menu__savebar button,
+.mobile-game-menu__subhead button,
+.mobile-game-menu__modes button {
+  min-height: 46px;
+  border: 1px solid rgba(255,255,255,.13);
+  border-radius: 11px;
+  color: #edf8ff;
+  background: rgba(255,255,255,.055);
+  font: 900 10px/1 system-ui, sans-serif;
+  letter-spacing: .1em;
+  touch-action: manipulation;
+}
+.mobile-game-menu__home .mobile-game-menu__primary { border-color: rgba(73,207,255,.55); background: linear-gradient(180deg, rgba(31,153,215,.62), rgba(13,94,147,.62)); }
+.mobile-game-menu__home .mobile-game-menu__danger { margin-top: 12px; color: #ffd6ce; border-color: rgba(255,111,82,.42); background: rgba(135,39,24,.26); }
+.mobile-game-menu__camera { min-height: 0; flex: 1; display: flex; flex-direction: column; }
+.mobile-game-menu__camera[hidden], .mobile-game-menu__home[hidden] { display: none !important; }
+.mobile-game-menu__subhead { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; margin-bottom: 9px; }
+.mobile-game-menu__subhead button { min-height: 34px; padding: 0 10px; font-size: 8px; }
+.mobile-game-menu__subhead strong { font-size: 15px; }
+.mobile-game-menu__modes { margin: 0 0 9px; padding: 0; border: 0; }
+.mobile-game-menu__modes legend { margin-bottom: 5px; color: rgba(224,239,251,.48); font-size: 8px; font-weight: 900; letter-spacing: .12em; }
+.mobile-game-menu__modes > div { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.mobile-game-menu__modes button { min-height: 38px; }
+.mobile-game-menu__modes button.is-selected { border-color: rgba(70,207,255,.65); color: #fff; background: rgba(30,137,196,.34); }
+.mobile-game-menu__settings { min-height: 0; overflow: auto; display: grid; gap: 8px; padding: 1px 3px 12px 1px; overscroll-behavior: contain; }
+.mobile-camera-setting { display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; padding: 9px 10px; border: 1px solid rgba(255,255,255,.075); border-radius: 10px; background: rgba(255,255,255,.028); }
+.mobile-camera-setting > span,
+.mobile-camera-toggle > span { display: grid; gap: 2px; min-width: 0; }
+.mobile-camera-setting strong,
+.mobile-camera-toggle strong { font-size: 10px; }
+.mobile-camera-setting small,
+.mobile-camera-toggle small { overflow: hidden; color: rgba(211,230,245,.42); font-size: 8px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.mobile-camera-setting output { color: #91e1ff; font: 850 9px/1.2 ui-monospace, monospace; }
+.mobile-camera-setting input[type="range"] { grid-column: 1 / -1; width: 100%; min-height: 24px; margin: 0; padding: 0; accent-color: #42cbff; touch-action: pan-x; }
+.mobile-camera-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px; border: 1px solid rgba(255,255,255,.075); border-radius: 10px; background: rgba(255,255,255,.028); }
+.mobile-camera-toggle input { width: 21px; height: 21px; accent-color: #42cbff; }
+.mobile-game-menu__savebar { display: grid; grid-template-columns: .7fr 1.3fr; gap: 8px; padding-top: 9px; border-top: 1px solid rgba(255,255,255,.08); }
+.mobile-game-menu__savebar button[type="submit"] { border-color: rgba(72,206,255,.58); background: linear-gradient(180deg, #198fcb, #106394); }
+.mobile-game-menu__status { min-height: 14px; padding-top: 6px; color: #9ee6ff; font-size: 9px; text-align: center; }
+.game-menu-open .mobile-controls { opacity: .18; pointer-events: none; }
+.mobile-active .hud__network { right: calc(env(safe-area-inset-right, 0px) + 58px); }
+
+@media (orientation: landscape) and (max-height: 480px) and (any-pointer: coarse) {
+  .mobile-game-menu__sheet { width: min(520px, 68vw); }
+  .mobile-game-menu__account { padding: 7px 2px; }
+  .mobile-game-menu__header { padding-bottom: 7px; }
+  .mobile-game-menu__header strong { font-size: 18px; }
+  .mobile-camera-setting { padding: 6px 8px; }
+  .mobile-camera-setting input[type="range"] { min-height: 19px; }
+  .mobile-game-menu__home { grid-template-columns: 1fr 1fr; }
+  .mobile-game-menu__home .mobile-game-menu__danger { grid-column: 1 / -1; margin-top: 0; }
 }

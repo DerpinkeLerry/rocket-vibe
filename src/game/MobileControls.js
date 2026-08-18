@@ -1,5 +1,3 @@
-import { canRequestFullscreen, isFullscreenActive, toggleGameFullscreen } from './Fullscreen.js';
-
 const MICRO_DEAD_ZONE = 0.018;
 const ANALOG_SOURCE = 'mobile-stick-analog';
 
@@ -127,7 +125,6 @@ export class MobileControls {
     this.analogFrame = 0;
     this.analogLastTime = 0;
     this.buttonPointers = new Map();
-    this.fullscreenButton = null;
     this.quickChatButton = null;
     this.quickChatHandler = null;
     this.quickChatCooldownTimer = null;
@@ -153,7 +150,6 @@ export class MobileControls {
         <div class="mobile-controls__utility">
           <button class="mobile-btn mobile-btn--utility" type="button" data-key="KeyC" data-tap data-camera-button aria-label="Kamera wechseln">BALL</button>
           <button class="mobile-btn mobile-btn--utility" type="button" data-key="KeyR" data-tap aria-label="Auto zurücksetzen">↻</button>
-          <button class="mobile-btn mobile-btn--utility mobile-btn--fullscreen" type="button" data-fullscreen aria-label="Vollbild">⛶</button>
         </div>
         <div class="mobile-controls__quickchat">
           <button class="mobile-btn mobile-btn--quickchat" type="button" data-quick-chat aria-label="Chat öffnen">CHAT</button>
@@ -178,14 +174,12 @@ export class MobileControls {
 
     this.stick = this.el.querySelector('[data-stick]');
     this.stickKnob = this.el.querySelector('[data-stick-knob]');
-    this.fullscreenButton = this.el.querySelector('[data-fullscreen]');
     this.cameraButton = this.el.querySelector('[data-camera-button]');
     this.quickChatButton = this.el.querySelector('[data-quick-chat]');
 
     this.bindStick();
     this.bindButtons();
     this.bindLifecycle();
-    this.updateFullscreenAvailability();
   }
 
   setVehicleSpeed(speedKmh = 0) {
@@ -378,14 +372,6 @@ export class MobileControls {
     this.quickChatButton?.addEventListener('pointerdown', onQuickChat, { passive: false });
     this.destroyers.push(() => this.quickChatButton?.removeEventListener('pointerdown', onQuickChat));
 
-    const onFullscreen = async (event) => {
-      event.preventDefault();
-      vibrate(8);
-      await toggleGameFullscreen(document.documentElement);
-      this.updateFullscreenAvailability();
-    };
-    this.fullscreenButton?.addEventListener('click', onFullscreen);
-    this.destroyers.push(() => this.fullscreenButton?.removeEventListener('click', onFullscreen));
   }
 
   bindLifecycle() {
@@ -393,19 +379,14 @@ export class MobileControls {
     const onVisibility = () => {
       if (document.hidden) this.releaseAll();
     };
-    const onFullscreenChange = () => this.updateFullscreenAvailability();
     const onContextMenu = (event) => event.preventDefault();
 
     window.addEventListener('blur', releaseAll);
     document.addEventListener('visibilitychange', onVisibility);
-    document.addEventListener('fullscreenchange', onFullscreenChange);
-    document.addEventListener('webkitfullscreenchange', onFullscreenChange);
     this.el.addEventListener('contextmenu', onContextMenu);
     this.destroyers.push(() => {
       window.removeEventListener('blur', releaseAll);
       document.removeEventListener('visibilitychange', onVisibility);
-      document.removeEventListener('fullscreenchange', onFullscreenChange);
-      document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
       this.el.removeEventListener('contextmenu', onContextMenu);
     });
   }
@@ -432,18 +413,6 @@ export class MobileControls {
     const carMode = mode === 'CAR';
     this.cameraButton.textContent = carMode ? 'CAR' : 'BALL';
     this.cameraButton.setAttribute('aria-label', `Kamera wechseln · aktuell ${carMode ? 'Car Cam' : 'Ball Cam'}`);
-  }
-
-  updateFullscreenAvailability() {
-    if (!this.fullscreenButton) return;
-    const active = isFullscreenActive();
-    const supported = canRequestFullscreen(document.documentElement);
-    this.fullscreenButton.hidden = false;
-    this.fullscreenButton.textContent = active ? '×' : '⛶';
-    this.fullscreenButton.setAttribute(
-      'aria-label',
-      active ? 'Vollbild verlassen' : (supported ? 'Vollbild' : 'Browser-Vollbild versuchen')
-    );
   }
 
   releaseAll() {

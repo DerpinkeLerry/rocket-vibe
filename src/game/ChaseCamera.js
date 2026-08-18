@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { getBallCamHighBallAssist } from '../shared/camera-tuning.js';
+import { normalizeCameraSettings } from './CameraSettings.js';
 
 const MODE_BALL = 'BALL';
 const MODE_CAR = 'CAR';
@@ -24,12 +25,13 @@ function isDescendantOf(object, root) {
 // raycast from the camera to the local car and temporarily hide any meshes in
 // the way, so walls, goal geometry, ramps, stands, etc. never block the car.
 export class ChaseCamera {
-  constructor(camera, car, ball, scene = car.scene) {
+  constructor(camera, car, ball, scene = car.scene, settings = {}) {
     this.camera = camera;
     this.car = car;
     this.ball = ball;
     this.scene = scene;
-    this.mode = MODE_BALL;
+    this.settings = normalizeCameraSettings(settings);
+    this.mode = this.settings.mode;
     this.replaySavedCar = null;
     this.replaySavedMode = null;
     this.goalCelebrationActive = false;
@@ -64,11 +66,28 @@ export class ChaseCamera {
 
   toggleMode() {
     this.mode = this.mode === MODE_BALL ? MODE_CAR : MODE_BALL;
+    this.settings.mode = this.mode;
     return this.mode;
   }
 
   getMode() {
     return this.mode;
+  }
+
+  setMode(mode) {
+    this.mode = mode === MODE_CAR ? MODE_CAR : MODE_BALL;
+    this.settings.mode = this.mode;
+    return this.mode;
+  }
+
+  getSettings() {
+    return { ...this.settings, mode: this.mode };
+  }
+
+  setSettings(settings = {}) {
+    this.settings = normalizeCameraSettings({ ...this.settings, ...settings });
+    this.mode = this.settings.mode;
+    return this.getSettings();
   }
 
   setGoalCelebrationActive(active) {
@@ -191,14 +210,14 @@ export class ChaseCamera {
     else if (this.mode === MODE_BALL) this.updateBallCam(dt, speed);
     else this.updateCarCam(dt, speed);
 
-    const positionT = 1 - Math.exp(-14.5 * dt);
+    const positionT = 1 - Math.exp(-this.settings.positionStiffness * dt);
     this.position.lerp(this.desired, positionT);
     this.camera.position.copy(this.position);
 
     // Normal ball-cam keeps the car almost perfectly centered. When the ball is
     // very high above us, a smooth high-ball assist raises both camera and aim
     // target so the ball remains visible instead of disappearing above the FOV.
-    const lookT = 1 - Math.exp(-13.5 * dt);
+    const lookT = 1 - Math.exp(-this.settings.lookStiffness * dt);
     if (this.lookTarget.lengthSq() < 0.0001) this.lookTarget.copy(this.desiredLookTarget);
     else this.lookTarget.lerp(this.desiredLookTarget, lookT);
     this.camera.up.set(0, 1, 0);
@@ -253,45 +272,49 @@ export class ChaseCamera {
       this.targetOrbitDirection.copy(this.carHeadingDirection);
     }
 
-    const orbitT = 1 - Math.exp(-11.5 * dt);
+    const orbitT = 1 - Math.exp(-this.settings.rotationStiffness * dt);
     this.orbitDirection.lerp(this.targetOrbitDirection, orbitT);
     if (this.orbitDirection.lengthSq() < 0.0001) this.orbitDirection.copy(this.targetOrbitDirection);
     this.orbitDirection.normalize();
 
     const ballHeight = this.ballPosition.y - this.pivot.y;
     const highBall = getBallCamHighBallAssist(ballHeight);
-    const distance = 7.45
-      + speed * 1.0
+    const distance = this.settings.distance + 0.15
+      + speed * this.settings.speedDistance
       + THREE.MathUtils.clamp(fullBallDistance * 0.012, 0, 1.15)
-      + highBall.distanceExtra;
+      + highBall.distanceExtra * this.settings.highBallAssist;
 
     // Rocket-style high-ball assist: rise and pull back as the ball climbs. The
     // camera only starts giving up exact car centering once the ball is several
     // metres overhead, which keeps normal driving stable but makes aerial reads
     // possible directly underneath the ball.
     const height = THREE.MathUtils.clamp(
-      3.0 + speed * 0.3 + highBall.heightExtra,
-      2.2,
-      15.0
+      this.settings.height + 0.1
+        + speed * this.settings.speedHeight
+        + highBall.heightExtra * this.settings.highBallAssist,
+      0.7,
+      18.0
     );
-    const lookLift = highBall.lookLift;
+    const lookLift = highBall.lookLift * this.settings.highBallAssist;
 
     this.desired.copy(this.pivot)
       .addScaledVector(this.orbitDirection, -distance);
     this.desired.y += height;
     this.desiredLookTarget.copy(this.pivot);
-    this.desiredLookTarget.y += lookLift;
+    this.desiredLookTarget.y += this.settings.lookHeight + lookLift;
   }
 
   updateCarCam(dt, speed) {
     this.updateCarHeadingDirection(dt);
 
-    const distance = 7.15 + speed * 0.9;
-    const height = 2.85 + speed * 0.28;
+    const distance = this.settings.distance - 0.15 + speed * this.settings.speedDistance;
+    const height = this.settings.height - 0.05 + speed * this.settings.speedHeight;
 
     this.desired.copy(this.pivot)
       .addScaledVector(this.carHeadingDirection, -distance);
     this.desired.y += height;
+    this.desiredLookTarget.copy(this.pivot);
+    this.desiredLookTarget.y += this.settings.lookHeight;
   }
 
   updateCarHeadingDirection(dt) {
@@ -302,7 +325,7 @@ export class ChaseCamera {
       this.targetOrbitDirection.normalize();
     }
 
-    const headingT = 1 - Math.exp(-13 * dt);
+    const headingT = 1 - Math.exp(-this.settings.rotationStiffness * dt);
     this.carHeadingDirection.lerp(this.targetOrbitDirection, headingT);
     if (this.carHeadingDirection.lengthSq() < 0.0001) this.carHeadingDirection.set(0, 0, -1);
     this.carHeadingDirection.normalize();
@@ -313,7 +336,7 @@ export class ChaseCamera {
   // camera pass outside/behind arena walls and through goal/stand geometry.
   prepareRender() {
     this.restoreOccluders();
-    if (!this.scene || this.respawnSelectionActive) return;
+    if (!this.scene || this.respawnSelectionActive || !this.settings.occlusion) return;
 
     if (!this.occlusionCandidates) {
       this.occlusionCandidates = [];

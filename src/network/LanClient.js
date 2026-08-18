@@ -539,6 +539,14 @@ export class LanClient {
     this.pingTimer = null;
   }
 
+  disconnect() {
+    this.connected = false;
+    this.stopPing();
+    const socket = this.socket;
+    this.socket = null;
+    if (socket && socket.readyState < WebSocket.CLOSING) socket.close(1000, 'match left');
+  }
+
   statusText(state) {
     return `${this.playerName || `SPIELER ${this.playerId + 1}`} · ${this.team.toUpperCase()} · ${state} · ${this.connectedPlayers.length}/${this.maxPlayers}`;
   }

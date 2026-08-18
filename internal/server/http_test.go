@@ -28,7 +28,7 @@ func TestHTTPAndWebSocketIntegration(t *testing.T) {
 	match := NewMatch(ctx, game.DefaultConfig())
 	defer match.Stop()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	app := NewHTTPServer(match, HTTPOptions{StaticDirectory: staticDirectory, Version: "test"}, logger)
+	app := NewHTTPServer(match, HTTPOptions{StaticDirectory: staticDirectory, Version: "test", DisableAuth: true}, logger)
 	httpServer := httptest.NewServer(app.Handler())
 	defer httpServer.Close()
 
@@ -106,7 +106,7 @@ func TestEightPlayerCapacityAndNinthPlayerRejection(t *testing.T) {
 	match := NewMatch(ctx, config)
 	defer match.Stop()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	app := NewHTTPServer(match, HTTPOptions{StaticDirectory: ".", Version: "test"}, logger)
+	app := NewHTTPServer(match, HTTPOptions{StaticDirectory: ".", Version: "test", DisableAuth: true}, logger)
 	httpServer := httptest.NewServer(app.Handler())
 	defer httpServer.Close()
 	webSocketURL := "ws" + strings.TrimPrefix(httpServer.URL, "http") + "/lan"
@@ -172,7 +172,7 @@ func TestLobbyDeleteEndpointIsAvailableWithoutOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	app := NewLobbyHTTPServer(manager, HTTPOptions{StaticDirectory: t.TempDir(), Version: "test"}, logger)
+	app := NewLobbyHTTPServer(manager, HTTPOptions{StaticDirectory: t.TempDir(), Version: "test", DisableAuth: true}, logger)
 
 	request := httptest.NewRequest(http.MethodDelete, "/api/lobbies/"+lobby.ID, nil)
 	response := httptest.NewRecorder()
