@@ -3430,3 +3430,226 @@ section.lobby-settings-section .lobby-settings-grid { padding: 0; }
   .mobile-game-menu__sheet { width: min(480px, 64vw); height: 100%; border-top: 0; border-left: 1px solid rgba(111,204,255,.30); border-radius: 0; }
   .mobile-game-menu__home { margin-top: auto; margin-bottom: auto; }
 }
+
+/* Unified compact + notch-safe shell ------------------------------------
+   Full-bleed game rendering stays untouched, while every interactive screen
+   lives inside the hardware safe area on notched iPhones and similar phones. */
+:root {
+  --rv-safe-top: env(safe-area-inset-top, 0px);
+  --rv-safe-right: env(safe-area-inset-right, 0px);
+  --rv-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --rv-safe-left: env(safe-area-inset-left, 0px);
+  --rv-page-gap: clamp(12px, 2.2vw, 24px);
+}
+
+.join-screen,
+.account-screen,
+.lobby-screen,
+.game-loading {
+  padding-top: max(var(--rv-page-gap), var(--rv-safe-top));
+  padding-right: max(var(--rv-page-gap), var(--rv-safe-right));
+  padding-bottom: max(var(--rv-page-gap), var(--rv-safe-bottom));
+  padding-left: max(var(--rv-page-gap), var(--rv-safe-left));
+}
+
+.join-card,
+.account-card,
+.lobby-browser,
+.lobby-create-card,
+.game-loading__card { max-width: 100%; }
+
+/* The three-action menu is a small popover. Only the camera editor expands. */
+.mobile-game-menu__overlay {
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding-top: max(55px, calc(var(--rv-safe-top) + 48px));
+  padding-right: max(10px, var(--rv-safe-right));
+  padding-bottom: max(10px, var(--rv-safe-bottom));
+  padding-left: max(10px, var(--rv-safe-left));
+}
+.mobile-game-menu__sheet {
+  width: min(330px, 100%);
+  height: auto;
+  max-height: calc(100dvh - max(65px, var(--rv-safe-top)) - max(10px, var(--rv-safe-bottom)));
+  padding: 11px;
+  border: 1px solid rgba(111, 204, 255, .28);
+  border-radius: 15px;
+  box-shadow: 0 18px 54px rgba(0,0,0,.52);
+}
+.mobile-game-menu__header { padding: 0 0 7px; }
+.mobile-game-menu__header strong { font-size: 17px; }
+.mobile-game-menu__header button { width: 32px; height: 32px; border-radius: 8px; font-size: 19px; }
+.mobile-game-menu__account { padding: 6px 1px; font-size: 8px; }
+.mobile-game-menu__home {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin: 2px 0 0;
+}
+.mobile-game-menu__home button { min-height: 40px; padding: 7px 8px; border-radius: 9px; font-size: 8px; line-height: 1.2; }
+.mobile-game-menu__home .mobile-game-menu__primary { grid-column: 1 / -1; }
+.mobile-game-menu__home .mobile-game-menu__danger { margin-top: 0; }
+
+.mobile-game-menu.is-camera-editor .mobile-game-menu__overlay { align-items: center; }
+.mobile-game-menu.is-camera-editor .mobile-game-menu__sheet {
+  width: min(680px, 100%);
+  height: min(720px, calc(100dvh - max(20px, var(--rv-safe-top)) - max(20px, var(--rv-safe-bottom))));
+  max-height: 100%;
+  padding: 12px;
+}
+.mobile-game-menu.is-camera-editor .mobile-game-menu__settings {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.mobile-game-menu.is-camera-editor .mobile-camera-toggle { grid-column: 1 / -1; }
+
+@media (min-width: 721px) {
+  .account-card { width: min(410px, 100%); padding: 27px; border-radius: 19px; }
+  .account-card h1 { font-size: clamp(36px, 5vw, 46px); }
+  .account-card > p { margin-bottom: 15px; font-size: 11px; }
+  .account-tabs { margin-bottom: 12px; }
+  .account-form { gap: 9px; }
+  .account-form input { min-height: 43px; }
+  .account-form__submit,
+  .account-guest > button { min-height: 43px; }
+  .account-guest { margin-top: 11px; }
+
+  .join-card--wide { width: min(720px, 100%); padding: 23px; border-radius: 18px; }
+  .join-card h1 { font-size: 30px; }
+  .join-card p { margin-bottom: 15px; font-size: 12px; }
+  .join-card__fullscreen-row { margin-bottom: 12px; }
+  .car-select,
+  .boost-select,
+  .graphics-select { margin-top: 12px; }
+  .car-select__grid,
+  .boost-select__grid,
+  .graphics-select__grid { gap: 7px; }
+  .car-choice,
+  .boost-choice { padding: 7px; border-radius: 10px; }
+  .graphics-choice { min-height: 62px; padding: 9px 10px; border-radius: 10px; }
+  .car-choice__desc,
+  .boost-choice__desc,
+  .graphics-choice__desc { font-size: 9px; }
+
+  .lobby-screen { padding-top: max(22px, var(--rv-safe-top)); padding-bottom: max(22px, var(--rv-safe-bottom)); }
+  .lobby-browser { width: min(900px, 100%); }
+  .lobby-browser__header { margin-bottom: 15px; }
+  .lobby-browser__header h1,
+  .lobby-create-card h1 { font-size: clamp(38px, 5vw, 52px); }
+  .lobby-create-button { min-height: 42px; }
+  .lobby-list { gap: 7px; }
+  .lobby-row { min-height: 70px; padding: 12px 14px; border-radius: 12px; }
+  .lobby-row__main { gap: 4px; }
+  .lobby-row__main strong { font-size: 16px; }
+  .lobby-delete-button { min-width: 72px; border-radius: 12px; }
+  .lobby-create-card { width: min(960px, 100%); padding-bottom: 24px; }
+  section.lobby-settings-section { padding: 13px; }
+  .lobby-settings-section summary { min-height: 45px; }
+  .lobby-settings-grid { padding: 11px; }
+  .lobby-create-submit { min-height: 46px; }
+
+  .chat-panel { padding: 0 0 max(80px, var(--rv-safe-bottom)) max(16px, var(--rv-safe-left)); }
+  .chat-panel__card { width: min(470px, calc(100vw - 32px)); max-height: min(64dvh, 580px); }
+  .chat-panel__header { padding: 10px 12px; }
+  .chat-panel__header strong { font-size: 17px; }
+  .chat-panel__tabs button { min-height: 39px; font-size: 10px; }
+  .chat-panel__content { padding: 10px; }
+  .chat-panel__quick-button { min-height: 41px; padding: 7px 9px; font-size: 11px; }
+
+  .game-loading__card { width: min(420px, 100%); padding: 24px; border-radius: 18px; }
+  .game-loading__mark { width: 58px; height: 58px; margin: 14px auto; }
+}
+
+@media (max-width: 720px) {
+  :root { --rv-page-gap: 10px; }
+
+  .join-screen,
+  .account-screen,
+  .lobby-screen,
+  .game-loading {
+    padding-top: max(10px, var(--rv-safe-top));
+    padding-right: max(10px, var(--rv-safe-right));
+    padding-bottom: max(10px, var(--rv-safe-bottom));
+    padding-left: max(10px, var(--rv-safe-left));
+  }
+  .join-card--wide { width: min(500px, 100%); }
+  .account-card { width: min(390px, 100%); }
+  .lobby-browser,
+  .lobby-create-card { width: min(560px, 100%); }
+
+  .chat-panel {
+    padding-top: max(6px, var(--rv-safe-top));
+    padding-right: max(7px, var(--rv-safe-right));
+    padding-bottom: max(7px, var(--rv-safe-bottom));
+    padding-left: max(7px, var(--rv-safe-left));
+  }
+  .chat-panel__card { width: min(500px, 100%); }
+
+  .mobile-game-menu__overlay {
+    align-items: flex-end;
+    justify-content: center;
+    padding-top: max(9px, var(--rv-safe-top));
+    padding-right: max(9px, var(--rv-safe-right));
+    padding-bottom: max(9px, var(--rv-safe-bottom));
+    padding-left: max(9px, var(--rv-safe-left));
+  }
+  .mobile-game-menu__sheet {
+    width: min(360px, 100%);
+    height: auto;
+    max-height: calc(100dvh - max(18px, var(--rv-safe-top)) - max(18px, var(--rv-safe-bottom)));
+    padding: 10px;
+    border-radius: 15px;
+  }
+  .mobile-game-menu__home { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; margin: 2px 0 0; }
+  .mobile-game-menu__home button {
+    min-height: 40px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    place-items: center;
+    gap: 6px;
+    padding: 6px 7px;
+    font-size: 7px;
+    text-align: left;
+  }
+  .mobile-game-menu__home button::before { display: inline; margin: 0; font-size: 14px; }
+  .mobile-game-menu__home .mobile-game-menu__primary { grid-column: 1 / -1; }
+
+  .mobile-game-menu.is-camera-editor .mobile-game-menu__overlay { align-items: flex-end; }
+  .mobile-game-menu.is-camera-editor .mobile-game-menu__sheet {
+    width: min(610px, 100%);
+    height: min(76dvh, calc(100dvh - max(18px, var(--rv-safe-top)) - max(18px, var(--rv-safe-bottom))));
+    padding: 9px;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 500px) and (any-pointer: coarse) {
+  :root { --rv-page-gap: 8px; }
+  .join-screen,
+  .account-screen,
+  .lobby-screen,
+  .game-loading {
+    padding-top: max(8px, var(--rv-safe-top));
+    padding-right: max(12px, var(--rv-safe-right));
+    padding-bottom: max(8px, var(--rv-safe-bottom));
+    padding-left: max(12px, var(--rv-safe-left));
+  }
+  .mobile-game-menu__overlay {
+    align-items: center;
+    justify-content: flex-end;
+    padding-top: max(8px, var(--rv-safe-top));
+    padding-right: max(10px, var(--rv-safe-right));
+    padding-bottom: max(8px, var(--rv-safe-bottom));
+    padding-left: max(10px, var(--rv-safe-left));
+  }
+  .mobile-game-menu__sheet { width: min(320px, 48vw); height: auto; border-radius: 14px; }
+  .mobile-game-menu.is-camera-editor .mobile-game-menu__sheet {
+    width: min(610px, 72vw);
+    height: calc(100dvh - max(16px, var(--rv-safe-top)) - max(16px, var(--rv-safe-bottom)));
+  }
+  .chat-panel {
+    padding-top: max(6px, var(--rv-safe-top));
+    padding-right: max(8px, var(--rv-safe-right));
+    padding-bottom: max(6px, var(--rv-safe-bottom));
+    padding-left: max(8px, var(--rv-safe-left));
+  }
+  .chat-panel__card { width: min(470px, 64vw); max-height: 92dvh; }
+}

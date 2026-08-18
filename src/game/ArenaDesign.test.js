@@ -56,3 +56,24 @@ test('glass walls use glowing team-coloured hexagons instead of black rectangula
   assert.doesNotMatch(source, /arena-glass-grid/);
   assert.doesNotMatch(source, /new THREE\.MeshBasicMaterial\(\{ color: 0x111b24 \}\)/);
 });
+
+test('team wall meshes meet cleanly at midfield without coplanar overlap', () => {
+  assert.match(source, /midfieldTeamSeam:\s*true/);
+  assert.match(source, /visualPanelLength\s*\(/);
+  assert.match(source, /panel\.midfieldTeamSeam\) return Math\.max\(0\.01, panel\.length - 0\.02\)/);
+  assert.match(source, /this\.visualPanelLength\(panel, options\.lengthScale/);
+  assert.match(source, /this\.visualPanelLength\(panel, 1\.022\)/);
+});
+
+test('goal mouth has no protruding vertical ramp meshes or colliders', () => {
+  assert.match(source, /const roundedPanels = panels\.filter\(\(panel\) => !panel\.goalMouth\)/);
+  assert.match(source, /minY:\s*\(panel\) => panel\.goalMouth \? 0 : GOAL_R/);
+  assert.match(source, /const isMouthFillet = panel\.goalMouth === true/);
+  assert.match(source, /if \(!isMouthFillet\) \{[\s\S]*?this\.addRoundedTunnelRampPhysics/);
+});
+
+test('high graphics keeps supported lamps but removes floating exterior steel bars', () => {
+  assert.match(source, /arena-ultra-stadium-lamps/);
+  assert.doesNotMatch(source, /const beamData = \[\]/);
+  assert.doesNotMatch(source, /this\.group\.add\(beams\)/);
+});

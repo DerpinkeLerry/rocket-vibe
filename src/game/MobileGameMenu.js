@@ -129,6 +129,7 @@ export class MobileGameMenu {
     this.open = false;
     this.overlay.hidden = true;
     this.trigger.setAttribute('aria-expanded', 'false');
+    this.el.classList.remove('is-camera-editor');
     this.root.classList.remove('game-menu-open');
     this.onOpenChange?.(false);
   }
@@ -140,6 +141,7 @@ export class MobileGameMenu {
     }
     this.home.hidden = false;
     this.cameraForm.hidden = true;
+    this.el.classList.remove('is-camera-editor');
     this.status.textContent = '';
   }
 
@@ -149,6 +151,7 @@ export class MobileGameMenu {
     this.renderCameraForm();
     this.home.hidden = true;
     this.cameraForm.hidden = false;
+    this.el.classList.add('is-camera-editor');
     this.cameraForm.querySelector('input')?.focus?.({ preventScroll: true });
   }
 
@@ -235,6 +238,7 @@ export class MobileGameMenu {
   destroy() {
     this.root.classList.remove('game-menu-open');
     this.root.classList.remove('game-menu-enabled');
+    this.el?.classList.remove('is-camera-editor');
     this.el?.remove();
   }
 }

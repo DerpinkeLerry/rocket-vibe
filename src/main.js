@@ -56,6 +56,18 @@ function rememberedBoostStyle() {
   }
 }
 
+function consumeLobbyReturnRequest() {
+  const url = new URL(window.location.href);
+  if (url.searchParams.get('return') !== 'lobbies') return false;
+  url.searchParams.delete('return');
+  try {
+    window.history.replaceState(null, '', url.toString());
+  } catch {
+    // A locked-down embedded browser may keep the harmless return marker.
+  }
+  return true;
+}
+
 function boostColor(value) {
   return `#${Number(value).toString(16).padStart(6, '0')}`;
 }
@@ -855,7 +867,8 @@ async function boot() {
   let loadingScreen = null;
 
   if (multiplayerEnabled) {
-    account = await requestAuthentication(app);
+    const returnToLobbies = consumeLobbyReturnRequest();
+    account = await requestAuthentication(app, { autoContinue: returnToLobbies });
     let lobbyNotice = '';
     while (!network) {
       const lobby = await requestLobby(app, lobbyNotice);

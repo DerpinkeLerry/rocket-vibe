@@ -880,18 +880,30 @@ export class Game {
       console.warn('Match disconnect failed; returning to the lobby anyway.', error);
     }
 
-    // Navigating to the same application URL performs a clean teardown and
-    // returns to account/lobby selection. The delayed reload is a fallback for
-    // embedded browsers that ignore a same-URL assign while a socket closes.
+    // A short-lived route marker lets startup resume the valid account/guest
+    // session directly at the lobby browser instead of showing the account gate.
     const destination = new URL(window.location.href);
     destination.hash = '';
+    destination.searchParams.set('return', 'lobbies');
+    const destinationHref = destination.toString();
     try {
-      window.location.assign(destination.toString());
+      window.location.replace(destinationHref);
     } catch (error) {
-      console.warn('Lobby navigation was blocked; forcing a reload.', error);
-      window.location.reload();
+      console.warn('Lobby navigation was blocked; trying a normal navigation.', error);
+      try {
+        window.location.assign(destinationHref);
+      } catch {
+        window.location.reload();
+      }
     }
-    window.setTimeout(() => window.location.reload(), 250);
+    // Some embedded browsers delay navigation while the WebSocket closes.
+    window.setTimeout(() => {
+      try {
+        window.location.replace(destinationHref);
+      } catch {
+        window.location.reload();
+      }
+    }, 250);
   }
 
   start() {

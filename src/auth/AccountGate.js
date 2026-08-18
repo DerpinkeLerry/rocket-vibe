@@ -25,10 +25,11 @@ async function authRequest(path, options = {}) {
   return payload;
 }
 
-export function requestAuthentication(root) {
+export function requestAuthentication(root, options = {}) {
   return new Promise(async (resolve) => {
     const overlay = document.createElement('div');
     overlay.className = 'account-screen';
+    if (options.autoContinue) overlay.style.display = 'none';
     overlay.innerHTML = `
       <section class="account-card" aria-labelledby="account-title">
         <div class="join-card__eyebrow">ROCKET VIBE ACCOUNT</div>
@@ -130,6 +131,12 @@ export function requestAuthentication(root) {
     } catch {
       currentUser = null;
     }
+
+    if (options.autoContinue && (currentUser?.username || currentUser?.guest)) {
+      finish(currentUser);
+      return;
+    }
+    overlay.style.display = '';
 
     if (currentUser?.username || currentUser?.guest) {
       session.hidden = false;

@@ -313,7 +313,8 @@ export class Arena {
             ...panel,
             z: sign * halfLength * 0.5,
             length: halfLength,
-            teamSign: sign
+            teamSign: sign,
+            midfieldTeamSeam: true
           });
         }
         continue;
@@ -321,6 +322,15 @@ export class Arena {
       result.push({ ...panel, teamSign: this.panelTeamSign(panel) });
     }
     return result;
+  }
+
+  visualPanelLength(panel, lengthScale = 1) {
+    // Curved panel runs overlap very slightly to hide cracks between facets.
+    // The two differently coloured side-wall halves are coplanar, though, so
+    // that same overlap causes severe z-fighting at midfield. Keep a hairline
+    // clearance there while retaining the overlap everywhere else.
+    if (panel.midfieldTeamSeam) return Math.max(0.01, panel.length - 0.02);
+    return Math.max(0.01, panel.length * lengthScale);
   }
 
   createUltraLowVisual() {
@@ -1534,7 +1544,7 @@ export class Arena {
       const minY = minYFor(panel);
       const maxY = maxYFor(panel);
       const height = Math.max(0.01, maxY - minY);
-      const length = Math.max(0.01, panel.length * (options.lengthScale ?? 1.0));
+      const length = this.visualPanelLength(panel, options.lengthScale ?? 1.0);
       const tangentX = Math.cos(panel.yaw);
       const tangentZ = -Math.sin(panel.yaw);
       const inwardX = -panel.nx;
@@ -1592,7 +1602,7 @@ export class Arena {
       const boundaryZ = panel.z - panel.nz * WALL_T * 0.5;
       const tangentX = panel.nz;
       const tangentZ = -panel.nx;
-      const length = panel.length * (options.lengthScale ?? 1.025);
+      const length = this.visualPanelLength(panel, options.lengthScale ?? 1.025);
       const halfLength = length * 0.5;
       const firstVertex = positions.length / 3;
 
@@ -1790,7 +1800,7 @@ export class Arena {
       const surfaceZ = panel.z - panel.nz * (WALL_T * 0.5 + 0.018);
       dummy.position.set(surfaceX, minY + 0.14, surfaceZ);
       dummy.rotation.set(0, panel.yaw, 0);
-      dummy.scale.set(panel.length * 1.022, 0.16, 0.27);
+      dummy.scale.set(this.visualPanelLength(panel, 1.022), 0.16, 0.27);
       dummy.updateMatrix();
       accents.setMatrixAt(panelIndex, dummy.matrix);
       accents.setColorAt(panelIndex, this.panelTeamSign(panel) > 0 ? orange : blue);
@@ -2197,14 +2207,20 @@ export class Arena {
 
   createGoalTunnel(sign, wallMaterial, floorMaterial, teamColor) {
     const panels = this.buildGoalBoundarySegments(sign);
+    const roundedPanels = panels.filter((panel) => !panel.goalMouth);
     const wallHeight = Math.max(0.4, GOAL_H - GOAL_R * 2);
 
     // A single continuous inner face replaces the old row of scaled cubes.
     // Its UVs follow every mouth/back fillet so the tile pattern and silhouette
     // remain visually connected from the field wall into the tunnel.
     this.createPanelSurfaceMesh(panels, wallMaterial, {
-      minY: GOAL_R,
-      maxY: GOAL_R + wallHeight,
+      // The horizontal mouth fillet is already rounded in plan. Giving every
+      // tiny fillet panel another vertical quarter-pipe creates a fan of long
+      // plates that sticks into the field above and below the goal. A clean
+      // full-height mouth wall removes that overhang; the tunnel proper keeps
+      // its smooth floor/ceiling transitions.
+      minY: (panel) => panel.goalMouth ? 0 : GOAL_R,
+      maxY: (panel) => panel.goalMouth ? GOAL_H : GOAL_R + wallHeight,
       lengthScale: 1.035,
       tileWidth: 2.8,
       tileHeight: 0.72,
@@ -2216,8 +2232,8 @@ export class Arena {
     const upperMaterial = wallMaterial.clone();
     lowerMaterial.side = THREE.DoubleSide;
     upperMaterial.side = THREE.DoubleSide;
-    this.createRoundedTunnelRampVisual(panels, GOAL_R, GOAL_H, false, lowerMaterial);
-    this.createRoundedTunnelRampVisual(panels, GOAL_R, GOAL_H, true, upperMaterial);
+    this.createRoundedTunnelRampVisual(roundedPanels, GOAL_R, GOAL_H, false, lowerMaterial);
+    this.createRoundedTunnelRampVisual(roundedPanels, GOAL_R, GOAL_H, true, upperMaterial);
     this.createGoalWallGrid(panels, teamColor);
 
     const halfLength = FIELD_L * 0.5;
@@ -2534,22 +2550,30 @@ export class Arena {
     if (!this.basketballMode) {
       for (const sign of [-1, 1]) {
         const panels = this.buildGoalBoundarySegments(sign);
-      const wallHeight = Math.max(0.4, GOAL_H - GOAL_R * 2);
-      for (const panel of panels) {
-        this.addFixedColliderRotated(
-          panel.x,
-          GOAL_R + wallHeight * 0.5,
-          panel.z,
-          panel.length * 0.5 * 1.02,
-          wallHeight * 0.5,
-          WALL_T * 0.5,
-          panel.yaw,
-          0.12,
-          0
-        );
-        this.addRoundedTunnelRampPhysics(panel, GOAL_R, GOAL_H, false, 0.72);
-        this.addRoundedTunnelRampPhysics(panel, GOAL_R, GOAL_H, true, 0.16);
-      }
+        const wallHeight = Math.max(0.4, GOAL_H - GOAL_R * 2);
+        for (const panel of panels) {
+          const isMouthFillet = panel.goalMouth === true;
+          const panelMinY = isMouthFillet ? 0 : GOAL_R;
+          const panelHeight = isMouthFillet ? GOAL_H : wallHeight;
+          this.addFixedColliderRotated(
+            panel.x,
+            panelMinY + panelHeight * 0.5,
+            panel.z,
+            panel.length * 0.5 * 1.02,
+            panelHeight * 0.5,
+            WALL_T * 0.5,
+            panel.yaw,
+            0.12,
+            0
+          );
+          // Match the corrected render geometry: the mouth curve itself is a
+          // vertical wall, so no hidden quarter-pipe collider may protrude into
+          // the playable field above or below it.
+          if (!isMouthFillet) {
+            this.addRoundedTunnelRampPhysics(panel, GOAL_R, GOAL_H, false, 0.72);
+            this.addRoundedTunnelRampPhysics(panel, GOAL_R, GOAL_H, true, 0.16);
+          }
+        }
 
       const signZ = sign >= 0 ? 1 : -1;
       const zCenter = signZ * (halfLength + GOAL_D * 0.5);
@@ -2965,28 +2989,10 @@ export class Arena {
 
   createUltraHighStadiumDetails() {
     const box = new THREE.BoxGeometry(1, 1, 1);
-    const steel = new THREE.MeshStandardMaterial({
-      color: 0x202d36,
-      roughness: 0.76,
-      metalness: 0.38
-    });
-    const beamData = [];
-    for (const sign of [-1, 1]) {
-      for (let i = -4; i <= 4; i++) beamData.push([i * 11.5, 13.2, sign * (FIELD_L * 0.5 + 14.8), 9.4, 0.38, 0.38]);
-      for (let i = -5; i <= 5; i++) beamData.push([sign * (FIELD_W * 0.5 + 14.8), 13.2, i * 10.2, 0.38, 0.38, 8.4]);
-    }
-    const beams = new THREE.InstancedMesh(box, steel, beamData.length);
     const dummy = new THREE.Object3D();
-    beamData.forEach(([x, y, z, w, h, d], index) => {
-      dummy.position.set(x, y, z);
-      dummy.rotation.set(0, 0, 0);
-      dummy.scale.set(w, h, d);
-      dummy.updateMatrix();
-      beams.setMatrixAt(index, dummy.matrix);
-    });
-    beams.instanceMatrix.needsUpdate = true;
-    this.group.add(beams);
-
+    // The old freestanding steel strips had no supporting structure. From the
+    // wall camera they appeared as random black bars floating outside the map,
+    // especially in High mode. Keep the purposeful floodlights only.
     const lampMaterial = new THREE.MeshStandardMaterial({
       color: 0xf1f7ff,
       emissive: 0xb7dcff,
@@ -3011,6 +3017,8 @@ export class Arena {
       }
     }
     lamps.instanceMatrix.needsUpdate = true;
+    lamps.name = 'arena-ultra-stadium-lamps';
+    lamps.userData.cameraOcclusionIgnore = true;
     this.group.add(lamps);
   }
 
