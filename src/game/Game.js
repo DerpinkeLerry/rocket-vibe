@@ -18,6 +18,7 @@ import { GoalExplosion } from './GoalExplosion.js';
 import { DemolitionExplosion } from './DemolitionExplosion.js';
 import { HighSpeedEffects } from './HighSpeedEffects.js';
 import { BallLandingCue } from './BallLandingCue.js';
+import { getSoundDesign } from './SoundDesign.js';
 import { ARENA_TUNING, CAR_HITBOX } from '../shared/arena-tuning.js';
 import { CAR_TUNING } from '../shared/game-tuning.js';
 import { evaluateDemolitionSnapshot } from '../shared/demolition-respawn.js';
@@ -55,6 +56,10 @@ export class Game {
     this.gameMode = network?.matchConfig?.gameMode === 'basketball' || options.gameMode === 'basketball' ? 'basketball' : 'normal';
     this.quickChatOptions = network?.quickChats?.length ? network.quickChats : QUICK_CHAT_OPTIONS;
     this.profile = getPerformanceProfile(this.networked, options.graphicsMode);
+    this.soundDesign = getSoundDesign({
+      mobile: this.profile.mobile,
+      lowDetail: this.profile.ultraLow
+    });
 
     this.fixedDt = 1 / 120;
     this.accumulator = 0;
@@ -91,6 +96,8 @@ export class Game {
     this.demolitionSnapshotConfirmed = false;
     this.lastRespawnSelectionSentAt = 0;
     this.lastRespawnSelectionSentIndex = -1;
+    this.lastSoundClockSecond = null;
+    this.lastSoundClockOvertime = false;
     this.respawnSelectedIndex = 1;
     this.respawnPoints = [];
     this.respawnMarkerGroup = null;
@@ -237,6 +244,7 @@ export class Game {
         })
       : null;
     this.chaseCamera = new ChaseCamera(this.camera, this.car, this.ball, this.scene, this.cameraSettings);
+    this.lastSoundCameraMode = this.chaseCamera.getMode();
     this.ballLandingCue = new BallLandingCue(this.scene, {
       lowDetail: this.profile.lowDetail,
       ultraHigh: this.profile.ultraHigh,
@@ -304,22 +312,31 @@ export class Game {
       this.network.onDemolition = (demolition) => this.handleDemolition(demolition);
       this.network.onRespawn = (respawn) => this.handleRespawn(respawn);
       this.network.onDemolitionCancel = () => this.endDemolitionRespawn();
-      this.network.onQuickChat = (chat) => this.hud.addChat(chat);
+      this.network.onQuickChat = (chat) => {
+        this.hud.addChat(chat);
+        this.soundDesign.play('chat', { volume: 0.72 });
+      };
       this.network.onQuickChatLimit = (limit) => {
         const cooldownMs = Math.max(0, Number(limit?.cooldownMs) || 0);
         this.hud.setQuickChatCooldown(cooldownMs);
         this.chatPanel.setQuickChatCooldown(cooldownMs);
       };
-      this.network.onChat = (chat) => this.hud.addChat(chat);
+      this.network.onChat = (chat) => {
+        this.hud.addChat(chat);
+        this.soundDesign.play('chat', { volume: 0.72 });
+      };
       this.network.onChatLimit = (limit) => {
         const cooldownMs = Math.max(0, Number(limit?.cooldownMs) || 0);
         this.chatPanel.setTextChatCooldown(cooldownMs);
       };
-      this.network.onMatchClock = (clock) => this.hud.setMatchClock?.(clock);
-      this.network.onMatchOver = (result) => this.hud.showMatchOver?.(result);
+      this.network.onMatchClock = (clock) => this.handleMatchClock(clock);
+      this.network.onMatchOver = (result) => {
+        this.hud.showMatchOver?.(result);
+        this.soundDesign.play('matchEnd', { volume: 0.95 });
+      };
       if (this.network.kickoff) this.handleKickoff(this.network.kickoff);
       if (this.network.replay && this.network.replay.phase !== 'end') this.handleReplay(this.network.replay);
-      if (this.network.matchClock) this.hud.setMatchClock?.(this.network.matchClock);
+      if (this.network.matchClock) this.handleMatchClock(this.network.matchClock, true);
 
       // Key transitions bypass requestAnimationFrame and go to the server immediately.
       this.input.setNetworkChangeHandler(() => this.sendNetworkInput());
@@ -435,6 +452,7 @@ export class Game {
     }
 
     this.hud.addChat({ kind: 'quick', playerName: this.playerName, team: this.playerTeam, text: option.text });
+    this.soundDesign.play('chat', { volume: 0.72 });
     this.offlineQuickChatUsed += 1;
     if (this.offlineQuickChatUsed >= 3) {
       this.offlineQuickChatUsed = 0;
@@ -457,6 +475,7 @@ export class Game {
       return Boolean(sent);
     }
     this.hud.addChat({ kind: 'text', playerName: this.playerName, team: this.playerTeam, text: value });
+    this.soundDesign.play('chat', { volume: 0.72 });
     return true;
   }
 
@@ -864,6 +883,10 @@ export class Game {
     this.cameraSettings = this.chaseCamera.getSettings();
     this.hud.setCameraMode(cameraMode);
     this.mobileControls.setCameraMode?.(cameraMode);
+    if (cameraMode !== this.lastSoundCameraMode) {
+      this.soundDesign.play('camera', { volume: 0.78 });
+      this.lastSoundCameraMode = cameraMode;
+    }
     return cameraMode;
   }
 
@@ -878,6 +901,7 @@ export class Game {
     if (this.leavingMatch) return;
     this.leavingMatch = true;
     this.mobileControls?.releaseAll?.();
+    this.soundDesign.stopGameplay(true);
     this.input.setTextInputActive?.(true);
     try {
       this.network?.disconnect?.();
@@ -918,6 +942,9 @@ export class Game {
     // frame timing here so that time is never mistaken for one huge game step.
     this.lastTime = performance.now() / 1000;
     this.hud.setPerformance(this.profile.name, this.measuredFps, this.renderPixelRatio);
+    this.soundDesign.unlock();
+    this.soundDesign.resetGameplayTracking();
+    this.soundDesign.play('matchReady', { volume: 0.82 });
     requestAnimationFrame(this.loop);
   }
 
@@ -1032,6 +1059,20 @@ export class Game {
           visible: markerVisible
         });
       }
+      const soundGameplayActive = !this.replayActive
+        && !this.goalCelebrationActive
+        && !this.demolitionRespawnActive
+        && Boolean(this.car?.group?.visible);
+      this.soundDesign.updateGameplay({
+        car: this.car,
+        ball: this.ball,
+        camera: this.camera,
+        input: this.input,
+        boostPads: this.boostPads.pads,
+        jumpCount: this.localPredictor?.jumpCount ?? this.car?.jumpCount ?? 0,
+        active: soundGameplayActive,
+        eventsEnabled: soundGameplayActive && !this.kickoffActive
+      });
       const highSpeedImmersionActive = !this.replayActive
         && !this.kickoffActive
         && !this.goalCelebrationActive
@@ -1145,6 +1186,11 @@ export class Game {
       position: goal.position,
       durationMs
     });
+    const goalPosition = Array.isArray(goal.position)
+      ? { x: goal.position[0], y: goal.position[1], z: goal.position[2] }
+      : goal.position;
+    this.soundDesign.play('goal', { position: goalPosition, volume: 1 });
+    this.soundDesign.stopGameplay();
   }
 
 
@@ -1171,6 +1217,10 @@ export class Game {
     if (!Number.isInteger(victimId) || victimId < 0 || victimId >= this.cars.length) return;
     this.demolishedPlayers.add(victimId);
     this.demolitionExplosion?.trigger(demolition.position);
+    const demolitionPosition = Array.isArray(demolition.position)
+      ? { x: demolition.position[0], y: demolition.position[1], z: demolition.position[2] }
+      : demolition.position;
+    this.soundDesign.play('demolition', { position: demolitionPosition, volume: 1 });
     this.setCarVisible(victimId, false);
     const victim = this.cars[victimId];
     if (victim) {
@@ -1220,10 +1270,12 @@ export class Game {
     car?.setBoost?.(boost);
     this.demolishedPlayers.delete(playerId);
     this.setCarVisible(playerId, this.connectedPlayers.has(playerId));
+    this.soundDesign.play('respawn', { position, volume: playerId === this.playerId ? 0.95 : 0.72 });
 
     if (playerId === this.playerId) {
       this.localPredictor?.resetForRespawn?.(position, yaw, boost);
       this.lastReconciledTick = -1;
+      this.soundDesign.resetGameplayTracking();
       this.endDemolitionRespawn();
     }
   }
@@ -1363,6 +1415,30 @@ export class Game {
     this.chaseCamera.endRespawnSelection?.();
   }
 
+  handleMatchClock(clock, silent = false) {
+    this.hud.setMatchClock?.(clock);
+    if (!clock) {
+      this.lastSoundClockSecond = null;
+      this.lastSoundClockOvertime = false;
+      return;
+    }
+
+    const seconds = Math.max(0, Math.round(Number(clock.seconds) || 0));
+    const overtime = Boolean(clock.overtime);
+    if (!silent) {
+      if (overtime && !this.lastSoundClockOvertime) {
+        this.soundDesign.play('overtime', { volume: 1 });
+      } else if (!overtime && seconds > 0 && seconds <= 10 && seconds !== this.lastSoundClockSecond) {
+        this.soundDesign.play('clockTick', {
+          intensity: seconds <= 3 ? 1.15 : 0.9,
+          volume: 0.9
+        });
+      }
+    }
+    this.lastSoundClockSecond = seconds;
+    this.lastSoundClockOvertime = overtime;
+  }
+
   handleKickoff(kickoff) {
     if (!this.networked || !kickoff) return;
     if (kickoff.phase === 'countdown') {
@@ -1377,12 +1453,15 @@ export class Game {
       this.kickoffActive = true;
       if (startingFreshCountdown) this.resetForNetworkKickoff(Boolean(kickoff.resetScore));
       this.hud.setKickoff('countdown', count);
+      this.soundDesign.play('countdown', { volume: 0.9 + (3 - count) * 0.04 });
       return;
     }
 
     if (kickoff.phase === 'go') {
       this.kickoffActive = false;
       this.hud.setKickoff('go');
+      this.soundDesign.resetGameplayTracking();
+      this.soundDesign.play('go', { volume: 1 });
     }
   }
 
@@ -1436,6 +1515,8 @@ export class Game {
     this.hud.setScore(replay.orangeScore, replay.blueScore);
     this.hud.setKickoff('hidden');
     this.hud.setReplay(this.replayState);
+    this.soundDesign.stopGameplay();
+    this.soundDesign.play('replay', { volume: 0.82 });
   }
 
   updateReplay(now) {
@@ -1592,6 +1673,11 @@ export class Game {
       position: [position.x, position.y, position.z],
       durationMs
     });
+    this.soundDesign.play('goal', {
+      position: { x: position.x, y: position.y, z: position.z },
+      volume: 1
+    });
+    this.soundDesign.stopGameplay();
     this.applyOfflineGoalKnockback(goalSign);
     this.hud.setScore(this.orangeScore, this.blueScore);
   }

@@ -10,6 +10,7 @@ import { Game } from './game/Game.js';
 import { refreshArenaRuntimeTuning } from './game/Arena.js';
 import { preloadInitialGameAssets } from './game/InitialGameLoader.js';
 import { JoinLoadingScreen } from './game/JoinLoadingScreen.js';
+import { getSoundDesign } from './game/SoundDesign.js';
 import { requestAuthentication } from './auth/AccountGate.js';
 import './style.css';
 
@@ -865,6 +866,7 @@ function requestPlayerIdentity(root, lobby = null, account = null) {
 async function boot() {
   installMobileBrowserGuards();
   const app = document.querySelector('#app');
+  getSoundDesign({ mobile: prefersMobileControls() }).installGlobalUISounds(document);
   const multiplayerEnabled = import.meta.env.MODE === 'lan' || import.meta.env.PROD;
 
   let network = null;
