@@ -3784,6 +3784,71 @@ section.lobby-settings-section .lobby-settings-grid { padding: 0; }
 
 .mobile-control-coach b { color: #8de2ff; font-weight: 900; }
 
+.mobile-ball-contact {
+  --contact-assist: 0;
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 1;
+  width: 48px;
+  height: 48px;
+  border: 1px solid rgba(174, 236, 255, .46);
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(93, 205, 255, .05), inset 0 0 14px rgba(95, 207, 255, .06);
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(.82);
+  transition: opacity 100ms ease, transform 110ms ease, border-color 100ms ease;
+  pointer-events: none;
+}
+
+.mobile-ball-contact::before,
+.mobile-ball-contact::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  background: rgba(190, 240, 255, .56);
+  transform: translate(-50%, -50%);
+}
+
+.mobile-ball-contact::before { width: 64px; height: 1px; }
+.mobile-ball-contact::after { width: 1px; height: 64px; }
+
+.mobile-ball-contact i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #bdefff;
+  box-shadow: 0 0 10px rgba(91, 213, 255, .75);
+  transform: translate(-50%, -50%);
+}
+
+.mobile-ball-contact span {
+  position: absolute;
+  left: 50%;
+  bottom: -17px;
+  color: rgba(205, 241, 255, .58);
+  font: 850 6px/1 system-ui, sans-serif;
+  letter-spacing: .15em;
+  transform: translateX(-50%);
+}
+
+.mobile-ball-contact.is-visible { opacity: .38; transform: translate(-50%, -50%) scale(1); }
+.mobile-ball-contact.is-active {
+  border-color: rgba(146, 255, 190, .90);
+  box-shadow: 0 0 0 5px rgba(82, 255, 158, .08), 0 0 22px rgba(75, 255, 155, calc(.12 + var(--contact-assist) * .45));
+  opacity: .95;
+  transform: translate(-50%, -50%) scale(.92);
+}
+.mobile-ball-contact.is-active i,
+.mobile-ball-contact.is-active::before,
+.mobile-ball-contact.is-active::after { background: rgba(158, 255, 198, .90); }
+.mobile-ball-contact.is-active span { color: rgba(169, 255, 206, .88); }
+.mobile-controls.is-ball-assist .mobile-stick__guide-label { color: rgba(158, 255, 198, .92); }
+
 @keyframes mobile-control-coach-out {
   0%, 72% { opacity: 1; visibility: visible; }
   100% { opacity: 0; visibility: hidden; }
@@ -3814,4 +3879,5 @@ section.lobby-settings-section .lobby-settings-grid { padding: 0; }
 
 @media (prefers-reduced-motion: reduce) {
   .mobile-control-coach { animation-duration: .01ms; }
+  .mobile-ball-contact { transition: none; }
 }

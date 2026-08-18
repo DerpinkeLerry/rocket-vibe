@@ -5,7 +5,7 @@ import { BoostPads } from './BoostPads.js';
 import { Car } from './Car.js';
 import { ChaseCamera } from './ChaseCamera.js';
 import { Input } from './Input.js';
-import { MobileControls } from './MobileControls.js';
+import { getMobileBallContactTarget, MobileControls } from './MobileControls.js';
 import { MobileGameMenu } from './MobileGameMenu.js';
 import { loadCameraSettings } from './CameraSettings.js';
 import { Hud } from './Hud.js';
@@ -333,6 +333,9 @@ export class Game {
     this.netTargetQuat = new THREE.Quaternion();
     this.netAngAxis = new THREE.Vector3();
     this.netDeltaQuat = new THREE.Quaternion();
+    this.mobileAssistForward = new THREE.Vector3(0, 0, -1);
+    this.mobileAssistQuaternion = new THREE.Quaternion();
+    this.mobileAssistScreen = new THREE.Vector3();
 
     if (this.profile.useSky) this.addSkyDecoration();
     if (this.profile.ultraHigh) {
@@ -960,12 +963,34 @@ export class Game {
     // ground the left zone can provide Smart Drive auto-throttle; in the air
     // the same thumb position switches immediately to pitch/yaw control.
     if (this.mobileControls?.enabled && this.car?.body?.linvel) {
+      const mobileCarPosition = this.car.body.translation();
       const mobileVelocity = this.car.body.linvel();
+      const mobileCarRotation = this.car.body.rotation();
+      const mobileBallPosition = this.ball.body.translation();
+      const mobileBallVelocity = this.ball.body.linvel();
       const mobileSpeedKmh = Math.hypot(mobileVelocity.x, mobileVelocity.y, mobileVelocity.z) * 3.6;
+      this.mobileAssistQuaternion.set(
+        mobileCarRotation.x,
+        mobileCarRotation.y,
+        mobileCarRotation.z,
+        mobileCarRotation.w
+      );
+      this.mobileAssistForward.set(0, 0, -1).applyQuaternion(this.mobileAssistQuaternion).normalize();
       this.mobileControls.setVehicleState?.({
         speedKmh: mobileSpeedKmh,
         airborne: !this.car.grounded
       });
+      this.mobileControls.setBallContactTarget?.(getMobileBallContactTarget({
+        enabled: !this.replayActive
+          && !this.kickoffActive
+          && !this.goalCelebrationActive
+          && !this.demolitionRespawnActive,
+        carPosition: mobileCarPosition,
+        carVelocity: mobileVelocity,
+        carForward: this.mobileAssistForward,
+        ballPosition: mobileBallPosition,
+        ballVelocity: mobileBallVelocity
+      }));
     }
 
     if (this.demolitionRespawnActive) this.updateDemolitionRespawn(now);
@@ -990,6 +1015,23 @@ export class Game {
       this.demolitionExplosion?.update(renderDt);
       this.updateRespawnMarkers(now);
       this.chaseCamera.update(renderDt);
+      if (this.mobileControls?.enabled) {
+        const mobileBallPosition = this.ball.body.translation();
+        this.mobileAssistScreen.set(mobileBallPosition.x, mobileBallPosition.y, mobileBallPosition.z).project(this.camera);
+        const markerVisible = !this.replayActive
+          && !this.kickoffActive
+          && !this.goalCelebrationActive
+          && !this.demolitionRespawnActive
+          && this.mobileAssistScreen.z >= -1
+          && this.mobileAssistScreen.z <= 1
+          && Math.abs(this.mobileAssistScreen.x) <= 1.08
+          && Math.abs(this.mobileAssistScreen.y) <= 1.08;
+        this.mobileControls.setBallContactScreenPosition?.({
+          x: (this.mobileAssistScreen.x * 0.5 + 0.5) * window.innerWidth,
+          y: (-this.mobileAssistScreen.y * 0.5 + 0.5) * window.innerHeight,
+          visible: markerVisible
+        });
+      }
       const highSpeedImmersionActive = !this.replayActive
         && !this.kickoffActive
         && !this.goalCelebrationActive

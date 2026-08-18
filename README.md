@@ -14,6 +14,7 @@ Die RLBot-Seite weist selbst darauf hin, dass manche Details – besonders die e
 
 ## v1.13.6
 
+- Der mobile Ballkontakt-Assistent berechnet aus Auto- und Ballbewegung einen kurzen vorausberechneten Kontaktkorridor. Im erreichbaren Nahbereich korrigiert er kleine Lenkfehler sanft, lässt bewusste Gegenlenk- oder Volleinschlag-Eingaben unangetastet und markiert den anvisierten Ballkontakt dezent im Bild. Ballphysik und Hitboxen bleiben identisch zu Desktop und Multiplayer-Server.
 - Mobile Smart Drive entkoppelt präzises Lenken vom Gasgeben: Berühren fährt vorwärts, horizontales Ziehen lenkt und bewusstes Ziehen nach unten bremst oder fährt rückwärts. In der Luft wird derselbe Stick automatisch zu Pitch/Yaw; ein Wisch von Boost zu Jump ermöglicht beide Aktionen mit einem Finger. Ein elastischer Floating-Ursprung und direktes Zustandsfeedback reduzieren Fehlbewegungen auf kleinen Displays.
 - Die Ball-Cam verwendet jetzt eine Zwei-Punkt-Komposition für Auto und Ball: Sie schaut bei hohen Bällen nach oben, hält das Auto dabei in einem sicheren unteren Bildbereich und hebt die Kamera selbst niemals an. Erst wenn beide Motive geometrisch nicht in den FOV passen, wird nur der Abstand minimal so weit erhöht wie nötig.
 - Double-Jump-Flicks drehen nun mit **10,5 rad/s** und beenden eine volle Rotation in etwa **0,60 s**. Die Arena verwendet glatte Viertelkreis-Ecken in Rendering, Go-Server, Client-Prediction und lokaler Physik; ein weißes emissives Hexagon-LED-Raster schließt die Glasdecke visuell.

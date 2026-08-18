@@ -2,9 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   applyMicroDeadZone,
+  applyMobileBallContactAssist,
   curveSmartGroundThrottle,
   curveSteering,
   curveThrottle,
+  getMobileBallContactTarget,
   isPointInsideAction,
   resolveAnalogStick,
   resolveMobileDrive,
@@ -88,4 +90,70 @@ test('boost-to-jump chord uses a forgiving but bounded action hit target', () =>
   assert.equal(isPointInsideAction(376, 210, jumpRect, 12), true);
   assert.equal(isPointInsideAction(285, 210, jumpRect, 12), false);
   assert.equal(isPointInsideAction(330, 260, jumpRect, 12), false);
+});
+
+test('mobile contact targeting leads the moving ball and rejects unreachable targets', () => {
+  const left = getMobileBallContactTarget({
+    carPosition: { x: 0, y: 0.5, z: 0 },
+    carVelocity: { x: 0, y: 0, z: -12 },
+    carForward: { x: 0, z: -1 },
+    ballPosition: { x: -2, y: 1.2, z: -8 },
+    ballVelocity: { x: 0, y: 0, z: 0 }
+  });
+  assert.equal(left.reachable, true);
+  assert.ok(left.signedAngle > 0, left);
+  assert.ok(left.leadTime > 0 && left.leadTime <= 0.3, left);
+
+  const movingRight = getMobileBallContactTarget({
+    carPosition: { x: 0, y: 0.5, z: 0 },
+    carVelocity: { x: 0, y: 0, z: -10 },
+    carForward: { x: 0, z: -1 },
+    ballPosition: { x: 0, y: 1.2, z: -9 },
+    ballVelocity: { x: 7, y: 0, z: 0 }
+  });
+  assert.ok(movingRight.signedAngle < 0, movingRight);
+
+  const high = getMobileBallContactTarget({
+    carPosition: { x: 0, y: 0.5, z: 0 },
+    carForward: { x: 0, z: -1 },
+    ballPosition: { x: 0, y: 6, z: -6 }
+  });
+  const behind = getMobileBallContactTarget({
+    carPosition: { x: 0, y: 0.5, z: 0 },
+    carForward: { x: 0, z: -1 },
+    ballPosition: { x: 0, y: 1.2, z: 5 }
+  });
+  assert.equal(high.reachable, false);
+  assert.equal(behind.reachable, false);
+});
+
+test('mobile contact assist corrects small misses but preserves deliberate override', () => {
+  const corrected = applyMobileBallContactAssist(0, {
+    reachable: true,
+    signedAngle: 0.20,
+    distance: 5,
+    throttle: 1,
+    airborne: false
+  });
+  assert.equal(corrected.active, true);
+  assert.ok(corrected.steer > 0.15 && corrected.steer <= 0.30, corrected);
+
+  const override = applyMobileBallContactAssist(-0.7, {
+    reachable: true,
+    signedAngle: 0.20,
+    distance: 5,
+    throttle: 1,
+    airborne: false
+  });
+  assert.equal(override.steer, -0.7);
+  assert.equal(override.active, false);
+
+  const airborne = applyMobileBallContactAssist(0.2, {
+    reachable: true,
+    signedAngle: 0.20,
+    distance: 5,
+    throttle: 1,
+    airborne: true
+  });
+  assert.deepEqual(airborne, { steer: 0.2, strength: 0, correction: 0, active: false });
 });

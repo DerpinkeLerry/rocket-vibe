@@ -106,6 +106,84 @@ export function isPointInsideAction(clientX, clientY, rect, padding = 12) {
     && y >= rect.top - pad && y <= rect.bottom + pad;
 }
 
+export function getMobileBallContactTarget(options = {}) {
+  const car = options.carPosition ?? {};
+  const carVelocity = options.carVelocity ?? {};
+  const forward = options.carForward ?? {};
+  const ball = options.ballPosition ?? {};
+  const ballVelocity = options.ballVelocity ?? {};
+  const fxRaw = Number(forward.x) || 0;
+  const fzRaw = Number(forward.z) || -1;
+  const forwardLength = Math.max(1e-6, Math.hypot(fxRaw, fzRaw));
+  const fx = fxRaw / forwardLength;
+  const fz = fzRaw / forwardLength;
+  const carSpeed = Math.hypot(
+    Number(carVelocity.x) || 0,
+    Number(carVelocity.y) || 0,
+    Number(carVelocity.z) || 0
+  );
+  const initialDistance = Math.hypot(
+    (Number(ball.x) || 0) - (Number(car.x) || 0),
+    (Number(ball.z) || 0) - (Number(car.z) || 0)
+  );
+  const leadTime = clamp(initialDistance / Math.max(13, carSpeed + 5), 0.03, 0.30);
+  const leadScale = 0.72;
+  const dx = (Number(ball.x) || 0) + (Number(ballVelocity.x) || 0) * leadTime * leadScale
+    - (Number(car.x) || 0);
+  const dz = (Number(ball.z) || 0) + (Number(ballVelocity.z) || 0) * leadTime * leadScale
+    - (Number(car.z) || 0);
+  const distance = Math.max(1e-6, Math.hypot(dx, dz));
+  const forwardDot = clamp((fx * dx + fz * dz) / distance, -1, 1);
+  // Positive is left in the physics steering convention.
+  const signedAngle = Math.atan2(fz * dx - fx * dz, fx * dx + fz * dz);
+  const verticalDelta = (Number(ball.y) || 0) - (Number(car.y) || 0);
+  const reachable = options.enabled !== false
+    && distance <= 13.5
+    && verticalDelta >= -1.2
+    && verticalDelta <= 2.65
+    && forwardDot >= Math.cos(0.82);
+  return Object.freeze({
+    reachable,
+    distance,
+    signedAngle,
+    verticalDelta,
+    leadTime
+  });
+}
+
+export function applyMobileBallContactAssist(manualSteer, options = {}) {
+  const steer = clamp(Number(manualSteer) || 0, -1, 1);
+  const angle = Number(options.signedAngle) || 0;
+  const distance = Math.max(0, Number(options.distance) || 0);
+  const throttle = Number(options.throttle) || 0;
+  if (!options.reachable || options.airborne || throttle <= 0.15
+    || distance <= 0.5 || Math.abs(angle) <= 0.022 || Math.abs(angle) >= 0.82) {
+    return Object.freeze({ steer, strength: 0, correction: 0, active: false });
+  }
+
+  const desiredSteer = clamp(angle / 0.38, -1, 1);
+  const distanceBlend = 1 - smoothstep(3.5, 13.5, distance);
+  const angleBlend = 1 - smoothstep(0.58, 0.82, Math.abs(angle));
+  let strength = (0.16 + distanceBlend * 0.28) * angleBlend;
+
+  // A deliberate opposite or full-lock input always wins. The assist corrects
+  // small thumb imprecision; it must never prevent an angled shot or rotation.
+  if (steer * desiredSteer < -0.04) {
+    strength *= clamp(1 - Math.abs(steer) * 2.5, 0, 1);
+  } else if (Math.abs(steer) > 0.82) {
+    strength *= 0.12;
+  }
+
+  const correction = clamp((desiredSteer - steer) * strength, -0.30, 0.30);
+  const assistedSteer = clamp(steer + correction, -1, 1);
+  return Object.freeze({
+    steer: assistedSteer,
+    strength,
+    correction,
+    active: Math.abs(correction) >= 0.012
+  });
+}
+
 // Compatibility helper kept for old tests/tools. Unlike the old implementation
 // this is not used for gameplay; it merely describes the signs of analog axes.
 export function resolveStickCodes(x, y) {
@@ -153,6 +231,8 @@ export class MobileControls {
     this.currentSteer = 0;
     this.vehicleSpeedKmh = 0;
     this.vehicleAirborne = false;
+    this.ballContactTarget = null;
+    this.ballAssistActive = false;
     this.analogFrame = 0;
     this.analogLastTime = 0;
     this.buttonPointers = new Map();
@@ -206,6 +286,10 @@ export class MobileControls {
         <span><b>BOOST → JUMP</b> wischen = beides mit einem Finger</span>
       </div>
 
+      <div class="mobile-ball-contact" data-ball-contact aria-hidden="true">
+        <i></i><span>KONTAKT</span>
+      </div>
+
       <div class="mobile-orientation-hint" aria-hidden="true">
         <strong>↻ Querformat empfohlen</strong>
         <span>Mehr Platz für Steuerung und Sicht</span>
@@ -220,6 +304,7 @@ export class MobileControls {
     this.cameraButton = this.el.querySelector('[data-camera-button]');
     this.quickChatButton = this.el.querySelector('[data-quick-chat]');
     this.jumpButton = this.el.querySelector('[data-action-jump]');
+    this.ballContactMarker = this.el.querySelector('[data-ball-contact]');
 
     this.bindStick();
     this.bindButtons();
@@ -242,6 +327,22 @@ export class MobileControls {
       this.recalculateTargets();
       this.syncAnalogImmediately();
     }
+  }
+
+  setBallContactTarget(target = null) {
+    this.ballContactTarget = target;
+    if (this.stickPointerId !== null) this.recalculateTargets();
+    if (!target?.reachable) {
+      this.setBallAssistActive(false);
+      this.ballContactMarker?.classList.remove('is-visible');
+    }
+  }
+
+  setBallContactScreenPosition({ x = 0, y = 0, visible = false } = {}) {
+    if (!this.ballContactMarker) return;
+    this.ballContactMarker.style.left = `${Number(x).toFixed(1)}px`;
+    this.ballContactMarker.style.top = `${Number(y).toFixed(1)}px`;
+    this.ballContactMarker.classList.toggle('is-visible', Boolean(visible && this.ballContactTarget?.reachable));
   }
 
   bindStick() {
@@ -334,6 +435,7 @@ export class MobileControls {
     if (this.stickPointerId === null) {
       this.targetThrottle = 0;
       this.targetSteer = 0;
+      this.setBallAssistActive(false);
       return;
     }
     const axes = resolveMobileDrive(this.rawStickX, this.rawStickY, {
@@ -341,9 +443,22 @@ export class MobileControls {
       drift: this.input.isDown('ControlLeft', 'ControlRight'),
       airborne: this.vehicleAirborne || this.jumpControlSources.size > 0
     });
+    const assist = applyMobileBallContactAssist(axes.steer, {
+      ...this.ballContactTarget,
+      throttle: axes.throttle,
+      airborne: this.vehicleAirborne || this.jumpControlSources.size > 0
+    });
     this.targetThrottle = axes.throttle;
-    this.targetSteer = axes.steer;
+    this.targetSteer = assist.steer;
+    this.setBallAssistActive(assist.active, assist.strength);
     this.stick?.classList.toggle('is-braking', axes.throttle < -0.05);
+  }
+
+  setBallAssistActive(active, strength = 0) {
+    this.ballAssistActive = Boolean(active);
+    this.el?.classList.toggle('is-ball-assist', this.ballAssistActive);
+    this.ballContactMarker?.classList.toggle('is-active', this.ballAssistActive);
+    this.ballContactMarker?.style.setProperty('--contact-assist', clamp(Number(strength) || 0, 0, 1).toFixed(3));
   }
 
   syncAnalogImmediately() {
@@ -398,6 +513,7 @@ export class MobileControls {
     this.targetSteer = 0;
     this.stick?.classList.remove('is-active');
     this.stick?.classList.remove('is-braking');
+    this.setBallAssistActive(false);
     if (this.stickKnob) {
       this.stickKnob.style.left = '50%';
       this.stickKnob.style.top = '50%';
