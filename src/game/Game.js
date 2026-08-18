@@ -956,14 +956,16 @@ export class Game {
       if (steps === 8 && this.accumulator > this.fixedDt * 2) this.accumulator = this.fixedDt;
     }
 
-    // Feed current speed back into the mobile response curve. The analog stick
-    // keeps full steering at the edge, but its center becomes more precise as
-    // the car approaches boost speeds. This is visual/input shaping only; the
-    // exact shaped value is what server and predictor both receive.
+    // Feed the local driving context back into mobile input shaping. On the
+    // ground the left zone can provide Smart Drive auto-throttle; in the air
+    // the same thumb position switches immediately to pitch/yaw control.
     if (this.mobileControls?.enabled && this.car?.body?.linvel) {
       const mobileVelocity = this.car.body.linvel();
       const mobileSpeedKmh = Math.hypot(mobileVelocity.x, mobileVelocity.y, mobileVelocity.z) * 3.6;
-      this.mobileControls.setVehicleSpeed?.(mobileSpeedKmh);
+      this.mobileControls.setVehicleState?.({
+        speedKmh: mobileSpeedKmh,
+        airborne: !this.car.grounded
+      });
     }
 
     if (this.demolitionRespawnActive) this.updateDemolitionRespawn(now);

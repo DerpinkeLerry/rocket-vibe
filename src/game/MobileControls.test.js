@@ -2,9 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   applyMicroDeadZone,
+  curveSmartGroundThrottle,
   curveSteering,
   curveThrottle,
+  isPointInsideAction,
   resolveAnalogStick,
+  resolveMobileDrive,
   resolveStickCodes
 } from './MobileControls.js';
 
@@ -59,4 +62,30 @@ test('compatibility direction helper follows the continuous analog signs', () =>
   assert.deepEqual(resolveStickCodes(-1, 0), ['KeyA']);
   assert.deepEqual(resolveStickCodes(1, 0), ['KeyD']);
   assert.deepEqual(resolveStickCodes(-0.8, -0.8), ['KeyA', 'KeyW']);
+});
+
+test('smart drive separates easy ground driving from deliberate braking and air control', () => {
+  assert.equal(curveSmartGroundThrottle(0), 1);
+  assert.equal(curveSmartGroundThrottle(-1), 1);
+  assert.ok(curveSmartGroundThrottle(0.17) > 0 && curveSmartGroundThrottle(0.17) < 1);
+  assert.equal(curveSmartGroundThrottle(0.26), 0);
+  assert.ok(curveSmartGroundThrottle(0.50) < -0.6);
+  assert.equal(curveSmartGroundThrottle(1), -1);
+
+  const groundTurn = resolveMobileDrive(0.5, 0, { speedKmh: 45, airborne: false });
+  assert.equal(groundTurn.throttle, 1);
+  assert.ok(Math.abs(groundTurn.steer) > 0.45);
+
+  const neutralAir = resolveMobileDrive(0, 0, { speedKmh: 45, airborne: true });
+  assert.deepEqual(neutralAir, { throttle: 0, steer: 0 });
+  const pitchedAir = resolveMobileDrive(0, -0.5, { speedKmh: 45, airborne: true });
+  assert.ok(pitchedAir.throttle > 0.6);
+});
+
+test('boost-to-jump chord uses a forgiving but bounded action hit target', () => {
+  const jumpRect = { left: 300, right: 364, top: 180, bottom: 244 };
+  assert.equal(isPointInsideAction(294, 210, jumpRect, 12), true);
+  assert.equal(isPointInsideAction(376, 210, jumpRect, 12), true);
+  assert.equal(isPointInsideAction(285, 210, jumpRect, 12), false);
+  assert.equal(isPointInsideAction(330, 260, jumpRect, 12), false);
 });

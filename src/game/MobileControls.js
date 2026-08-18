@@ -53,6 +53,16 @@ export function curveThrottle(rawY) {
   return Math.sign(normalized) * (magnitude ** 0.68);
 }
 
+export function curveSmartGroundThrottle(rawY) {
+  const y = clamp(Number(rawY) || 0, -1, 1);
+  // Touching the drive zone means "go". A deliberate downward pull first
+  // feathers the throttle, then brakes/reverses. This leaves the horizontal
+  // thumb movement entirely available for steering on a small phone.
+  if (y <= 0.08) return 1;
+  if (y <= 0.26) return 1 - smoothstep(0.08, 0.26, y);
+  return -smoothstep(0.26, 0.62, y);
+}
+
 export function resolveAnalogStick(x, y, options = {}) {
   let rawX = clamp(Number(x) || 0, -1, 1);
   let rawY = clamp(Number(y) || 0, -1, 1);
@@ -74,6 +84,26 @@ export function resolveAnalogStick(x, y, options = {}) {
     throttle: curveThrottle(rawY),
     steer: curveSteering(rawX, options)
   };
+}
+
+export function resolveMobileDrive(x, y, options = {}) {
+  if (options.airborne || options.smartThrottle === false) {
+    return resolveAnalogStick(x, y, options);
+  }
+  return {
+    throttle: curveSmartGroundThrottle(y),
+    steer: curveSteering(clamp(Number(x) || 0, -1, 1), options)
+  };
+}
+
+export function isPointInsideAction(clientX, clientY, rect, padding = 12) {
+  if (!rect) return false;
+  const x = Number(clientX);
+  const y = Number(clientY);
+  const pad = Math.max(0, Number(padding) || 0);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+  return x >= rect.left - pad && x <= rect.right + pad
+    && y >= rect.top - pad && y <= rect.bottom + pad;
 }
 
 // Compatibility helper kept for old tests/tools. Unlike the old implementation
@@ -122,9 +152,11 @@ export class MobileControls {
     this.currentThrottle = 0;
     this.currentSteer = 0;
     this.vehicleSpeedKmh = 0;
+    this.vehicleAirborne = false;
     this.analogFrame = 0;
     this.analogLastTime = 0;
     this.buttonPointers = new Map();
+    this.jumpControlSources = new Set();
     this.quickChatButton = null;
     this.quickChatHandler = null;
     this.quickChatCooldownTimer = null;
@@ -142,8 +174,12 @@ export class MobileControls {
     this.el.innerHTML = `
       <div class="mobile-controls__left">
         <div class="mobile-stick" data-stick aria-label="Analoger virtueller Steuerstick">
+          <div class="mobile-stick__guide" data-stick-guide aria-hidden="true">
+            <span class="mobile-stick__guide-label" data-stick-mode>AUTO-GAS · LENKEN</span>
+          </div>
           <div class="mobile-stick__knob" data-stick-knob></div>
         </div>
+        <div class="mobile-stick__idle-hint" aria-hidden="true">BERÜHREN &amp; LENKEN <small>↓ BREMSE</small></div>
       </div>
 
       <div class="mobile-controls__right">
@@ -156,13 +192,18 @@ export class MobileControls {
         </div>
         <div class="mobile-controls__roll">
           <button class="mobile-btn mobile-btn--small mobile-btn--drift" type="button" data-key="ControlLeft" aria-label="Drift / Handbremse">DRIFT</button>
-          <button class="mobile-btn mobile-btn--small" type="button" data-key="KeyQ" aria-label="Air Roll links">ROLL L</button>
-          <button class="mobile-btn mobile-btn--small" type="button" data-key="KeyE" aria-label="Air Roll rechts">ROLL R</button>
+          <button class="mobile-btn mobile-btn--small" type="button" data-key="KeyQ" aria-label="Air Roll links">L ↶</button>
+          <button class="mobile-btn mobile-btn--small" type="button" data-key="KeyE" aria-label="Air Roll rechts">↷ R</button>
         </div>
         <div class="mobile-controls__actions">
-          <button class="mobile-btn mobile-btn--boost" type="button" data-key="ShiftLeft" aria-label="Boost">BOOST</button>
-          <button class="mobile-btn mobile-btn--jump" type="button" data-key="Space" aria-label="Springen und Flippen">JUMP</button>
+          <button class="mobile-btn mobile-btn--boost" type="button" data-key="ShiftLeft" data-action-boost aria-label="Boost; nach rechts zum Sprung wischen"><span>BOOST</span><small>→ JUMP</small></button>
+          <button class="mobile-btn mobile-btn--jump" type="button" data-key="Space" data-action-jump aria-label="Springen und Flippen"><span>JUMP</span><small>2× FLIP</small></button>
         </div>
+      </div>
+
+      <div class="mobile-control-coach" aria-hidden="true">
+        <span><b>LINKS</b> berühren = Auto-Gas · ziehen = lenken · ↓ bremsen</span>
+        <span><b>BOOST → JUMP</b> wischen = beides mit einem Finger</span>
       </div>
 
       <div class="mobile-orientation-hint" aria-hidden="true">
@@ -174,8 +215,11 @@ export class MobileControls {
 
     this.stick = this.el.querySelector('[data-stick]');
     this.stickKnob = this.el.querySelector('[data-stick-knob]');
+    this.stickGuide = this.el.querySelector('[data-stick-guide]');
+    this.stickModeLabel = this.el.querySelector('[data-stick-mode]');
     this.cameraButton = this.el.querySelector('[data-camera-button]');
     this.quickChatButton = this.el.querySelector('[data-quick-chat]');
+    this.jumpButton = this.el.querySelector('[data-action-jump]');
 
     this.bindStick();
     this.bindButtons();
@@ -186,14 +230,28 @@ export class MobileControls {
     this.vehicleSpeedKmh = Math.max(0, Number(speedKmh) || 0);
   }
 
+  setVehicleState({ speedKmh = 0, airborne = false } = {}) {
+    const wasAirborne = this.vehicleAirborne;
+    this.vehicleSpeedKmh = Math.max(0, Number(speedKmh) || 0);
+    this.vehicleAirborne = Boolean(airborne);
+    this.el?.classList.toggle('is-airborne', this.vehicleAirborne);
+    if (this.stickModeLabel) {
+      this.stickModeLabel.textContent = this.vehicleAirborne ? 'AIR · PITCH / YAW' : 'AUTO-GAS · LENKEN';
+    }
+    if (wasAirborne !== this.vehicleAirborne && this.stickPointerId !== null) {
+      this.recalculateTargets();
+      this.syncAnalogImmediately();
+    }
+  }
+
   bindStick() {
     const onDown = (event) => {
       if (this.stickPointerId !== null) return;
       event.preventDefault();
       this.stickPointerId = event.pointerId;
       this.stickRect = this.stick.getBoundingClientRect();
-      this.stickRadius = Math.max(92, Math.min(138, Math.min(this.stickRect.width, this.stickRect.height) * 0.46));
-      this.knobTravel = Math.min(82, this.stickRadius * 0.64);
+      this.stickRadius = Math.max(76, Math.min(108, Math.min(this.stickRect.width, this.stickRect.height) * 0.40));
+      this.knobTravel = Math.min(62, this.stickRadius * 0.58);
 
       // Floating origin: wherever the thumb lands becomes neutral. This removes
       // the need to hunt for one fixed center while looking at the match.
@@ -239,11 +297,28 @@ export class MobileControls {
     this.stickKnob.style.left = `${localX.toFixed(1)}px`;
     this.stickKnob.style.top = `${localY.toFixed(1)}px`;
     this.stickKnob.style.transform = `translate(${visualX.toFixed(1)}px, ${visualY.toFixed(1)}px)`;
+    if (this.stickGuide) {
+      this.stickGuide.style.left = `${localX.toFixed(1)}px`;
+      this.stickGuide.style.top = `${localY.toFixed(1)}px`;
+    }
   }
 
   updateStick(clientX, clientY) {
-    let dx = (clientX - this.stickOriginX) / Math.max(1, this.stickRadius);
-    let dy = (clientY - this.stickOriginY) / Math.max(1, this.stickRadius);
+    let pixelX = clientX - this.stickOriginX;
+    let pixelY = clientY - this.stickOriginY;
+    const pixelLength = Math.hypot(pixelX, pixelY);
+    if (pixelLength > this.stickRadius) {
+      // Let the floating center follow overflow at the edge. The player can
+      // straighten with a short thumb correction instead of hunting for the
+      // exact first contact point after a long steering sweep.
+      const overflow = pixelLength - this.stickRadius;
+      this.stickOriginX += pixelX / pixelLength * overflow;
+      this.stickOriginY += pixelY / pixelLength * overflow;
+      pixelX = clientX - this.stickOriginX;
+      pixelY = clientY - this.stickOriginY;
+    }
+    let dx = pixelX / Math.max(1, this.stickRadius);
+    let dy = pixelY / Math.max(1, this.stickRadius);
     const length = Math.hypot(dx, dy);
     if (length > 1) {
       dx /= length;
@@ -256,12 +331,33 @@ export class MobileControls {
   }
 
   recalculateTargets() {
-    const axes = resolveAnalogStick(this.rawStickX, this.rawStickY, {
+    if (this.stickPointerId === null) {
+      this.targetThrottle = 0;
+      this.targetSteer = 0;
+      return;
+    }
+    const axes = resolveMobileDrive(this.rawStickX, this.rawStickY, {
       speedKmh: this.vehicleSpeedKmh,
-      drift: this.input.isDown('ControlLeft', 'ControlRight')
+      drift: this.input.isDown('ControlLeft', 'ControlRight'),
+      airborne: this.vehicleAirborne || this.jumpControlSources.size > 0
     });
     this.targetThrottle = axes.throttle;
     this.targetSteer = axes.steer;
+    this.stick?.classList.toggle('is-braking', axes.throttle < -0.05);
+  }
+
+  syncAnalogImmediately() {
+    if (this.stickPointerId === null) return;
+    this.currentThrottle = this.targetThrottle;
+    this.currentSteer = this.targetSteer;
+    this.input.setAnalogDrive(this.currentThrottle, this.currentSteer, true, ANALOG_SOURCE);
+  }
+
+  setJumpControl(source, active) {
+    if (active) this.jumpControlSources.add(source);
+    else this.jumpControlSources.delete(source);
+    this.recalculateTargets();
+    this.syncAnalogImmediately();
   }
 
   startAnalogLoop() {
@@ -301,10 +397,15 @@ export class MobileControls {
     this.targetThrottle = 0;
     this.targetSteer = 0;
     this.stick?.classList.remove('is-active');
+    this.stick?.classList.remove('is-braking');
     if (this.stickKnob) {
       this.stickKnob.style.left = '50%';
       this.stickKnob.style.top = '50%';
       this.stickKnob.style.transform = 'translate(0px, 0px)';
+    }
+    if (this.stickGuide) {
+      this.stickGuide.style.left = '50%';
+      this.stickGuide.style.top = '50%';
     }
 
     if (immediate) {
@@ -326,19 +427,42 @@ export class MobileControls {
       const onDown = (event) => {
         event.preventDefault();
         if (this.buttonPointers.has(event.pointerId)) return;
-        this.buttonPointers.set(event.pointerId, { button, code });
+        const source = `mobile-button-${event.pointerId}`;
+        const held = { button, code, source, chordActive: false };
+        this.buttonPointers.set(event.pointerId, held);
         button.setPointerCapture?.(event.pointerId);
         button.classList.add('is-active');
-        this.input.setVirtualKey(code, true, `mobile-button-${event.pointerId}`);
+        if (code === 'Space') this.setJumpControl(source, true);
+        this.input.setVirtualKey(code, true, source);
         if (tapOnly) {
-          this.input.setVirtualKey(code, false, `mobile-button-${event.pointerId}`);
+          this.input.setVirtualKey(code, false, source);
         }
         if (code === 'Space') vibrate(10);
         else if (code === 'ShiftLeft') vibrate(5);
         else if (code === 'ControlLeft') {
           vibrate(6);
           this.recalculateTargets();
-        }
+        } else if (code === 'KeyQ' || code === 'KeyE') vibrate(4);
+      };
+
+      const onMove = (event) => {
+        const held = this.buttonPointers.get(event.pointerId);
+        if (!held || held.button !== button || code !== 'ShiftLeft' || !this.jumpButton) return;
+        event.preventDefault();
+        const insideJump = isPointInsideAction(
+          event.clientX,
+          event.clientY,
+          this.jumpButton.getBoundingClientRect(),
+          14
+        );
+        if (insideJump === held.chordActive) return;
+        const chordSource = `mobile-chord-${event.pointerId}`;
+        held.chordActive = insideJump;
+        this.jumpButton.classList.toggle('is-chord-active', insideJump);
+        if (insideJump) this.setJumpControl(chordSource, true);
+        this.input.setVirtualKey('Space', insideJump, chordSource);
+        if (!insideJump) this.setJumpControl(chordSource, false);
+        if (insideJump) vibrate(10);
       };
 
       const onUp = (event) => {
@@ -347,16 +471,25 @@ export class MobileControls {
         event.preventDefault();
         this.buttonPointers.delete(event.pointerId);
         button.classList.remove('is-active');
-        this.input.setVirtualKey(code, false, `mobile-button-${event.pointerId}`);
+        if (held.chordActive) {
+          const chordSource = `mobile-chord-${event.pointerId}`;
+          this.input.setVirtualKey('Space', false, chordSource);
+          this.setJumpControl(chordSource, false);
+          this.jumpButton?.classList.remove('is-chord-active');
+        }
+        this.input.setVirtualKey(code, false, held.source);
+        if (code === 'Space') this.setJumpControl(held.source, false);
         if (code === 'ControlLeft') this.recalculateTargets();
       };
 
       button.addEventListener('pointerdown', onDown, { passive: false });
+      button.addEventListener('pointermove', onMove, { passive: false });
       button.addEventListener('pointerup', onUp, { passive: false });
       button.addEventListener('pointercancel', onUp, { passive: false });
       button.addEventListener('lostpointercapture', onUp, { passive: false });
       this.destroyers.push(() => {
         button.removeEventListener('pointerdown', onDown);
+        button.removeEventListener('pointermove', onMove);
         button.removeEventListener('pointerup', onUp);
         button.removeEventListener('pointercancel', onUp);
         button.removeEventListener('lostpointercapture', onUp);
@@ -419,9 +552,12 @@ export class MobileControls {
     this.releaseStick(true);
     for (const [pointerId, held] of this.buttonPointers) {
       held.button.classList.remove('is-active');
-      this.input.setVirtualKey(held.code, false, `mobile-button-${pointerId}`);
+      this.input.setVirtualKey(held.code, false, held.source ?? `mobile-button-${pointerId}`);
+      if (held.chordActive) this.input.setVirtualKey('Space', false, `mobile-chord-${pointerId}`);
     }
     this.buttonPointers.clear();
+    this.jumpControlSources.clear();
+    this.jumpButton?.classList.remove('is-chord-active');
     this.input.clearVirtualKeys?.();
     this.input.clearAnalogDrive?.(ANALOG_SOURCE);
   }
