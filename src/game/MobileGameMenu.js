@@ -36,6 +36,7 @@ export class MobileGameMenu {
 
     this.el = document.createElement('div');
     this.el.className = 'mobile-game-menu';
+    root.classList.add('game-menu-enabled');
     this.el.innerHTML = `
       <button class="mobile-game-menu__trigger" type="button" data-game-menu-open aria-label="Match-Menü öffnen" aria-expanded="false">☰</button>
       <div class="mobile-game-menu__overlay" data-game-menu-overlay hidden>
@@ -97,7 +98,8 @@ export class MobileGameMenu {
     this.el.querySelector('[data-camera-settings]').addEventListener('click', () => this.showCamera());
     this.el.querySelector('[data-camera-back]').addEventListener('click', () => this.showHome(true));
     this.el.querySelector('[data-camera-reset]').addEventListener('click', () => this.resetCamera());
-    this.el.querySelector('[data-leave-match]').addEventListener('click', () => this.leaveMatch());
+    this.leaveButton = this.el.querySelector('[data-leave-match]');
+    this.leaveButton.addEventListener('click', () => this.leaveMatch());
     this.cameraForm.addEventListener('input', (event) => this.updateDraft(event.target));
     this.cameraForm.addEventListener('submit', (event) => this.saveCamera(event));
     for (const button of this.cameraForm.querySelectorAll('[data-camera-mode]')) {
@@ -208,12 +210,23 @@ export class MobileGameMenu {
   }
 
   leaveMatch() {
-    if (!window.confirm('Match wirklich verlassen?')) return;
-    this.onLeave?.();
+    if (this.leaving) return;
+    this.leaving = true;
+    this.leaveButton.disabled = true;
+    this.leaveButton.textContent = 'MATCH WIRD VERLASSEN …';
+    try {
+      this.onLeave?.();
+    } catch (error) {
+      this.leaving = false;
+      this.leaveButton.disabled = false;
+      this.leaveButton.textContent = 'MATCH VERLASSEN';
+      this.status.textContent = `Match konnte nicht verlassen werden: ${error?.message || error}`;
+    }
   }
 
   destroy() {
     this.root.classList.remove('game-menu-open');
+    this.root.classList.remove('game-menu-enabled');
     this.el?.remove();
   }
 }

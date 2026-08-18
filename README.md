@@ -4,6 +4,7 @@
 
 - Online startet jetzt mit **Login oder Registrierung**, bevor Lobby-Daten oder der Match-WebSocket erreichbar sind. Accounts werden in der konfigurierbaren Serverdatei gespeichert; Passwörter stehen dort ausschließlich als zufällig gesalzene PBKDF2-SHA256-Hashes, niemals im Klartext.
 - Touchgeräte besitzen oben rechts ein neues **Match-Menü** zum Weiterspielen, Verlassen des Matches und Bearbeiten der Kamera. Der alte kleine Vollbildknopf innerhalb der Touch-Steuerung wurde entfernt.
+- Dasselbe Match-Menü ist auch in der Desktop-Webversion oben rechts verfügbar. „Match verlassen“ trennt den Socket direkt und navigiert zuverlässig zurück zur Account-/Lobby-Auswahl; das Web-Frontend verwendet außerdem das Rocket-Vibe-SVG als Favicon.
 - Die mobilen Kameraeinstellungen umfassen Ball-/Car-Cam, FOV, Abstand, Höhe, Blickhöhe, drei Reaktionsgeschwindigkeiten, Tempo-Abstand/-Höhe, High-Ball Assist, dynamisches FOV und Sichtschutz. Änderungen lassen sich live testen, zurücksetzen und pro Account lokal speichern.
 - Beim Beitritt bleibt jetzt eine eigene **Match-Ladesequenz** sichtbar, bis Verbindung/Physics, benoetigte 3D-Modelle, Arena-Objekte, Materialien und GPU-Shader bereit sind. Erst nach einem verdeckten Warm-up-Frame blendet die Sequenz ins Spiel.
 - `ULTRA HIGH` laedt vor Matchbeginn nur die Premium-GLBs der tatsaechlich vorhandenen Fahrzeugtypen sowie im Normalmodus den Premium-Ball. Gleiche Modelle teilen weiterhin Template, Geometrie und Texturen; leere/unsichtbare Fahrzeugslots starten keine unnoetigen Downloads.

@@ -26,6 +26,8 @@ test('vite production target is compatible instead of esnext', () => {
 const renderSource = readFileSync(new URL('../render.yaml', import.meta.url), 'utf8');
 const dockerSource = readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
 const serverMainSource = readFileSync(new URL('../cmd/server/main.go', import.meta.url), 'utf8');
+const htmlSource = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+const faviconSource = readFileSync(new URL('../public/favicon.svg', import.meta.url), 'utf8');
 
 test('Render blueprint keeps the in-memory lobby server on one Docker instance', () => {
   assert.match(renderSource, /runtime:\s*docker/);
@@ -38,4 +40,10 @@ test('Render-compatible server binds to the platform port on all interfaces', ()
   assert.match(serverMainSource, /0\.0\.0\.0:" \+ port/);
   assert.match(dockerSource, /ENV PORT=10000/);
   assert.match(dockerSource, /EXPOSE 10000/);
+});
+
+test('web build publishes the Rocket Vibe SVG favicon', () => {
+  assert.match(htmlSource, /<link rel="icon" type="image\/svg\+xml" href="\/favicon\.svg"/);
+  assert.match(faviconSource, /<svg[\s\S]*linearGradient[\s\S]*#00d7ef/);
+  assert.doesNotMatch(faviconSource, /<script|javascript:/i);
 });

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="c" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#00d7ef"/>
+      <stop offset="1" stop-color="#1677ff"/>
+    </linearGradient>
+    <linearGradient id="w" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset="1" stop-color="#dce1eb"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="12" fill="#020b24"/>
+  <path fill="url(#w)" d="M16 14h27c7 0 12 5 12 12 0 5-3 9-8 11l8 8H44l-8-8 5-5c4 0 7-3 7-6 0-4-3-6-7-6H23z"/>
+  <path fill="url(#c)" d="M8 28l28-1-4 2-24 1zM6 35l26-1-5 7 9 3-11 5-14 8 8-20z"/>
+  <circle cx="38" cy="36" r="9" fill="#04102e" stroke="#fff" stroke-width="2"/>
+  <g fill="#fff" stroke="#04102e" stroke-width="0.8">
+    <polygon points="38,31 41,33 40,36 36,36 35,33"/>
+    <polygon points="33,34 36,36 35,39 32,40 31,37"/>
+    <polygon points="43,34 46,36 45,39 42,40 41,37"/>
+    <polygon points="35,40 38,39 41,41 40,44 37,45 34,43"/>
+  </g>
+  <polygon points="38,36 41,38 40,41 36,41 35,38" fill="#04102e"/>
+</svg>

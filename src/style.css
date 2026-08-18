@@ -2976,8 +2976,7 @@ section.lobby-settings-section .lobby-settings-grid { padding: 0; }
 .account-session button:first-child { color: #fff; border-color: rgba(68,203,255,.48); background: rgba(28,141,198,.3); }
 
 /* Mobile match menu + persistent camera editor --------------------------- */
-.mobile-game-menu { display: none; }
-.mobile-active .mobile-game-menu { display: block; }
+.mobile-game-menu { display: block; }
 .mobile-game-menu__trigger {
   position: fixed;
   z-index: 82;
@@ -3067,7 +3066,7 @@ section.lobby-settings-section .lobby-settings-grid { padding: 0; }
 .mobile-game-menu__savebar button[type="submit"] { border-color: rgba(72,206,255,.58); background: linear-gradient(180deg, #198fcb, #106394); }
 .mobile-game-menu__status { min-height: 14px; padding-top: 6px; color: #9ee6ff; font-size: 9px; text-align: center; }
 .game-menu-open .mobile-controls { opacity: .18; pointer-events: none; }
-.mobile-active .hud__network { right: calc(env(safe-area-inset-right, 0px) + 58px); }
+.game-menu-enabled .hud__network { right: calc(env(safe-area-inset-right, 0px) + 58px); }
 
 @media (orientation: landscape) and (max-height: 480px) and (any-pointer: coarse) {
   .mobile-game-menu__sheet { width: min(520px, 68vw); }

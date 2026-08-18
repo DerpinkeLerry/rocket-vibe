@@ -266,7 +266,7 @@ export class Game {
     });
     this.mobileControls.setChatHandler?.(() => this.chatPanel.toggle('quick'));
     this.mobileGameMenu = new MobileGameMenu(this.root, {
-      enabled: this.mobileControls.enabled,
+      enabled: true,
       accountName: this.accountName,
       getCameraSettings: () => this.chaseCamera.getSettings(),
       onCameraPreview: (settings) => this.applyCameraSettings(settings),
@@ -867,9 +867,28 @@ export class Game {
   }
 
   leaveMatch() {
+    if (this.leavingMatch) return;
+    this.leavingMatch = true;
     this.mobileControls?.releaseAll?.();
-    this.network?.disconnect?.();
-    window.location.reload();
+    this.input.setTextInputActive?.(true);
+    try {
+      this.network?.disconnect?.();
+    } catch (error) {
+      console.warn('Match disconnect failed; returning to the lobby anyway.', error);
+    }
+
+    // Navigating to the same application URL performs a clean teardown and
+    // returns to account/lobby selection. The delayed reload is a fallback for
+    // embedded browsers that ignore a same-URL assign while a socket closes.
+    const destination = new URL(window.location.href);
+    destination.hash = '';
+    try {
+      window.location.assign(destination.toString());
+    } catch (error) {
+      console.warn('Lobby navigation was blocked; forcing a reload.', error);
+      window.location.reload();
+    }
+    window.setTimeout(() => window.location.reload(), 250);
   }
 
   start() {

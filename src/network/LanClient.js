@@ -544,7 +544,7 @@ export class LanClient {
     this.stopPing();
     const socket = this.socket;
     this.socket = null;
-    if (socket && socket.readyState < WebSocket.CLOSING) socket.close(1000, 'match left');
+    if (socket && socket.readyState < 2) socket.close(1000, 'match left');
   }
 
   statusText(state) {
