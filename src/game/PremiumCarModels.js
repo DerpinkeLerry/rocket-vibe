@@ -92,6 +92,13 @@ async function getPremiumTemplate(modelId) {
   return templatePromises.get(modelId);
 }
 
+// Join loading uses the same promise cache as live car creation. Once this
+// resolves, later car instances only clone shared geometry/textures and tune
+// their own paint materials; they do not fetch or parse the GLB again.
+export function preloadPremiumCarModel(modelId) {
+  return getPremiumTemplate(String(modelId || '').toLowerCase());
+}
+
 function cloneTemplate(template) {
   // Octane, Dominus and Fennec contain no skinned chassis, so a normal deep
   // Object3D clone is enough. Geometry/textures stay shared; materials are

@@ -36,6 +36,12 @@ async function getTemplate(radius) {
   return ballTemplatePromise;
 }
 
+// Pre-decode the template while the join screen is visible. createPremiumBallVisual
+// below consumes this exact cached template and only performs a cheap clone.
+export function preloadPremiumBallModel(radius) {
+  return getTemplate(radius);
+}
+
 function tuneBallMaterials(root) {
   root.traverse((object) => {
     if (!object.isMesh) return;

@@ -3,11 +3,13 @@ import { CAR_STYLES, DEFAULT_CAR_STYLE, normalizeCarStyle } from './shared/car-s
 import { BOOST_STYLES, DEFAULT_BOOST_STYLE, normalizeBoostStyle } from './shared/boost-styles.js';
 import { prefersMobileControls } from './game/MobileControls.js';
 import { canRequestFullscreen, isFullscreenActive, requestGameFullscreen } from './game/Fullscreen.js';
-import { canUseUltraHigh, getRememberedPerformanceMode, setPerformancePreference } from './game/PerformanceProfile.js';
+import { canUseUltraHigh, getPerformanceProfile, getRememberedPerformanceMode, setPerformancePreference } from './game/PerformanceProfile.js';
 import { applyServerPhysicsConfig } from './shared/game-tuning.js';
 import { applyServerArenaConfig, applyServerHitboxConfig } from './shared/arena-tuning.js';
 import { Game } from './game/Game.js';
 import { refreshArenaRuntimeTuning } from './game/Arena.js';
+import { preloadInitialGameAssets } from './game/InitialGameLoader.js';
+import { JoinLoadingScreen } from './game/JoinLoadingScreen.js';
 import './style.css';
 
 function installMobileBrowserGuards() {
@@ -837,12 +839,16 @@ async function boot() {
   let network = null;
   let RAPIER = null;
   let identity = null;
+  let loadingScreen = null;
 
   if (multiplayerEnabled) {
     let lobbyNotice = '';
     while (!network) {
       const lobby = await requestLobby(app, lobbyNotice);
       identity = await requestPlayerIdentity(app, lobby);
+      loadingScreen = new JoinLoadingScreen(app);
+      loadingScreen.setStage('LOBBY WIRD VERBUNDEN', 0.08, lobby.name || 'Online-Match');
+      await loadingScreen.nextPaint();
       const candidate = new LanClient(identity.playerName, identity.carStyle, identity.boostStyle, lobby.id);
       try {
         await candidate.connect();
@@ -850,18 +856,25 @@ async function boot() {
       } catch (error) {
         candidate.stopPing?.();
         candidate.socket?.close?.();
+        loadingScreen.remove();
+        loadingScreen = null;
         lobbyNotice = `Beitritt fehlgeschlagen: ${error.message}`;
       }
     }
+    loadingScreen.setStage('SPIELREGELN WERDEN SYNCHRONISIERT', 0.22, 'Server-Konfiguration');
     applyServerPhysicsConfig(network.matchConfig);
     applyServerArenaConfig(network.matchConfig);
     applyServerHitboxConfig(network.matchConfig);
     // No Rapier import in the browser for online play. The Go server owns physics.
   } else {
     identity = await requestPlayerIdentity(app);
+    loadingScreen = new JoinLoadingScreen(app);
+    loadingScreen.setStage('PHYSIK-ENGINE WIRD GELADEN', 0.08, 'Lokales Training');
+    await loadingScreen.nextPaint();
     const rapierModule = await import('@dimforge/rapier3d-compat');
     RAPIER = rapierModule.default;
     await RAPIER.init();
+    loadingScreen.setStage('PHYSIK IST BEREIT', 0.22, 'Rapier 3D');
   }
 
   // Keep the production game code in the entry bundle. Joining a lobby must
@@ -869,7 +882,29 @@ async function boot() {
   // already accepted the player. Arena.js caches geometry values, so refresh
   // them only after the server lobby config has been applied.
   refreshArenaRuntimeTuning();
+  const profile = getPerformanceProfile(Boolean(network), identity?.graphicsMode);
+  const gameMode = network?.matchConfig?.gameMode === 'basketball' ? 'basketball' : 'normal';
+  const assetResult = await preloadInitialGameAssets({
+    network,
+    identity,
+    profile,
+    gameMode,
+    onProgress: ({ completed, total, fraction, label }) => {
+      const detail = total > 0 ? `${completed}/${total} Modelle` : profile.name;
+      loadingScreen.setStage(label, 0.26 + fraction * 0.42, detail);
+    }
+  });
+  if (assetResult.failed.length > 0) {
+    console.warn('Some premium assets could not be preloaded; lightweight fallbacks will be used.', assetResult.failed);
+  }
+
+  loadingScreen.setStage('ARENA WIRD AUFGEBAUT', 0.74, 'Objekte und Materialien');
+  await loadingScreen.nextPaint();
   const game = new Game(app, RAPIER, network, identity);
+  loadingScreen.setStage('GRAFIK WIRD VORBEREITET', 0.88, 'Texturen und Shader');
+  await loadingScreen.nextPaint();
+  await game.prepareInitialFrame();
+  await loadingScreen.finish(assetResult.failed.length > 0 ? 'Fallback-Modelle sind bereit' : 'Alle Objekte sind bereit');
   game.start();
 }
 

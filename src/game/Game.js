@@ -200,7 +200,10 @@ export class Game {
         carStyle: index === this.playerId ? this.playerCarStyle : (initialCarStyles.get(index) || DEFAULT_CAR_STYLE),
         boostStyle: index === this.playerId ? this.playerBoostStyle : (initialBoostStyles.get(index) || DEFAULT_BOOST_STYLE),
         mobile: this.profile.mobile,
-        localPlayer: index === this.playerId
+        localPlayer: index === this.playerId,
+        initiallyVisible: this.networked
+          ? (index === this.playerId || this.connectedPlayers.has(index))
+          : index === 0
       }
     ));
     [this.car0, this.car1, this.car2, this.car3] = this.cars;
@@ -434,6 +437,7 @@ export class Game {
     const car = this.cars[index];
     if (!car) return;
     car.group.visible = visible;
+    car.setPremiumVisualsEnabled?.(visible);
     if (car.shadow) car.shadow.visible = visible;
     car.boostTrail?.setVisible?.(visible);
   }
@@ -798,9 +802,42 @@ export class Game {
     }
   }
 
+  async prepareInitialFrame() {
+    // The templates were fetched by InitialGameLoader. Wait for each car/ball
+    // to finish its cheap clone + material pass so no procedural placeholder is
+    // visible for a frame before the premium model replaces it.
+    const pendingVisuals = [
+      ...this.cars.map((car) => car.premiumVisualLoad),
+      this.ball.premiumVisualLoad
+    ].filter(Boolean);
+    await Promise.allSettled(pendingVisuals);
+
+    for (const car of this.cars) car.syncVisual();
+    this.ball.syncVisual();
+    this.scene.updateMatrixWorld(true);
+    this.camera.updateMatrixWorld(true);
+
+    // Compile and perform one covered render while the loading screen is still
+    // on top. This uploads geometry/textures and removes the large first-frame
+    // shader hitch common on slower integrated GPUs.
+    try {
+      if (typeof this.renderer.compileAsync === 'function') {
+        await this.renderer.compileAsync(this.scene, this.camera);
+      } else {
+        this.renderer.compile(this.scene, this.camera);
+      }
+    } catch (error) {
+      console.warn('Shader warm-up was unavailable; continuing with normal rendering.', error);
+    }
+    this.renderer.render(this.scene, this.camera);
+  }
+
   start() {
     for (const car of this.cars) car.syncVisual();
     this.ball.syncVisual();
+    // Loading and shader compilation may take seconds on a cold cache. Begin
+    // frame timing here so that time is never mistaken for one huge game step.
+    this.lastTime = performance.now() / 1000;
     this.hud.setPerformance(this.profile.name, this.measuredFps, this.renderPixelRatio);
     requestAnimationFrame(this.loop);
   }

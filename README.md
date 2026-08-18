@@ -2,6 +2,9 @@
 
 ## v1.13.6
 
+- Beim Beitritt bleibt jetzt eine eigene **Match-Ladesequenz** sichtbar, bis Verbindung/Physics, benoetigte 3D-Modelle, Arena-Objekte, Materialien und GPU-Shader bereit sind. Erst nach einem verdeckten Warm-up-Frame blendet die Sequenz ins Spiel.
+- `ULTRA HIGH` laedt vor Matchbeginn nur die Premium-GLBs der tatsaechlich vorhandenen Fahrzeugtypen sowie im Normalmodus den Premium-Ball. Gleiche Modelle teilen weiterhin Template, Geometrie und Texturen; leere/unsichtbare Fahrzeugslots starten keine unnoetigen Downloads.
+- `NORMAL` und `ULTRA LOW` ueberspringen die grossen Premium-Downloads und durchlaufen direkt den leichten Aufbaupfad. Schlaegt ein optionales GLB fehl, startet das Match kontrolliert mit dem vorhandenen prozeduralen Fallback.
 - Die statische Arena fasst kompatible, opake Einzelmeshes jetzt automatisch in **raeumliche Render-Batches** zusammen. Materialien und Geometrie bleiben identisch; transparente Flaechen wie Glas, Glow und Labels werden bewusst nicht zusammengelegt, damit Tiefensortierung und Optik unveraendert bleiben.
 - Das Batching arbeitet in 48-Meter-Zellen statt die komplette Map in ein einziges riesiges Mesh zu verwandeln. Dadurch sinken Draw Calls und Object-Traversal, waehrend Frustum-Culling weiterhin sinnvoll arbeiten kann.
 - Die lokale Rapier-Arenaphysik nutzt fuer alle statischen Map-Collider jetzt **einen gemeinsamen Fixed Rigid Body**. Wand-, Rampen-, Dach-, Ring- und Netz-Collider bleiben einzeln und geometrisch unveraendert, aber hunderte redundante statische Rigid-Body-Objekte entfallen.

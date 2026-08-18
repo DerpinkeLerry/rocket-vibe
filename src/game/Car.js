@@ -26,6 +26,7 @@ export class Car {
     this.input = input;
     this.lowDetail = Boolean(options.lowDetail);
     this.ultraHigh = Boolean(options.ultraHigh) && !this.lowDetail;
+    this.premiumVisualsEnabled = options.initiallyVisible !== false;
     this.clientOnly = Boolean(options.clientOnly);
 
     const spawn = options.spawn ?? { x: 0, y: 0.52, z: 34 };
@@ -482,7 +483,15 @@ export class Car {
 
 
   wantsPremiumCarVisual() {
-    return shouldUsePremiumCarModel(this.carStyle?.id, this.ultraHigh);
+    return this.premiumVisualsEnabled && shouldUsePremiumCarModel(this.carStyle?.id, this.ultraHigh);
+  }
+
+  setPremiumVisualsEnabled(enabled) {
+    const next = Boolean(enabled);
+    if (this.premiumVisualsEnabled === next) return;
+    this.premiumVisualsEnabled = next;
+    this.updatePremiumVisualState();
+    if (this.premiumVisualsEnabled) this.ensurePremiumCarVisual();
   }
 
   getExhaustAnchor() {

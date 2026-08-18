@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const effectSource = await readFile(new URL('./DemolitionExplosion.js', import.meta.url), 'utf8');
-const gameSource = await readFile(new URL('./Game.js', import.meta.url), 'utf8');
+const gameSource = (await readFile(new URL('./Game.js', import.meta.url), 'utf8')).replace(/\r\n/g, '\n');
 
 test('demolition explosion is gated to ultra high graphics', () => {
   assert.match(effectSource, /this\.enabled = Boolean\(options\.ultraHigh\) && !Boolean\(options\.lowDetail\)/);

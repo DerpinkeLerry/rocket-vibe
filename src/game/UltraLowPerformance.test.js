@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const performanceSource = await readFile(new URL('./PerformanceProfile.js', import.meta.url), 'utf8');
 const gameSource = await readFile(new URL('./Game.js', import.meta.url), 'utf8');
-const arenaSource = await readFile(new URL('./Arena.js', import.meta.url), 'utf8');
+const arenaSource = (await readFile(new URL('./Arena.js', import.meta.url), 'utf8')).replace(/\r\n/g, '\n');
 const padsSource = await readFile(new URL('./BoostPads.js', import.meta.url), 'utf8');
 const carSource = await readFile(new URL('./Car.js', import.meta.url), 'utf8');
 const ballSource = await readFile(new URL('./Ball.js', import.meta.url), 'utf8');

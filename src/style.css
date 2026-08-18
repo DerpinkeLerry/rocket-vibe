@@ -87,6 +87,115 @@ canvas { display: block; width: 100%; height: 100%; }
   background: linear-gradient(90deg, #49cfff, #ff9a3c);
 }
 
+/* Match hand-off: keep the canvas covered until GLBs, scene objects and GPU
+   programs are ready, so premium cars never pop in after gameplay appears. */
+.game-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 180;
+  display: grid;
+  place-items: center;
+  padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 18% 22%, rgba(25, 137, 255, .28), transparent 34%),
+    radial-gradient(circle at 82% 78%, rgba(255, 111, 22, .25), transparent 35%),
+    #030a14;
+  opacity: 1;
+  transition: opacity .18s ease;
+}
+
+.game-loading::before {
+  content: '';
+  position: absolute;
+  inset: -30%;
+  background: repeating-linear-gradient(116deg, transparent 0 42px, rgba(255,255,255,.018) 43px 44px);
+  transform: rotate(-4deg);
+  pointer-events: none;
+}
+
+.game-loading.is-complete { opacity: 0; pointer-events: none; }
+
+.game-loading__card {
+  position: relative;
+  width: min(460px, 100%);
+  padding: 32px;
+  border: 1px solid rgba(126, 222, 255, .22);
+  border-radius: 22px;
+  background: rgba(6, 17, 31, .94);
+  box-shadow: 0 30px 90px rgba(0,0,0,.52), inset 0 1px rgba(255,255,255,.04);
+  text-align: center;
+}
+
+.game-loading__eyebrow {
+  color: #82e6ff;
+  font: 900 10px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: .24em;
+}
+
+.game-loading__mark {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  margin: 22px auto 18px;
+  border: 2px solid rgba(255,255,255,.10);
+  border-top-color: #5bdcff;
+  border-right-color: #ff943c;
+  border-radius: 50%;
+  animation: game-loading-spin 1.05s linear infinite;
+}
+
+.game-loading__mark span,
+.game-loading__mark i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: #eefbff;
+  box-shadow: -13px 0 17px #159fff, 13px 0 17px #ff7f21;
+}
+
+.game-loading__mark i { width: 31px; height: 2px; border-radius: 999px; background: rgba(255,255,255,.48); box-shadow: none; }
+.game-loading__card h1 { margin: 0; font-size: clamp(24px, 5vw, 34px); letter-spacing: -.035em; }
+.game-loading__stage { min-height: 22px; margin: 9px 0 22px; color: rgba(255,255,255,.68); font-size: 14px; }
+.game-loading__track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255,255,255,.09);
+  box-shadow: inset 0 1px 3px rgba(0,0,0,.42);
+}
+.game-loading__bar {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #28bfff, #78e7ff 55%, #ff913b);
+  box-shadow: 0 0 16px rgba(69, 205, 255, .40);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform .24s ease;
+}
+.game-loading__meta { display: flex; justify-content: space-between; gap: 16px; margin-top: 10px; }
+.game-loading__detail { overflow: hidden; color: rgba(255,255,255,.42); font: 700 10px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.game-loading__percent { color: #d9f7ff; font: 900 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+@keyframes game-loading-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .game-loading__mark { animation: none; }
+  .game-loading, .game-loading__bar { transition: none; }
+}
+
+@media (max-width: 520px) {
+  .game-loading__card { padding: 26px 22px; }
+  .game-loading__mark { width: 62px; height: 62px; margin: 18px auto 16px; }
+}
+
 .hud {
   position: fixed;
   inset: 0;
