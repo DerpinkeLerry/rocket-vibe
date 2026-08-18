@@ -92,7 +92,7 @@ test('boost-to-jump chord uses a forgiving but bounded action hit target', () =>
   assert.equal(isPointInsideAction(330, 260, jumpRect, 12), false);
 });
 
-test('mobile contact targeting leads the moving ball and rejects unreachable targets', () => {
+test('mobile contact targeting leads the moving ball, prepares shots and rejects unreachable targets', () => {
   const left = getMobileBallContactTarget({
     carPosition: { x: 0, y: 0.5, z: 0 },
     carVelocity: { x: 0, y: 0, z: -12 },
@@ -102,7 +102,7 @@ test('mobile contact targeting leads the moving ball and rejects unreachable tar
   });
   assert.equal(left.reachable, true);
   assert.ok(left.signedAngle > 0, left);
-  assert.ok(left.leadTime > 0 && left.leadTime <= 0.3, left);
+  assert.ok(left.leadTime > 0 && left.leadTime <= 0.52, left);
 
   const movingRight = getMobileBallContactTarget({
     carPosition: { x: 0, y: 0.5, z: 0 },
@@ -112,6 +112,18 @@ test('mobile contact targeting leads the moving ball and rejects unreachable tar
     ballVelocity: { x: 7, y: 0, z: 0 }
   });
   assert.ok(movingRight.signedAngle < 0, movingRight);
+
+  const shotSetup = getMobileBallContactTarget({
+    carPosition: { x: 0, y: 0.5, z: 8 },
+    carVelocity: { x: 0, y: 0, z: -10 },
+    carForward: { x: 0, z: -1 },
+    ballPosition: { x: 2, y: 1.2, z: 0 },
+    ballVelocity: { x: 0, y: 0, z: 0 },
+    goalPosition: { x: 0, z: -51.2 }
+  });
+  assert.equal(shotSetup.reachable, true);
+  assert.ok(shotSetup.shotAlignment > 0.8, shotSetup);
+  assert.ok(shotSetup.aimX > 2, shotSetup);
 
   const high = getMobileBallContactTarget({
     carPosition: { x: 0, y: 0.5, z: 0 },
@@ -127,7 +139,7 @@ test('mobile contact targeting leads the moving ball and rejects unreachable tar
   assert.equal(behind.reachable, false);
 });
 
-test('mobile contact assist corrects small misses but preserves deliberate override', () => {
+test('mobile contact assist strongly corrects misses while preserving a full deliberate override', () => {
   const corrected = applyMobileBallContactAssist(0, {
     reachable: true,
     signedAngle: 0.20,
@@ -136,17 +148,26 @@ test('mobile contact assist corrects small misses but preserves deliberate overr
     airborne: false
   });
   assert.equal(corrected.active, true);
-  assert.ok(corrected.steer > 0.15 && corrected.steer <= 0.30, corrected);
+  assert.ok(corrected.steer > 0.52 && corrected.steer <= 0.72, corrected);
 
-  const override = applyMobileBallContactAssist(-0.7, {
+  const mediumOpposition = applyMobileBallContactAssist(-0.7, {
     reachable: true,
     signedAngle: 0.20,
     distance: 5,
     throttle: 1,
     airborne: false
   });
-  assert.equal(override.steer, -0.7);
-  assert.equal(override.active, false);
+  assert.ok(mediumOpposition.steer > -0.15, mediumOpposition);
+  assert.equal(mediumOpposition.active, true);
+
+  const fullOverride = applyMobileBallContactAssist(-1, {
+    reachable: true,
+    signedAngle: 0.20,
+    distance: 5,
+    throttle: 1,
+    airborne: false
+  });
+  assert.ok(fullOverride.steer < -0.7, fullOverride);
 
   const airborne = applyMobileBallContactAssist(0.2, {
     reachable: true,
@@ -155,5 +176,6 @@ test('mobile contact assist corrects small misses but preserves deliberate overr
     throttle: 1,
     airborne: true
   });
-  assert.deepEqual(airborne, { steer: 0.2, strength: 0, correction: 0, active: false });
+  assert.equal(airborne.active, true);
+  assert.ok(airborne.steer > 0.4, airborne);
 });

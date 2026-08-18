@@ -112,6 +112,7 @@ export function getMobileBallContactTarget(options = {}) {
   const forward = options.carForward ?? {};
   const ball = options.ballPosition ?? {};
   const ballVelocity = options.ballVelocity ?? {};
+  const goal = options.goalPosition ?? null;
   const fxRaw = Number(forward.x) || 0;
   const fzRaw = Number(forward.z) || -1;
   const forwardLength = Math.max(1e-6, Math.hypot(fxRaw, fzRaw));
@@ -126,28 +127,58 @@ export function getMobileBallContactTarget(options = {}) {
     (Number(ball.x) || 0) - (Number(car.x) || 0),
     (Number(ball.z) || 0) - (Number(car.z) || 0)
   );
-  const leadTime = clamp(initialDistance / Math.max(13, carSpeed + 5), 0.03, 0.30);
-  const leadScale = 0.72;
-  const dx = (Number(ball.x) || 0) + (Number(ballVelocity.x) || 0) * leadTime * leadScale
-    - (Number(car.x) || 0);
-  const dz = (Number(ball.z) || 0) + (Number(ballVelocity.z) || 0) * leadTime * leadScale
-    - (Number(car.z) || 0);
+  // Mobile steering needs more time than a physical stick to react. Predict a
+  // meaningful intercept instead of continuously chasing the ball's old spot.
+  const leadTime = clamp(initialDistance / Math.max(10, carSpeed + 3), 0.05, 0.52);
+  const leadScale = 0.96;
+  const predictedBallX = (Number(ball.x) || 0) + (Number(ballVelocity.x) || 0) * leadTime * leadScale;
+  const predictedBallZ = (Number(ball.z) || 0) + (Number(ballVelocity.z) || 0) * leadTime * leadScale;
+
+  // When the player is already approaching from behind the ball, aim the car
+  // at the useful contact side. This turns the helper into a shot assist rather
+  // than a pure ball-centre magnet, while wrong-side approaches still favour a
+  // simple, reliable touch.
+  let aimX = predictedBallX;
+  let aimZ = predictedBallZ;
+  let shotAlignment = 0;
+  if (goal) {
+    const goalDx = (Number(goal.x) || 0) - predictedBallX;
+    const goalDz = (Number(goal.z) || 0) - predictedBallZ;
+    const goalDistance = Math.max(1e-6, Math.hypot(goalDx, goalDz));
+    const shotX = goalDx / goalDistance;
+    const shotZ = goalDz / goalDistance;
+    const ballFromCarX = predictedBallX - (Number(car.x) || 0);
+    const ballFromCarZ = predictedBallZ - (Number(car.z) || 0);
+    const ballFromCarDistance = Math.max(1e-6, Math.hypot(ballFromCarX, ballFromCarZ));
+    const approachDot = (ballFromCarX * shotX + ballFromCarZ * shotZ) / ballFromCarDistance;
+    shotAlignment = smoothstep(-0.12, 0.72, approachDot);
+    const setupBlend = smoothstep(1.8, 5.5, initialDistance);
+    const contactOffset = 1.62 * shotAlignment * setupBlend;
+    aimX -= shotX * contactOffset;
+    aimZ -= shotZ * contactOffset;
+  }
+
+  const dx = aimX - (Number(car.x) || 0);
+  const dz = aimZ - (Number(car.z) || 0);
   const distance = Math.max(1e-6, Math.hypot(dx, dz));
   const forwardDot = clamp((fx * dx + fz * dz) / distance, -1, 1);
   // Positive is left in the physics steering convention.
   const signedAngle = Math.atan2(fz * dx - fx * dz, fx * dx + fz * dz);
   const verticalDelta = (Number(ball.y) || 0) - (Number(car.y) || 0);
   const reachable = options.enabled !== false
-    && distance <= 13.5
-    && verticalDelta >= -1.2
-    && verticalDelta <= 2.65
-    && forwardDot >= Math.cos(0.82);
+    && distance <= 22
+    && verticalDelta >= -1.5
+    && verticalDelta <= 4.2
+    && forwardDot >= Math.cos(1.12);
   return Object.freeze({
     reachable,
     distance,
     signedAngle,
     verticalDelta,
-    leadTime
+    leadTime,
+    shotAlignment,
+    aimX,
+    aimZ
   });
 }
 
@@ -156,25 +187,29 @@ export function applyMobileBallContactAssist(manualSteer, options = {}) {
   const angle = Number(options.signedAngle) || 0;
   const distance = Math.max(0, Number(options.distance) || 0);
   const throttle = Number(options.throttle) || 0;
-  if (!options.reachable || options.airborne || throttle <= 0.15
-    || distance <= 0.5 || Math.abs(angle) <= 0.022 || Math.abs(angle) >= 0.82) {
+  const airborne = Boolean(options.airborne);
+  if (!options.reachable || (!airborne && throttle <= 0.05)
+    || distance <= 0.35 || Math.abs(angle) <= 0.008 || Math.abs(angle) >= 1.12) {
     return Object.freeze({ steer, strength: 0, correction: 0, active: false });
   }
 
-  const desiredSteer = clamp(angle / 0.38, -1, 1);
-  const distanceBlend = 1 - smoothstep(3.5, 13.5, distance);
-  const angleBlend = 1 - smoothstep(0.58, 0.82, Math.abs(angle));
-  let strength = (0.16 + distanceBlend * 0.28) * angleBlend;
+  const desiredSteer = clamp(angle / 0.28, -1, 1);
+  const distanceBlend = 1 - smoothstep(7, 22, distance);
+  const angleBlend = 1 - smoothstep(0.84, 1.12, Math.abs(angle));
+  let strength = (0.52 + distanceBlend * 0.34) * angleBlend * (airborne ? 0.72 : 1);
 
-  // A deliberate opposite or full-lock input always wins. The assist corrects
-  // small thumb imprecision; it must never prevent an angled shot or rotation.
+  // Medium opposing input is now intentionally corrected: the requested strong
+  // helper should be obvious. A nearly full deliberate counter-steer still wins
+  // so players can abort the approach or choose a sharp angled touch.
   if (steer * desiredSteer < -0.04) {
-    strength *= clamp(1 - Math.abs(steer) * 2.5, 0, 1);
-  } else if (Math.abs(steer) > 0.82) {
-    strength *= 0.12;
+    const override = smoothstep(0.62, 0.98, Math.abs(steer));
+    strength *= 1 - override * 0.88;
+  } else if (Math.abs(steer) > 0.94) {
+    strength *= 0.35;
   }
 
-  const correction = clamp((desiredSteer - steer) * strength, -0.30, 0.30);
+  const maximumCorrection = airborne ? 0.48 : 0.72;
+  const correction = clamp((desiredSteer - steer) * strength, -maximumCorrection, maximumCorrection);
   const assistedSteer = clamp(steer + correction, -1, 1);
   return Object.freeze({
     steer: assistedSteer,
@@ -455,7 +490,9 @@ export class MobileControls {
   }
 
   setBallAssistActive(active, strength = 0) {
-    this.ballAssistActive = Boolean(active);
+    const nextActive = Boolean(active);
+    if (nextActive && !this.ballAssistActive) vibrate([4, 12, 4]);
+    this.ballAssistActive = nextActive;
     this.el?.classList.toggle('is-ball-assist', this.ballAssistActive);
     this.ballContactMarker?.classList.toggle('is-active', this.ballAssistActive);
     this.ballContactMarker?.style.setProperty('--contact-assist', clamp(Number(strength) || 0, 0, 1).toFixed(3));

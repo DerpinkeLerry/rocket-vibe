@@ -1016,7 +1016,11 @@ export class Game {
         carVelocity: mobileVelocity,
         carForward: this.mobileAssistForward,
         ballPosition: mobileBallPosition,
-        ballVelocity: mobileBallVelocity
+        ballVelocity: mobileBallVelocity,
+        goalPosition: {
+          x: 0,
+          z: this.playerTeam === 'orange' ? -ARENA_TUNING.length * 0.5 : ARENA_TUNING.length * 0.5
+        }
       }));
     }
 
