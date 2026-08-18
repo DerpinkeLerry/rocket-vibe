@@ -129,7 +129,7 @@ export class Car {
     this.setSpawnRotation();
 
     const colliderDesc = R.ColliderDesc.cuboid(CAR_HITBOX.x, CAR_HITBOX.y, CAR_HITBOX.z)
-      .setDensity(532.4939211622848)
+      .setDensity(CAR_TUNING.mass / (8 * CAR_HITBOX.x * CAR_HITBOX.y * CAR_HITBOX.z))
       .setFriction(0.04)
       .setRestitution(0)
       .setContactSkin(0);

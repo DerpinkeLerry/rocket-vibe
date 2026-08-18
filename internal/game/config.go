@@ -150,7 +150,7 @@ func DefaultConfig() Config {
 			GoalRampRadius: RLArenaRampRadius, GoalMouthRadius: 0.8,
 		},
 		Car: CarConfig{
-			HalfExtents:             Vec3{X: RLOctaneHalfWidth, Y: RLOctaneHalfHeight, Z: RLOctaneHalfLength},
+			HalfExtents:             Vec3{X: GameplayCarHalfWidth, Y: GameplayCarHalfHeight, Z: GameplayCarHalfLength},
 			Mass:                    RLCarMass,
 			MaxGroundSpeed:          RLCarMaxThrottleSpeed,
 			MaxBoostSpeed:           RLCarMaxSpeed,
@@ -203,7 +203,7 @@ func DefaultConfig() Config {
 			Restitution:             0,
 		},
 		Ball: BallConfig{
-			Radius:            RLBallRadius,
+			Radius:            GameplayBallRadius,
 			Mass:              RLBallMass,
 			Restitution:       RLBallRestitution,
 			Friction:          0.22,
@@ -215,8 +215,8 @@ func DefaultConfig() Config {
 			CarHitPower:       0.34,
 			CarHitLift:        0.11,
 			CarHitLiftBase:    0.45,
-			SpawnY:            RLBallRestingHeight,
-			RestingHeight:     RLBallRestingHeight,
+			SpawnY:            GameplayBallRestHeight,
+			RestingHeight:     GameplayBallRestHeight,
 		},
 		BoostPads: BoostPadConfig{
 			FullAmount: 100, SmallAmount: 12, SmallRespawnSeconds: 4, FullRespawnSeconds: 10,

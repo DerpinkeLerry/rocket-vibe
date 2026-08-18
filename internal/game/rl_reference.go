@@ -9,6 +9,11 @@ import "math"
 const (
 	UUPerMetre = 100.0
 
+	// The exact RL dimensions looked undersized in Rocket Vibe's camera and
+	// arena presentation. Cars and ball therefore use one shared 150% gameplay
+	// scale while their masses, forces, speeds and response curves stay intact.
+	GameplayObjectScale = 1.50
+
 	RLArenaWidth        = 81.92
 	RLArenaLength       = 102.40
 	RLArenaCeiling      = 20.44
@@ -57,6 +62,12 @@ const (
 	RLBallTerminalSpeed   = 212.68220703125
 	RLBallMaxAngularSpeed = 6.0
 	RLBallLinearDrag      = 0.030562030038766
+
+	GameplayCarHalfWidth   = RLOctaneHalfWidth * GameplayObjectScale
+	GameplayCarHalfHeight  = RLOctaneHalfHeight * GameplayObjectScale
+	GameplayCarHalfLength  = RLOctaneHalfLength * GameplayObjectScale
+	GameplayBallRadius     = RLBallRadius * GameplayObjectScale
+	GameplayBallRestHeight = RLBallRestingHeight * GameplayObjectScale
 )
 
 // throttleAccelerationAtSpeed is the measured piecewise-linear throttle

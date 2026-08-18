@@ -153,17 +153,17 @@ func RespawnPointsForSlot(slot int) [DemolitionSpawnCount]RespawnPoint {
 	team := TeamForSlot(slot)
 	if team == TeamBlue {
 		return [DemolitionSpawnCount]RespawnPoint{
-			{Position: Vec3{X: -23.04, Y: RLOctaneHalfHeight, Z: -46.08}, Yaw: math.Pi},
-			{Position: Vec3{X: -26.88, Y: RLOctaneHalfHeight, Z: -46.08}, Yaw: math.Pi},
-			{Position: Vec3{X: 23.04, Y: RLOctaneHalfHeight, Z: -46.08}, Yaw: math.Pi},
-			{Position: Vec3{X: 26.88, Y: RLOctaneHalfHeight, Z: -46.08}, Yaw: math.Pi},
+			{Position: Vec3{X: -23.04, Y: GameplayCarHalfHeight, Z: -46.08}, Yaw: math.Pi},
+			{Position: Vec3{X: -26.88, Y: GameplayCarHalfHeight, Z: -46.08}, Yaw: math.Pi},
+			{Position: Vec3{X: 23.04, Y: GameplayCarHalfHeight, Z: -46.08}, Yaw: math.Pi},
+			{Position: Vec3{X: 26.88, Y: GameplayCarHalfHeight, Z: -46.08}, Yaw: math.Pi},
 		}
 	}
 	return [DemolitionSpawnCount]RespawnPoint{
-		{Position: Vec3{X: 23.04, Y: RLOctaneHalfHeight, Z: 46.08}, Yaw: 0},
-		{Position: Vec3{X: 26.88, Y: RLOctaneHalfHeight, Z: 46.08}, Yaw: 0},
-		{Position: Vec3{X: -23.04, Y: RLOctaneHalfHeight, Z: 46.08}, Yaw: 0},
-		{Position: Vec3{X: -26.88, Y: RLOctaneHalfHeight, Z: 46.08}, Yaw: 0},
+		{Position: Vec3{X: 23.04, Y: GameplayCarHalfHeight, Z: 46.08}, Yaw: 0},
+		{Position: Vec3{X: 26.88, Y: GameplayCarHalfHeight, Z: 46.08}, Yaw: 0},
+		{Position: Vec3{X: -23.04, Y: GameplayCarHalfHeight, Z: 46.08}, Yaw: 0},
+		{Position: Vec3{X: -26.88, Y: GameplayCarHalfHeight, Z: 46.08}, Yaw: 0},
 	}
 }
 
@@ -174,14 +174,14 @@ var playerSpawns = [MaxPlayers]struct {
 	// RLBot's yaw uses a different zero axis; these values are converted to the
 	// local convention where yaw 0 faces -Z. The diagonal cars deliberately
 	// point at 45 degrees, as in Rocket League, rather than directly at the ball.
-	{Position: Vec3{X: 20.48, Y: RLOctaneHalfHeight, Z: 25.60}, Yaw: math.Pi / 4},
-	{Position: Vec3{X: -20.48, Y: RLOctaneHalfHeight, Z: -25.60}, Yaw: -3 * math.Pi / 4},
-	{Position: Vec3{X: -20.48, Y: RLOctaneHalfHeight, Z: 25.60}, Yaw: -math.Pi / 4},
-	{Position: Vec3{X: 20.48, Y: RLOctaneHalfHeight, Z: -25.60}, Yaw: 3 * math.Pi / 4},
-	{Position: Vec3{X: 2.56, Y: RLOctaneHalfHeight, Z: 38.40}, Yaw: 0},
-	{Position: Vec3{X: -2.56, Y: RLOctaneHalfHeight, Z: -38.40}, Yaw: math.Pi},
-	{Position: Vec3{X: -2.56, Y: RLOctaneHalfHeight, Z: 38.40}, Yaw: 0},
-	{Position: Vec3{X: 2.56, Y: RLOctaneHalfHeight, Z: -38.40}, Yaw: math.Pi},
+	{Position: Vec3{X: 20.48, Y: GameplayCarHalfHeight, Z: 25.60}, Yaw: math.Pi / 4},
+	{Position: Vec3{X: -20.48, Y: GameplayCarHalfHeight, Z: -25.60}, Yaw: -3 * math.Pi / 4},
+	{Position: Vec3{X: -20.48, Y: GameplayCarHalfHeight, Z: 25.60}, Yaw: -math.Pi / 4},
+	{Position: Vec3{X: 20.48, Y: GameplayCarHalfHeight, Z: -25.60}, Yaw: 3 * math.Pi / 4},
+	{Position: Vec3{X: 2.56, Y: GameplayCarHalfHeight, Z: 38.40}, Yaw: 0},
+	{Position: Vec3{X: -2.56, Y: GameplayCarHalfHeight, Z: -38.40}, Yaw: math.Pi},
+	{Position: Vec3{X: -2.56, Y: GameplayCarHalfHeight, Z: 38.40}, Yaw: 0},
+	{Position: Vec3{X: 2.56, Y: GameplayCarHalfHeight, Z: -38.40}, Yaw: math.Pi},
 }
 
 var boostPadSpecs = [BoostPadCount]BoostPad{

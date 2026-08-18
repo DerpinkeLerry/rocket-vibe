@@ -31,6 +31,9 @@ export function getDirectionalDodgeLiftScale(forwardAmount) {
 }
 
 export const UU_PER_METRE = 100;
+// Deliberate readability override: dynamics stay on the RLBot reference while
+// both gameplay objects and their colliders are uniformly 50% larger.
+export const GAMEPLAY_OBJECT_SCALE = 1.5;
 export const FULL_STEER_SPEED = 12.34;
 export const FULL_STEER_TIME_CONSTANT = 0.74704;
 
@@ -71,6 +74,7 @@ export function fullSteerDecelerationAtSpeed(speed) {
 
 export const CAR_TUNING = {
   // RLBot values converted from Unreal Units to metres.
+  mass: 180,
   maxGroundSpeed: 14.10,
   maxBoostSpeed: 23.00,
   supersonicSpeed: 22.00,
@@ -133,11 +137,11 @@ export const CAR_TUNING = {
 };
 
 export const BALL_TUNING = {
-  radius: 0.9125,
-  spawnY: 0.9315,
-  restingHeight: 0.9315,
-  // Rapier density chosen so a 0.9125 m sphere has the referenced mass 30.
-  density: 9.426143044744238,
+  radius: 0.9125 * GAMEPLAY_OBJECT_SCALE,
+  spawnY: 0.9315 * GAMEPLAY_OBJECT_SCALE,
+  restingHeight: 0.9315 * GAMEPLAY_OBJECT_SCALE,
+  // Density preserves the referenced mass after the readability scale-up.
+  density: 30 / ((4 / 3) * Math.PI * (0.9125 * GAMEPLAY_OBJECT_SCALE) ** 3),
   mass: 30,
   restitution: 0.60,
   friction: 0.22,
@@ -157,7 +161,7 @@ export function applyServerPhysicsConfig(config = {}) {
   const ball = config?.ball || {};
 
   const carMap = {
-    maxGroundSpeed: 'maxGroundSpeed', maxBoostSpeed: 'maxBoostSpeed', supersonicSpeed: 'supersonicSpeed', boostCapacity: 'boostCapacity',
+    mass: 'mass', maxGroundSpeed: 'maxGroundSpeed', maxBoostSpeed: 'maxBoostSpeed', supersonicSpeed: 'supersonicSpeed', boostCapacity: 'boostCapacity',
     boostConsumptionPerSecond: 'boostConsumptionPerSecond', driveAcceleration: 'driveAcceleration',
     reverseAcceleration: 'reverseAcceleration', brakeAcceleration: 'brakeAcceleration', coastDeceleration: 'coastDeceleration',
     boostAcceleration: 'boostAcceleration', airBoostAcceleration: 'airBoostAcceleration',
@@ -180,9 +184,10 @@ export function applyServerPhysicsConfig(config = {}) {
   const gravity = Number(config?.gravity);
   if (Number.isFinite(gravity)) CAR_TUNING.gravity = gravity;
 
-  const ballKeys = ['radius', 'spawnY', 'restingHeight', 'restitution', 'friction', 'rollingResistance', 'linearDamping', 'angularDamping', 'carHitPower', 'carHitLift', 'carHitLiftBase', 'maxSpeed', 'maxAngularSpeed'];
+  const ballKeys = ['radius', 'mass', 'spawnY', 'restingHeight', 'restitution', 'friction', 'rollingResistance', 'linearDamping', 'angularDamping', 'carHitPower', 'carHitLift', 'carHitLiftBase', 'maxSpeed', 'maxAngularSpeed'];
   for (const key of ballKeys) {
     const value = Number(ball[key]);
     if (Number.isFinite(value)) BALL_TUNING[key] = value;
   }
+  BALL_TUNING.density = BALL_TUNING.mass / ((4 / 3) * Math.PI * BALL_TUNING.radius ** 3);
 }

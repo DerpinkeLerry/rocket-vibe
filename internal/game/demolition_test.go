@@ -12,8 +12,8 @@ func setupDemoContact(t *testing.T, speed float64, attackerYaw float64, attacker
 	world.SetConnected(victimSlot, true)
 	attacker := &world.Cars[attackerSlot]
 	victim := &world.Cars[victimSlot]
-	attacker.Position = Vec3{X: 0, Y: RLOctaneHalfHeight, Z: 0}
-	victim.Position = Vec3{X: 0, Y: RLOctaneHalfHeight, Z: -1.0}
+	attacker.Position = Vec3{X: 0, Y: world.Config.Car.HalfExtents.Y, Z: 0}
+	victim.Position = Vec3{X: 0, Y: world.Config.Car.HalfExtents.Y, Z: -1.0}
 	attacker.Rotation = QuatFromYaw(attackerYaw)
 	victim.Rotation = QuatFromYaw(math.Pi)
 	attacker.Velocity = Vec3{Z: -speed}

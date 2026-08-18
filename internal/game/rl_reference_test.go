@@ -14,6 +14,7 @@ func closeReference(t *testing.T, label string, got, want, tolerance float64) {
 
 func TestRLBotReferenceDefaults(t *testing.T) {
 	config := DefaultConfig()
+	closeReference(t, "gameplay object scale", GameplayObjectScale, 1.5, 1e-12)
 	if config.PhysicsHz != 120 {
 		t.Fatalf("physics tick rate = %d, want 120 Hz", config.PhysicsHz)
 	}
@@ -30,7 +31,10 @@ func TestRLBotReferenceDefaults(t *testing.T) {
 	closeReference(t, "goal depth", config.Arena.GoalDepth, 8.80, 1e-12)
 
 	closeReference(t, "car mass", config.Car.Mass, 180, 1e-12)
-	closeReference(t, "Octane rest elevation", config.Car.HalfExtents.Y, 0.1701, 1e-12)
+	closeReference(t, "RL Octane rest elevation", RLOctaneHalfHeight, 0.1701, 1e-12)
+	closeReference(t, "scaled Octane half width", config.Car.HalfExtents.X, 0.6315, 1e-12)
+	closeReference(t, "scaled Octane rest elevation", config.Car.HalfExtents.Y, 0.25515, 1e-12)
+	closeReference(t, "scaled Octane half length", config.Car.HalfExtents.Z, 0.88506, 1e-12)
 	closeReference(t, "throttle speed", config.Car.MaxGroundSpeed, 14.10, 1e-12)
 	closeReference(t, "boost speed", config.Car.MaxBoostSpeed, 23.00, 1e-12)
 	closeReference(t, "supersonic speed", config.Car.SupersonicSpeed, 22.00, 1e-12)
@@ -48,8 +52,9 @@ func TestRLBotReferenceDefaults(t *testing.T) {
 	closeReference(t, "roll acceleration", config.Car.AirRollAcceleration, 38.34, 1e-12)
 	closeReference(t, "maximum angular speed", config.Car.MaxAirAngular, 5.5, 1e-12)
 
-	closeReference(t, "ball radius", config.Ball.Radius, 0.9125, 1e-12)
-	closeReference(t, "ball resting height", config.Ball.RestingHeight, 0.9315, 1e-12)
+	closeReference(t, "RL ball radius", RLBallRadius, 0.9125, 1e-12)
+	closeReference(t, "scaled ball radius", config.Ball.Radius, 1.36875, 1e-12)
+	closeReference(t, "scaled ball resting height", config.Ball.RestingHeight, 1.39725, 1e-12)
 	closeReference(t, "ball mass", config.Ball.Mass, 30, 1e-12)
 	closeReference(t, "ball restitution", config.Ball.Restitution, 0.60, 1e-12)
 	closeReference(t, "ball max speed", config.Ball.MaxSpeed, 60, 1e-12)
@@ -142,6 +147,7 @@ func TestRLBotSpawnLocationsAndYawConversion(t *testing.T) {
 		closeReference(t, "kickoff x", playerSpawns[index].Position.X, want.x, 1e-12)
 		closeReference(t, "kickoff z", playerSpawns[index].Position.Z, want.z, 1e-12)
 		closeReference(t, "kickoff yaw", playerSpawns[index].Yaw, want.yaw, 1e-12)
+		closeReference(t, "kickoff rest height", playerSpawns[index].Position.Y, GameplayCarHalfHeight, 1e-12)
 	}
 
 	blue := RespawnPointsForSlot(1)
@@ -226,7 +232,7 @@ func TestBallRestitutionDragAndSafetyCaps(t *testing.T) {
 	config := DefaultConfig()
 	ball := Ball{Body: Body{Position: Vec3{Y: 0.5}, Velocity: Vec3{Y: -10}}}
 	resolveBallFlatFloor(&ball, config)
-	closeReference(t, "resting height", ball.Position.Y, RLBallRestingHeight, 1e-12)
+	closeReference(t, "resting height", ball.Position.Y, GameplayBallRestHeight, 1e-12)
 	closeReference(t, "ten metre bounce", ball.Velocity.Y, 6, 1e-12)
 
 	world := NewWorld(config)

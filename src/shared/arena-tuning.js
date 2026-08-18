@@ -1,3 +1,5 @@
+import { GAMEPLAY_OBJECT_SCALE } from './game-tuning.js';
+
 export const ARENA_TUNING = {
   width: 81.92,
   length: 102.40,
@@ -16,9 +18,9 @@ export const ARENA_TUNING = {
 };
 
 export const CAR_HITBOX = {
-  x: 0.421,
-  y: 0.1701,
-  z: 0.59004
+  x: 0.421 * GAMEPLAY_OBJECT_SCALE,
+  y: 0.1701 * GAMEPLAY_OBJECT_SCALE,
+  z: 0.59004 * GAMEPLAY_OBJECT_SCALE
 };
 
 

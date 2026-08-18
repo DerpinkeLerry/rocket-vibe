@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import {
   BALL_TUNING,
   CAR_TUNING,
+  GAMEPLAY_OBJECT_SCALE,
   FULL_STEER_SPEED,
   FULL_STEER_TIME_CONSTANT,
   getDirectionalDodgeLiftScale,
@@ -30,7 +31,11 @@ test('shared defaults match the RLBot arena, car, jump and ball reference', () =
     goalWidth: 17.8551, goalHeight: 6.42775, goalDepth: 8.8,
     goalRampRadius: 2.56, goalMouthRadius: 0.8
   });
-  assert.deepEqual(CAR_HITBOX, { x: 0.421, y: 0.1701, z: 0.59004 });
+  assert.equal(GAMEPLAY_OBJECT_SCALE, 1.5);
+  assert.ok(Math.abs(CAR_HITBOX.x - 0.6315) < 1e-12);
+  assert.ok(Math.abs(CAR_HITBOX.y - 0.25515) < 1e-12);
+  assert.ok(Math.abs(CAR_HITBOX.z - 0.88506) < 1e-12);
+  assert.equal(CAR_TUNING.mass, 180);
   assert.equal(CAR_TUNING.maxGroundSpeed, 14.1);
   assert.equal(CAR_TUNING.maxBoostSpeed, 23);
   assert.equal(CAR_TUNING.supersonicSpeed, 22);
@@ -48,14 +53,15 @@ test('shared defaults match the RLBot arena, car, jump and ball reference', () =
   assert.equal(FULL_STEER_SPEED, 12.34);
   assert.equal(FULL_STEER_TIME_CONSTANT, 0.74704);
 
-  assert.equal(BALL_TUNING.radius, 0.9125);
-  assert.equal(BALL_TUNING.restingHeight, 0.9315);
+  assert.ok(Math.abs(BALL_TUNING.radius - 1.36875) < 1e-12);
+  assert.ok(Math.abs(BALL_TUNING.restingHeight - 1.39725) < 1e-12);
   assert.equal(BALL_TUNING.mass, 30);
   assert.equal(BALL_TUNING.restitution, 0.6);
   assert.equal(BALL_TUNING.maxSpeed, 60);
   assert.equal(BALL_TUNING.terminalSpeed, 212.68220703125);
   assert.equal(BALL_TUNING.maxAngularSpeed, 6);
   assert.equal(BALL_TUNING.linearDamping, 0.030562030038766);
+  assert.ok(Math.abs(BALL_TUNING.density * (4 / 3) * Math.PI * BALL_TUNING.radius ** 3 - 30) < 1e-12);
   assert.ok(Math.abs(CAR_TUNING.gravity / BALL_TUNING.linearDamping - BALL_TUNING.terminalSpeed) < 1e-9);
 });
 

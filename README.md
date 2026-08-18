@@ -7,6 +7,7 @@
 - Gas nutzt die gemessene stückweise Beschleunigungskurve; Bremsen, Ausrollen, Boost, Supersonic-Schwelle und die geschwindigkeitsabhängige Lenkkurve verwenden die RLBot-Werte.
 - Sprungimpuls, 0,2-s-Hold-Kraft, Sticky Force, Double-Jump-Fenster und Luftrotation sind mit dem RLBot-Jump-Modell abgestimmt.
 - Ballradius/-masse, Ruhehöhe, Restitution, Linear-Drag sowie lineare und angulare Caps sind Referenzwerte. Auto-/Ball-Impulse berücksichtigen beide Massen.
+- Für bessere Lesbarkeit sind Auto und Ball samt Collider einheitlich auf **150 %** skaliert; Massen, Kräfte, Tempo- und Reaktionswerte bleiben unverändert.
 - Zentrale Referenz: https://wiki.rlbot.org/v4/botmaking/useful-game-values/; Sprungdetails: https://wiki.rlbot.org/v4/botmaking/jumping-physics/.
 
 Die RLBot-Seite weist selbst darauf hin, dass manche Details – besonders die exakte nicht-kreisförmige Bodenrampe, Reifen-/Gripmodell und Teile des Dodge-/Kontaktverhaltens – nicht vollständig veröffentlicht sind. Dafür verwendet das Spiel weiterhin deterministische, zwischen Go-Server, Browser-Prediction und lokalem Rapier-Modus abgestimmte Näherungen.

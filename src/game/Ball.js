@@ -250,7 +250,7 @@ export class Ball {
 
     this.body = this.world.createRigidBody(bodyDesc);
     const colliderDesc = R.ColliderDesc.ball(this.radius)
-      // Density is derived from the reference 30-unit mass at 91.25 cm radius.
+      // Density preserves the reference 30-unit mass at the enlarged radius.
       .setDensity(BALL_TUNING.density)
       .setFriction(BALL_TUNING.friction)
       .setRestitution(BALL_TUNING.restitution)
@@ -376,9 +376,9 @@ export class Ball {
     );
     this.hitDelta.copy(this.hitLocal).sub(this.hitClosest);
     const distance = this.hitDelta.length();
-    const contactRange = this.radius + 0.42;
+    const contactRange = this.radius + CAR_HITBOX.x;
     if (distance > contactRange) {
-      if (distance > this.radius + 0.65) this.carContactActive = false;
+      if (distance > this.radius + CAR_HITBOX.z) this.carContactActive = false;
       this.pendingHitSpeed = 0;
       return;
     }

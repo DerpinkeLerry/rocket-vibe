@@ -100,7 +100,7 @@ test('prediction performs a finite directional second-jump dodge', () => {
   const { body, predictor } = startPredictorDodge(INPUT_BITS.W);
 
   assert.equal(predictor.jumpCount, 2);
-  assert.ok(body.linvel().z < -CAR_HITBOX.z * 6, `forward speed was ${body.linvel().z}`);
+  assert.ok(body.linvel().z < -4.99, `forward speed was ${body.linvel().z}`);
   assert.ok(body.angvel().x <= -5.49, `flip angular speed was ${body.angvel().x}`);
   assert.ok(predictor.dodgeTime > 0);
   assert.ok(predictor.dodgeAngleRemaining > 0);
@@ -235,7 +235,7 @@ test('prediction resolves the documented 45-degree arena corner plane', () => {
   const velocity = body.linvel();
   // Identity orientation support on a diagonal is (half width + half length)
   // along the unnormalised x+z plane.
-  const maximumSum = 80.64 - (0.421 + 0.59004);
+  const maximumSum = 80.64 - (CAR_HITBOX.x + CAR_HITBOX.z);
   assert.ok(position.x + position.z <= maximumSum + 1e-7, JSON.stringify(position));
   assert.ok((velocity.x + velocity.z) * Math.SQRT1_2 <= 1e-7, JSON.stringify(velocity));
 });

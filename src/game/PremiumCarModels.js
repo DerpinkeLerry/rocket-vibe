@@ -1,11 +1,12 @@
 import * as THREE from 'three';
+import { GAMEPLAY_OBJECT_SCALE } from '../shared/game-tuning.js';
 
 const PREMIUM_CAR_CONFIGS = Object.freeze({
   octane: Object.freeze({
     name: 'OCTANE',
     url: new URL('../assets/octane-rocket-league.glb', import.meta.url).href,
-    targetLength: 1.18008,
-    bottomY: -0.20,
+    targetLength: 1.18008 * GAMEPLAY_OBJECT_SCALE,
+    bottomY: -0.20 * GAMEPLAY_OBJECT_SCALE,
     paintMaterials: ['octane_body'],
     darkMaterials: ['paint'],
     windowMaterials: ['window'],
@@ -13,13 +14,13 @@ const PREMIUM_CAR_CONFIGS = Object.freeze({
     rimMaterials: ['dieci_rim'],
     wheelGroupPattern: /dieci - (fr|fl|br|bl) \(octane\)$/i,
     wheelSpinAxis: 'y',
-    exhaustAnchor: Object.freeze({ x: 0.14, z: 0.63 })
+    exhaustAnchor: Object.freeze({ x: 0.14 * GAMEPLAY_OBJECT_SCALE, z: 0.63 * GAMEPLAY_OBJECT_SCALE })
   }),
   dominus: Object.freeze({
     name: 'DOMINUS',
     url: new URL('../assets/dominus-rocket-league.glb', import.meta.url).href,
-    targetLength: 1.18008,
-    bottomY: -0.20,
+    targetLength: 1.18008 * GAMEPLAY_OBJECT_SCALE,
+    bottomY: -0.20 * GAMEPLAY_OBJECT_SCALE,
     paintMaterials: ['dominus_body'],
     darkMaterials: ['paint'],
     windowMaterials: ['window'],
@@ -27,13 +28,13 @@ const PREMIUM_CAR_CONFIGS = Object.freeze({
     rimMaterials: ['cristiano'],
     wheelGroupPattern: /cristiano - (fr|fl|br|bl) \(dominus\)$/i,
     wheelSpinAxis: 'y',
-    exhaustAnchor: Object.freeze({ x: 0.15, z: 0.64 })
+    exhaustAnchor: Object.freeze({ x: 0.15 * GAMEPLAY_OBJECT_SCALE, z: 0.64 * GAMEPLAY_OBJECT_SCALE })
   }),
   fennec: Object.freeze({
     name: 'FENNEC',
     url: new URL('../assets/fennec-rocket-league.glb', import.meta.url).href,
-    targetLength: 1.18008,
-    bottomY: -0.20,
+    targetLength: 1.18008 * GAMEPLAY_OBJECT_SCALE,
+    bottomY: -0.20 * GAMEPLAY_OBJECT_SCALE,
     paintMaterials: ['fennec_-_body', 'fennec - body'],
     darkMaterials: ['paint'],
     windowMaterials: ['window'],
@@ -41,7 +42,7 @@ const PREMIUM_CAR_CONFIGS = Object.freeze({
     rimMaterials: ['alpha_rim'],
     wheelGroupPattern: /alpha - (fr|fl|br|bl) \(fennec\)$/i,
     wheelSpinAxis: 'y',
-    exhaustAnchor: Object.freeze({ x: 0.14, z: 0.63 })
+    exhaustAnchor: Object.freeze({ x: 0.14 * GAMEPLAY_OBJECT_SCALE, z: 0.63 * GAMEPLAY_OBJECT_SCALE })
   })
 });
 
