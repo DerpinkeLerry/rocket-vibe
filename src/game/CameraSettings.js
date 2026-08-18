@@ -11,7 +11,6 @@ export const DEFAULT_CAMERA_SETTINGS = Object.freeze({
   rotationStiffness: 11.5,
   speedDistance: 0.4,
   speedHeight: 0.12,
-  highBallAssist: 1,
   dynamicFov: 1,
   occlusion: true
 });
@@ -26,7 +25,6 @@ export const CAMERA_SETTING_FIELDS = Object.freeze([
   { key: 'rotationStiffness', label: 'Dreh-Reaktion', hint: 'Wie schnell die Kamera einschwenkt', min: 2, max: 30, step: 0.5, unit: '' },
   { key: 'speedDistance', label: 'Tempo-Abstand', hint: 'Zusätzlicher Abstand bei hohem Tempo', min: 0, max: 4, step: 0.1, unit: 'm' },
   { key: 'speedHeight', label: 'Tempo-Höhe', hint: 'Zusätzliche Höhe bei hohem Tempo', min: 0, max: 2.5, step: 0.05, unit: 'm' },
-  { key: 'highBallAssist', label: 'High-Ball Assist', hint: 'Automatische Hilfe für hohe Bälle', min: 0, max: 1.5, step: 0.05, unit: '×' },
   { key: 'dynamicFov', label: 'Dynamisches Sichtfeld', hint: 'FOV-Zuwachs bei hohem Tempo', min: 0, max: 2, step: 0.05, unit: '×' }
 ]);
 

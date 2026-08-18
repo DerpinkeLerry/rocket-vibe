@@ -15,14 +15,13 @@ test('camera settings expose a broad bounded set of player choices', () => {
     mode: 'CAR',
     fov: 500,
     distance: -20,
-    highBallAssist: 0.37,
     dynamicFov: 1.43,
     occlusion: false
   });
   assert.equal(normalized.mode, 'CAR');
   assert.equal(normalized.fov, 100);
   assert.equal(normalized.distance, 1.5);
-  assert.equal(normalized.highBallAssist, 0.35);
+  assert.equal('highBallAssist' in normalized, false);
   assert.equal(normalized.dynamicFov, 1.45);
   assert.equal(normalized.occlusion, false);
 });

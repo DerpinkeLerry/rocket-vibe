@@ -14,6 +14,7 @@ Die RLBot-Seite weist selbst darauf hin, dass manche Details – besonders die e
 
 ## v1.13.6
 
+- Die Ball-Cam verwendet jetzt eine Zwei-Punkt-Komposition für Auto und Ball: Sie schaut bei hohen Bällen nach oben, hält das Auto dabei in einem sicheren unteren Bildbereich und hebt die Kamera selbst niemals an. Erst wenn beide Motive geometrisch nicht in den FOV passen, wird nur der Abstand minimal so weit erhöht wie nötig.
 - Double-Jump-Flicks drehen nun mit **10,5 rad/s** und beenden eine volle Rotation in etwa **0,60 s**. Die Arena verwendet glatte Viertelkreis-Ecken in Rendering, Go-Server, Client-Prediction und lokaler Physik; ein weißes emissives Hexagon-LED-Raster schließt die Glasdecke visuell.
 - Die Holzplanken des Hallenbodens sind nochmals verdichtet, kürzer und mit zusätzlichen Maserungs- und Knotendetails versehen. Boost-Pads und ihre Bodenringe verwenden nur noch **62 %** ihrer ursprünglichen Darstellungsgröße; die eng begrenzte **0,38-m-Pickup-Hilfe** fängt weiterhin knappe Vorbeifahrten ab.
 

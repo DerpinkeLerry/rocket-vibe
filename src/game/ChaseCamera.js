@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { getBallCamHighBallAssist } from '../shared/camera-tuning.js';
+import { getBallCamFraming, getStableBallCamRig } from '../shared/camera-tuning.js';
 import { normalizeCameraSettings } from './CameraSettings.js';
 
 const MODE_BALL = 'BALL';
@@ -17,8 +17,9 @@ function isDescendantOf(object, root) {
 }
 
 // Rocket-League-style chase camera with two modes:
-// - Ball Cam: the camera ORBITS around the local car based on the ball bearing,
-//   but still looks at the car. This keeps the car dead-center on screen.
+// - Ball Cam: the camera ORBITS around the local car based on the horizontal
+//   ball bearing. Vertical framing keeps the ball above and the car inside a
+//   lower safe band without ever lifting the physical camera toward the ball.
 // - Car Cam: the camera stays behind the car's field-relative heading.
 //
 // The camera is intentionally NOT clamped to the arena. Before rendering we
@@ -191,12 +192,10 @@ export class ChaseCamera {
     this.carForward.set(0, 0, -1).applyQuaternion(this.q).normalize();
     this.carUp.set(0, 1, 0).applyQuaternion(this.q).normalize();
 
-    // Normal driving aims at the car in LOCAL up-space so wall/ceiling driving
-    // remains correct. During the goal blast, however, the car intentionally
-    // tumbles with very high angular velocity. Using local up there makes the
-    // camera target orbit around the chassis and causes the unpleasant shaking.
-    // Keep the explosion camera world-upright instead.
-    if (this.goalCelebrationActive) {
+    // Car cam may follow local up-space for wall/ceiling driving. Ball cam uses
+    // a world-upright pivot so a flip cannot orbit the camera target around the
+    // chassis and move the car away from its fixed screen anchor.
+    if (this.goalCelebrationActive || this.mode === MODE_BALL) {
       this.pivot.copy(this.carPosition);
       this.pivot.y += CAR_TARGET_LOCAL_HEIGHT;
     } else {
@@ -207,16 +206,16 @@ export class ChaseCamera {
 
     this.desiredLookTarget.copy(this.pivot);
     if (this.goalCelebrationActive) this.updateGoalCelebrationCam(speed);
-    else if (this.mode === MODE_BALL) this.updateBallCam(dt, speed);
+    else if (this.mode === MODE_BALL) this.updateBallCam(dt);
     else this.updateCarCam(dt, speed);
 
     const positionT = 1 - Math.exp(-this.settings.positionStiffness * dt);
     this.position.lerp(this.desired, positionT);
     this.camera.position.copy(this.position);
 
-    // Normal ball-cam keeps the car almost perfectly centered. When the ball is
-    // very high above us, a smooth high-ball assist raises both camera and aim
-    // target so the ball remains visible instead of disappearing above the FOV.
+    // Smooth the two-subject composition as one look target. A high ball may
+    // pitch the view upward and pull the camera back, but never raises the
+    // physical camera or lets the controllable car leave its lower safe band.
     const lookT = 1 - Math.exp(-this.settings.lookStiffness * dt);
     if (this.lookTarget.lengthSq() < 0.0001) this.lookTarget.copy(this.desiredLookTarget);
     else this.lookTarget.lerp(this.desiredLookTarget, lookT);
@@ -258,10 +257,9 @@ export class ChaseCamera {
     this.desiredLookTarget.y += 0.24;
   }
 
-  updateBallCam(dt, speed) {
+  updateBallCam(dt) {
     this.toBall.copy(this.ballPosition).sub(this.pivot);
     const horizontalBallDistance = Math.hypot(this.toBall.x, this.toBall.z);
-    const fullBallDistance = this.toBall.length();
 
     if (horizontalBallDistance > 0.65) {
       this.targetOrbitDirection.set(this.toBall.x, 0, this.toBall.z).normalize();
@@ -277,31 +275,31 @@ export class ChaseCamera {
     if (this.orbitDirection.lengthSq() < 0.0001) this.orbitDirection.copy(this.targetOrbitDirection);
     this.orbitDirection.normalize();
 
-    const ballHeight = this.ballPosition.y - this.pivot.y;
-    const highBall = getBallCamHighBallAssist(ballHeight);
-    const distance = this.settings.distance + 0.15
-      + speed * this.settings.speedDistance
-      + THREE.MathUtils.clamp(fullBallDistance * 0.012, 0, 1.15)
-      + highBall.distanceExtra * this.settings.highBallAssist;
-
-    // Rocket-style high-ball assist: rise and pull back as the ball climbs. The
-    // camera only starts giving up exact car centering once the ball is several
-    // metres overhead, which keeps normal driving stable but makes aerial reads
-    // possible directly underneath the ball.
-    const height = THREE.MathUtils.clamp(
-      this.settings.height + 0.1
-        + speed * this.settings.speedHeight
-        + highBall.heightExtra * this.settings.highBallAssist,
-      0.7,
-      18.0
-    );
-    const lookLift = highBall.lookLift * this.settings.highBallAssist;
+    const rig = getStableBallCamRig(this.settings);
+    const ballForward = this.toBall.x * this.orbitDirection.x + this.toBall.z * this.orbitDirection.z;
+    const ballLateral = Math.sqrt(Math.max(
+      0,
+      horizontalBallDistance * horizontalBallDistance - ballForward * ballForward
+    ));
+    const framing = getBallCamFraming({
+      baseDistance: rig.distance,
+      cameraHeight: rig.height,
+      carAnchorDrop: CAR_TARGET_LOCAL_HEIGHT,
+      ballHeight: this.toBall.y,
+      ballForward,
+      ballLateral,
+      lookHeight: rig.lookHeight,
+      verticalFovDegrees: this.camera.fov
+    });
 
     this.desired.copy(this.pivot)
-      .addScaledVector(this.orbitDirection, -distance);
-    this.desired.y += height;
-    this.desiredLookTarget.copy(this.pivot);
-    this.desiredLookTarget.y += this.settings.lookHeight + lookLift;
+      .addScaledVector(this.orbitDirection, -framing.distance);
+    this.desired.y += rig.height;
+    const lookDistance = 10;
+    const horizontalLook = Math.cos(framing.aimElevation) * lookDistance;
+    this.desiredLookTarget.copy(this.desired)
+      .addScaledVector(this.orbitDirection, horizontalLook);
+    this.desiredLookTarget.y += Math.sin(framing.aimElevation) * lookDistance;
   }
 
   updateCarCam(dt, speed) {
