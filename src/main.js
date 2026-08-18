@@ -159,7 +159,7 @@ const LOBBY_PHYSICS_SECTIONS = [
       ['config.arena.length', 'Arena-Länge', 80, 360, 0.01, 'm'],
       ['config.arena.ceiling', 'Deckenhöhe', 10, 80, 0.01, 'm'],
       ['config.arena.wallHeight', 'Wandhöhe', 8, 80, 0.01, 'm'],
-      ['config.arena.cornerRadius', '45°-Eckenabschnitt', 4, 40, 0.01, 'm'],
+      ['config.arena.cornerRadius', 'Runder Eckenradius', 4, 40, 0.01, 'm'],
       ['config.arena.rampRadius', 'Boden-Rampenradius', 0.5, 12, 0.01, 'm'],
       ['config.arena.ceilingRampRadius', 'Decken-Rampenradius', 0.5, 18, 0.01, 'm'],
       ['config.arena.goalWidth', 'Torbreite', 10, 70, 0.00001, 'm'],

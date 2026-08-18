@@ -31,8 +31,8 @@ test('green turf is replaced by deterministic high-resolution hardwood', () => {
   assert.match(source, /premium hardwood court/);
   assert.match(source, /createUltraWoodBumpTexture\s*\(/);
   assert.match(source, /arena-hardwood-floor/);
-  assert.match(source, /const columns = highDetail \? 126 : \(this\.lowDetail \? 70 : 104\)/);
-  assert.match(source, /const columns = 108;/);
+  assert.match(source, /const columns = highDetail \? 180 : \(this\.lowDetail \? 96 : 150\)/);
+  assert.match(source, /const columns = 160;/);
   assert.doesNotMatch(source, /createTurfTexture\s*\(/);
   assert.doesNotMatch(source, /createUltraTurfBumpTexture\s*\(/);
   assert.doesNotMatch(source, /broadcast-style turf/);
@@ -54,16 +54,20 @@ test('glass walls use glowing team-coloured hexagons instead of black rectangula
   assert.match(source, /arena-blue-hex-glass-lines/);
   assert.match(source, /tileWidth:\s*13\.8/);
   assert.match(source, /blending:\s*THREE\.AdditiveBlending/);
+  assert.match(source, /arena-white-hex-ceiling-leds/);
+  assert.match(source, /ceilingHexTexture\.repeat\.set\(8, 10\)/);
+  assert.match(source, /color:\s*0xffffff,[\s\S]*?map:\s*ceilingHexTexture/);
   assert.doesNotMatch(source, /createWallFrameGrid\s*\(/);
   assert.doesNotMatch(source, /arena-glass-grid/);
   assert.doesNotMatch(source, /new THREE\.MeshBasicMaterial\(\{ color: 0x111b24 \}\)/);
 });
 
-test('arena floor, walls and colliders share the RL 45-degree corner planes', () => {
-  assert.match(source, /shape\.lineTo\(halfWidth, -halfLength \+ radius\)/);
-  assert.match(source, /length: CORNER_R \* Math\.SQRT2/);
+test('arena floor, walls and colliders share smooth quarter-circle corners', () => {
+  assert.match(source, /const appendCorner = \(centerX, centerZ, startAngle\)/);
+  assert.match(source, /const cornerSegments = Math\.max\(12, RAMP_SEGMENTS\)/);
+  assert.match(source, /x: centerX \+ nx \* panelRadius/);
   assert.match(source, /yaw: Math\.atan2\(nx, nz\)/);
-  assert.doesNotMatch(source, /Math\.PI \* 0\.5 \/ CORNER_SEGMENTS/);
+  assert.doesNotMatch(source, /length: CORNER_R \* Math\.SQRT2/);
 });
 
 test('team wall meshes meet cleanly at midfield without coplanar overlap', () => {

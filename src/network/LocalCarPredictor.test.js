@@ -226,18 +226,23 @@ test('prediction consumes boost and enforces the 2300 uu/s hard cap', () => {
   assert.ok(predictor.boost <= 0.001, `boost did not empty: ${predictor.boost}`);
 });
 
-test('prediction resolves the documented 45-degree arena corner plane', () => {
+test('prediction resolves the smooth radial arena corner', () => {
   const { body, predictor } = makePredictor({ x: 40, y: 5, z: 50 });
   body.setLinvel({ x: 10, y: 0, z: 10 });
   predictor.step(1 / 120);
 
   const position = body.translation();
   const velocity = body.linvel();
-  // Identity orientation support on a diagonal is (half width + half length)
-  // along the unnormalised x+z plane.
-  const maximumSum = 80.64 - (CAR_HITBOX.x + CAR_HITBOX.z);
-  assert.ok(position.x + position.z <= maximumSum + 1e-7, JSON.stringify(position));
-  assert.ok((velocity.x + velocity.z) * Math.SQRT1_2 <= 1e-7, JSON.stringify(velocity));
+  const centerX = ARENA_TUNING.width * 0.5 - ARENA_TUNING.cornerRadius;
+  const centerZ = ARENA_TUNING.length * 0.5 - ARENA_TUNING.cornerRadius;
+  const dx = position.x - centerX;
+  const dz = position.z - centerZ;
+  const distance = Math.hypot(dx, dz);
+  const nx = dx / distance;
+  const nz = dz / distance;
+  const support = Math.abs(nx) * CAR_HITBOX.x + Math.abs(nz) * CAR_HITBOX.z;
+  assert.ok(distance <= ARENA_TUNING.cornerRadius - support + 1e-7, JSON.stringify(position));
+  assert.ok(velocity.x * nx + velocity.z * nz <= 1e-7, JSON.stringify(velocity));
 });
 
 

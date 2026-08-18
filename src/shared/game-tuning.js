@@ -121,10 +121,12 @@ export const CAR_TUNING = {
   // Applied fully to forward/back dodges, proportionally to diagonals, and not
   // at all to pure A/D barrel rolls so a side dodge never changes jump height.
   dodgeLift: 1.8,
-  dodgeAngularSpeed: 5.5,
+  // A dodge rotates independently from the normal aerial angular-speed cap.
+  // 10.5 rad/s completes the flip in about 0.60 s for responsive ball flicks.
+  dodgeAngularSpeed: 10.5,
   dodgeRotation: Math.PI * 2,
   dodgeWindow: 1.25,
-  dodgeDuration: Math.PI * 2 / 5.5,
+  dodgeDuration: Math.PI * 2 / 10.5,
   dodgeControlScale: 0.0,
   downAcceleration: 3.25,
   wallGravityCancel: 1.0,

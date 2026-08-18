@@ -80,16 +80,20 @@ func nearestArenaBoundary(position Vec3, arena ArenaConfig, goalOpeningHeight bo
 	absZ := math.Abs(position.Z)
 
 	if absX > straightX && absZ > straightZ {
-		// Rocket League's plan-view corners are 45-degree planes rather than
-		// circular arcs. In each quadrant the plane connects the documented
-		// endpoints of the side and back straight walls.
-		outward := Vec3{
-			X: nonZeroSign(position.X) / math.Sqrt2,
-			Z: nonZeroSign(position.Z) / math.Sqrt2,
+		// The arena uses a true quarter-circle between the straight side and end
+		// walls. A radial distance field keeps contact normals continuous through
+		// the whole turn instead of snapping to one 45-degree plane.
+		centerX := nonZeroSign(position.X) * straightX
+		centerZ := nonZeroSign(position.Z) * straightZ
+		dx := position.X - centerX
+		dz := position.Z - centerZ
+		distance := math.Hypot(dx, dz)
+		outward := Vec3{X: nonZeroSign(position.X), Z: nonZeroSign(position.Z)}.NormalizeOr(Vec3{X: 1})
+		if distance > 1e-9 {
+			outward = Vec3{X: dx / distance, Z: dz / distance}
 		}
-		intercept := halfWidth + halfLength - arena.CornerRadius
 		return arenaBoundary{
-			Distance: (intercept - absX - absZ) / math.Sqrt2,
+			Distance: arena.CornerRadius - distance,
 			Outward:  outward,
 		}, true
 	}

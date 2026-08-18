@@ -58,18 +58,31 @@ export function refreshArenaRuntimeTuning() {
 function roundedRectGeometry(width, length, radius, segments) {
   const halfWidth = width * 0.5;
   const halfLength = length * 0.5;
+  const safeRadius = Math.max(0.01, Math.min(radius, halfWidth - 0.01, halfLength - 0.01));
+  const cornerSegments = Math.max(4, Math.floor(Number(segments) || 12));
   const shape = new THREE.Shape();
-  // RL's four plan-view corners are single 45-degree planes. Keeping this
-  // helper name avoids churn for callers, but the generated pitch is the
-  // documented eight-sided outline rather than a circular rounded rectangle.
-  shape.moveTo(-halfWidth + radius, -halfLength);
-  shape.lineTo(halfWidth - radius, -halfLength);
-  shape.lineTo(halfWidth, -halfLength + radius);
-  shape.lineTo(halfWidth, halfLength - radius);
-  shape.lineTo(halfWidth - radius, halfLength);
-  shape.lineTo(-halfWidth + radius, halfLength);
-  shape.lineTo(-halfWidth, halfLength - radius);
-  shape.lineTo(-halfWidth, -halfLength + radius);
+  const appendCorner = (centerX, centerZ, startAngle) => {
+    for (let index = 1; index <= cornerSegments; index++) {
+      const angle = startAngle + index / cornerSegments * Math.PI * 0.5;
+      shape.lineTo(
+        centerX + Math.cos(angle) * safeRadius,
+        centerZ + Math.sin(angle) * safeRadius
+      );
+    }
+  };
+
+  // A true quarter-circle at every corner keeps the floor, roof and wall
+  // silhouette continuous. The prior eight-sided outline exposed four hard
+  // 45-degree faces which were especially visible from ball cam.
+  shape.moveTo(-halfWidth + safeRadius, -halfLength);
+  shape.lineTo(halfWidth - safeRadius, -halfLength);
+  appendCorner(halfWidth - safeRadius, -halfLength + safeRadius, -Math.PI * 0.5);
+  shape.lineTo(halfWidth, halfLength - safeRadius);
+  appendCorner(halfWidth - safeRadius, halfLength - safeRadius, 0);
+  shape.lineTo(-halfWidth + safeRadius, halfLength);
+  appendCorner(-halfWidth + safeRadius, halfLength - safeRadius, Math.PI * 0.5);
+  shape.lineTo(-halfWidth, -halfLength + safeRadius);
+  appendCorner(-halfWidth + safeRadius, -halfLength + safeRadius, Math.PI);
   shape.closePath();
 
   const geometry = new THREE.ShapeGeometry(shape, segments);
@@ -719,10 +732,10 @@ export class Arena {
 
     // Denser boards restore a believable scale beside the car. This changes
     // only the generated texture detail, never field or collision dimensions.
-    const columns = highDetail ? 126 : (this.lowDetail ? 70 : 104);
+    const columns = highDetail ? 180 : (this.lowDetail ? 96 : 150);
     const plankWidth = canvas.width / columns;
-    const basePlankLength = canvas.height / (highDetail ? 30 : 27);
-    const grainPasses = highDetail ? 3 : (this.lowDetail ? 0 : 2);
+    const basePlankLength = canvas.height / (highDetail ? 44 : (this.lowDetail ? 34 : 38));
+    const grainPasses = highDetail ? 4 : (this.lowDetail ? 1 : 3);
 
     for (let column = 0; column < columns; column++) {
       const x = column * plankWidth;
@@ -796,7 +809,7 @@ export class Arena {
     // Sparse, large knots add natural variation. Their soft gradients survive
     // minification far better than tiny speckles and never compete with field
     // markings or boost-pad locators.
-    const knotCount = highDetail ? 26 : (this.lowDetail ? 5 : 15);
+    const knotCount = highDetail ? 38 : (this.lowDetail ? 7 : 24);
     for (let index = 0; index < knotCount; index++) {
       const x = random() * canvas.width;
       const y = random() * canvas.height;
@@ -880,9 +893,9 @@ export class Arena {
     // The bump map only carries long plank seams and broad grain. No random
     // pixel-height noise is used, so moonlight produces a satin wood response
     // rather than shimmering micro-detail.
-    const columns = 108;
+    const columns = 160;
     const plankWidth = canvas.width / columns;
-    const plankLength = canvas.height / 30;
+    const plankLength = canvas.height / 44;
     for (let column = 0; column <= columns; column++) {
       const x = Math.round(column * plankWidth) + 0.5;
       ctx.strokeStyle = 'rgba(72,72,72,0.72)';
@@ -1410,20 +1423,32 @@ export class Arena {
       }
     }
 
+    // Build each plan-view corner from short tangent panels on a circular arc.
+    // Their normals rotate continuously from side wall to end wall, and the
+    // same panel run feeds glass, floor/ceiling ramps and Rapier colliders.
+    const cornerSegments = Math.max(12, RAMP_SEGMENTS);
+    const delta = Math.PI * 0.5 / cornerSegments;
+    const panelRadius = CORNER_R + WALL_T * 0.5;
+    const panelLength = 2 * panelRadius * Math.sin(delta * 0.5) * 1.018;
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
-        const nx = sx * Math.SQRT1_2;
-        const nz = sz * Math.SQRT1_2;
-        panels.push({
-          x: sx * (halfWidth - CORNER_R * 0.5) + nx * WALL_T * 0.5,
-          z: sz * (halfLength - CORNER_R * 0.5) + nz * WALL_T * 0.5,
-          length: CORNER_R * Math.SQRT2,
-          yaw: Math.atan2(nx, nz),
-          nx,
-          nz,
-          minY: RAMP_R,
-          arenaCorner: true
-        });
+        const centerX = sx * straightX;
+        const centerZ = sz * straightZ;
+        for (let index = 0; index < cornerSegments; index++) {
+          const angle = (index + 0.5) * delta;
+          const nx = sx * Math.cos(angle);
+          const nz = sz * Math.sin(angle);
+          panels.push({
+            x: centerX + nx * panelRadius,
+            z: centerZ + nz * panelRadius,
+            length: panelLength,
+            yaw: Math.atan2(nx, nz),
+            nx,
+            nz,
+            minY: RAMP_R,
+            arenaCorner: true
+          });
+        }
       }
     }
     return panels;
@@ -1955,7 +1980,8 @@ export class Arena {
     this.group.add(supports);
 
     const roofMaterial = glassMaterial.clone();
-    roofMaterial.opacity = this.lowDetail ? 0.04 : 0.065;
+    roofMaterial.color.setHex(0xc8eaff);
+    roofMaterial.opacity = this.lowDetail ? 0.06 : (this.ultraHigh ? 0.15 : 0.12);
     roofMaterial.depthWrite = false;
     const roof = new THREE.Mesh(
       roundedRectGeometry(
@@ -1971,6 +1997,35 @@ export class Arena {
     roof.name = 'arena-glass-roof';
     roof.userData.shadowRole = 'glass';
     this.group.add(roof);
+
+    if (!this.lowDetail) {
+      // A separate emissive underside makes the enclosure read as a closed
+      // stadium without adding dozens of real lights. Repeating the same
+      // seamless hex source used by the walls keeps the visual language
+      // consistent while the white colour clearly separates roof from teams.
+      const ceilingHexTexture = (this.hexGlassTexture ??= this.createHexGlassTexture()).clone();
+      ceilingHexTexture.wrapS = THREE.RepeatWrapping;
+      ceilingHexTexture.wrapT = THREE.RepeatWrapping;
+      ceilingHexTexture.repeat.set(8, 10);
+      ceilingHexTexture.needsUpdate = true;
+      const ceilingLedMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        map: ceilingHexTexture,
+        transparent: true,
+        opacity: this.ultraHigh ? 0.70 : 0.56,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false
+      });
+      const ceilingLeds = new THREE.Mesh(roof.geometry, ceilingLedMaterial);
+      ceilingLeds.position.y = ARENA_TUNING.ceiling - 0.035;
+      ceilingLeds.renderOrder = 7;
+      ceilingLeds.name = 'arena-white-hex-ceiling-leds';
+      ceilingLeds.userData.shadowRole = 'glass';
+      ceilingLeds.userData.cameraOcclusionIgnore = true;
+      this.group.add(ceilingLeds);
+    }
   }
 
   createWallRamps(panels) {
@@ -2703,7 +2758,8 @@ export class Arena {
   }
 
   addRampPhysics(panel) {
-    const delta = Math.PI * 0.5 / RAMP_SEGMENTS;
+    const segments = panel.arenaCorner ? Math.max(6, Math.round(RAMP_SEGMENTS * 0.5)) : RAMP_SEGMENTS;
+    const delta = Math.PI * 0.5 / segments;
     const arcLength = RAMP_R * delta * 1.065;
     const boundaryX = panel.x - panel.nx * WALL_T * 0.5;
     const boundaryZ = panel.z - panel.nz * WALL_T * 0.5;
@@ -2713,7 +2769,7 @@ export class Arena {
     const basis = new THREE.Matrix4();
     const quaternion = new THREE.Quaternion();
 
-    for (let index = 0; index < RAMP_SEGMENTS; index++) {
+    for (let index = 0; index < segments; index++) {
       const angle = (index + 0.5) * delta;
       const sine = Math.sin(angle);
       const cosine = Math.cos(angle);
@@ -2741,7 +2797,8 @@ export class Arena {
   }
 
   addCeilingRampPhysics(panel) {
-    const delta = Math.PI * 0.5 / RAMP_SEGMENTS;
+    const segments = panel.arenaCorner ? Math.max(6, Math.round(RAMP_SEGMENTS * 0.5)) : RAMP_SEGMENTS;
+    const delta = Math.PI * 0.5 / segments;
     const arcLength = CEILING_R * delta * 1.065;
     const boundaryX = panel.x - panel.nx * WALL_T * 0.5;
     const boundaryZ = panel.z - panel.nz * WALL_T * 0.5;
@@ -2751,7 +2808,7 @@ export class Arena {
     const basis = new THREE.Matrix4();
     const quaternion = new THREE.Quaternion();
 
-    for (let index = 0; index < RAMP_SEGMENTS; index++) {
+    for (let index = 0; index < segments; index++) {
       const angle = (index + 0.5) * delta;
       const sine = Math.sin(angle);
       const cosine = Math.cos(angle);

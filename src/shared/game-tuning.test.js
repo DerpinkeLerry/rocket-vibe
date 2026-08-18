@@ -50,6 +50,8 @@ test('shared defaults match the RLBot arena, car, jump and ball reference', () =
   assert.equal(CAR_TUNING.doubleJumpSpeed, 2.91667);
   assert.equal(CAR_TUNING.gravity, 6.5);
   assert.equal(CAR_TUNING.maxAirAngular, 5.5);
+  assert.equal(CAR_TUNING.dodgeAngularSpeed, 10.5);
+  assert.ok(Math.abs(CAR_TUNING.dodgeDuration - Math.PI * 2 / 10.5) < 1e-12);
   assert.equal(FULL_STEER_SPEED, 12.34);
   assert.equal(FULL_STEER_TIME_CONSTANT, 0.74704);
 
@@ -65,15 +67,16 @@ test('shared defaults match the RLBot arena, car, jump and ball reference', () =
   assert.ok(Math.abs(CAR_TUNING.gravity / BALL_TUNING.linearDamping - BALL_TUNING.terminalSpeed) < 1e-9);
 });
 
-test('arena corners use the published 45-degree planes and 8064 uu intercept', () => {
+test('arena corners preserve the published radius with smooth quarter circles', () => {
   assert.ok(Math.abs((ARENA_TUNING.length - 2 * ARENA_TUNING.cornerRadius) - 79.36) < 1e-12);
   assert.ok(Math.abs((ARENA_TUNING.width - 2 * ARENA_TUNING.cornerRadius) - 58.88) < 1e-12);
-  assert.ok(Math.abs(ARENA_TUNING.cornerRadius * Math.SQRT2 - 16.29174) < 1e-6);
+  assert.ok(Math.abs(ARENA_TUNING.cornerRadius * Math.PI * 0.5 - 18.09557) < 1e-5);
 
   const point = { x: 40, y: 3, z: 50 };
   clampPointToRoundedArena(point);
-  assert.ok(Math.abs(point.x + point.z - 80.64) < 1e-12, JSON.stringify(point));
-  assert.ok(Math.abs((40 - point.x) - (50 - point.z)) < 1e-12, JSON.stringify(point));
+  const cornerX = ARENA_TUNING.width * 0.5 - ARENA_TUNING.cornerRadius;
+  const cornerZ = ARENA_TUNING.length * 0.5 - ARENA_TUNING.cornerRadius;
+  assert.ok(Math.abs(Math.hypot(point.x - cornerX, point.z - cornerZ) - ARENA_TUNING.cornerRadius) < 1e-12, JSON.stringify(point));
 });
 
 test('shared throttle and turning functions reproduce the measured piecewise curves', () => {
@@ -113,5 +116,5 @@ test('offline engine and online predictor both run the reference 120 Hz model', 
     assert.match(source, /jumpStickyAcceleration/);
     assert.match(source, /airBoostAcceleration/);
   }
-  assert.match(predictorSource, /boundaryDistance = \(intercept - absX - absZ\) \* Math\.SQRT1_2/);
+  assert.match(predictorSource, /boundaryDistance = arena\.cornerRadius - distance/);
 });

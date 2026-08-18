@@ -9,7 +9,7 @@ export const BOOST_TUNING = Object.freeze({
 // Keep pads visually compact while retaining the published RL trigger sizes.
 // The small horizontal assist makes a near miss count when the edge of the car
 // crosses a pad, without pulling boost from a visibly separate driving lane.
-export const BOOST_PAD_VISUAL_SCALE = 0.78;
+export const BOOST_PAD_VISUAL_SCALE = 0.62;
 export const BOOST_PAD_PICKUP_ASSIST = 0.38;
 
 export function boostPadPickupRadius(pad) {

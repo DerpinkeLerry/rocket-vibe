@@ -50,12 +50,15 @@ const (
 	RLJumpStickyAcceleration    = 3.25
 	RLJumpStickyDuration        = 3.0 / 120.0
 	RLDoubleJumpImpulse         = 2.91667
-	RLAirYawAcceleration        = 9.11
-	RLAirPitchAcceleration      = 12.46
-	RLAirRollAcceleration       = 38.34
-	RLMaxCarAngularSpeed        = 5.50
-	RLFullSteerSpeed            = 12.34
-	RLFullSteerTimeConstant     = 0.74704
+	// Flicks use a dedicated rotation rate. The normal 5.5 rad/s aerial cap
+	// made a full dodge take more than a second and weakened ball contact.
+	GameplayDodgeAngularSpeed = 10.5
+	RLAirYawAcceleration      = 9.11
+	RLAirPitchAcceleration    = 12.46
+	RLAirRollAcceleration     = 38.34
+	RLMaxCarAngularSpeed      = 5.50
+	RLFullSteerSpeed          = 12.34
+	RLFullSteerTimeConstant   = 0.74704
 
 	RLBallRadius          = 0.9125
 	RLBallRestingHeight   = 0.9315

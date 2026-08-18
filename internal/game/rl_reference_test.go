@@ -26,7 +26,7 @@ func TestRLBotReferenceDefaults(t *testing.T) {
 	closeReference(t, "corner radius", config.Arena.CornerRadius, 11.52, 1e-12)
 	closeReference(t, "side straight length", config.Arena.Length-2*config.Arena.CornerRadius, 79.36, 1e-12)
 	closeReference(t, "back straight length", config.Arena.Width-2*config.Arena.CornerRadius, 58.88, 1e-12)
-	closeReference(t, "corner wall length", config.Arena.CornerRadius*math.Sqrt2, 16.29174, 1e-6)
+	closeReference(t, "rounded corner arc length", config.Arena.CornerRadius*math.Pi/2, 18.095573684677225, 1e-12)
 	closeReference(t, "goal height", config.Arena.GoalHeight, 6.42775, 1e-12)
 	closeReference(t, "goal center-to-post", config.Arena.GoalWidth/2, 8.92755, 1e-12)
 	closeReference(t, "goal depth", config.Arena.GoalDepth, 8.80, 1e-12)
@@ -52,6 +52,8 @@ func TestRLBotReferenceDefaults(t *testing.T) {
 	closeReference(t, "pitch acceleration", config.Car.AirPitchAcceleration, 12.46, 1e-12)
 	closeReference(t, "roll acceleration", config.Car.AirRollAcceleration, 38.34, 1e-12)
 	closeReference(t, "maximum angular speed", config.Car.MaxAirAngular, 5.5, 1e-12)
+	closeReference(t, "flick angular speed", config.Car.DodgeAngularSpeed, 10.5, 1e-12)
+	closeReference(t, "flick duration", config.Car.DodgeDuration, 2*math.Pi/10.5, 1e-12)
 
 	closeReference(t, "RL ball radius", RLBallRadius, 0.9125, 1e-12)
 	closeReference(t, "scaled ball radius", config.Ball.Radius, 1.140625, 1e-12)
@@ -69,15 +71,14 @@ func TestRLBotReferenceDefaults(t *testing.T) {
 	closeReference(t, "full respawn", config.BoostPads.FullRespawnSeconds, 10, 1e-12)
 }
 
-func TestArenaCornersUseDocumentedFortyFiveDegreePlanes(t *testing.T) {
+func TestArenaCornersUseSmoothQuarterCircleBoundaries(t *testing.T) {
 	config := DefaultConfig()
 	halfWidth := config.Arena.Width * 0.5
 	halfLength := config.Arena.Length * 0.5
 	straightX := halfWidth - config.Arena.CornerRadius
 	straightZ := halfLength - config.Arena.CornerRadius
 
-	// Both endpoints sit on x+z=80.64 m, matching the 8064 uu axis
-	// intercept and the published straight-wall lengths.
+	// Both endpoints join the straight walls tangentially at zero distance.
 	for _, point := range []Vec3{
 		{X: halfWidth, Z: straightZ},
 		{X: straightX, Z: halfLength},
@@ -94,9 +95,12 @@ func TestArenaCornersUseDocumentedFortyFiveDegreePlanes(t *testing.T) {
 	if !ok {
 		t.Fatal("diagonal corner boundary was not found")
 	}
-	closeReference(t, "corner plane distance", boundary.Distance, (80.64-90)/math.Sqrt2, 1e-12)
-	closeReference(t, "corner normal x", boundary.Outward.X, 1/math.Sqrt2, 1e-12)
-	closeReference(t, "corner normal z", boundary.Outward.Z, 1/math.Sqrt2, 1e-12)
+	dx := 40 - straightX
+	dz := 50 - straightZ
+	distance := math.Hypot(dx, dz)
+	closeReference(t, "rounded corner distance", boundary.Distance, config.Arena.CornerRadius-distance, 1e-12)
+	closeReference(t, "rounded corner normal x", boundary.Outward.X, dx/distance, 1e-12)
+	closeReference(t, "rounded corner normal z", boundary.Outward.Z, dz/distance, 1e-12)
 }
 
 func TestAllRLBotBoostPadCoordinatesAndHitboxes(t *testing.T) {

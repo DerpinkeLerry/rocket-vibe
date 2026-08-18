@@ -3,7 +3,7 @@
 ## RLBot-Referenzphysik
 
 - Die gesamte Simulation verwendet jetzt **100 Unreal Units = 1 Meter** und läuft serverseitig, offline und in der Client-Prediction mit **120 Hz**.
-- Arena, 45°-Ecken, Tor, alle 34 Boost-Pads, Kickoff- und Demo-Spawns entsprechen den veröffentlichten Soccar-Abmessungen und Koordinaten.
+- Arena, Eckenradius, Tor, alle 34 Boost-Pads, Kickoff- und Demo-Spawns verwenden die veröffentlichten Soccar-Abmessungen und Koordinaten; die vier harten 45°-Ecken sind als bewusster Komfort-Override zu glatten Viertelkreisen abgerundet.
 - Gas nutzt die gemessene stückweise Beschleunigungskurve; Bremsen, Ausrollen, Boost, Supersonic-Schwelle und die geschwindigkeitsabhängige Lenkkurve verwenden die RLBot-Werte.
 - Sprungimpuls, 0,2-s-Hold-Kraft, Sticky Force, Double-Jump-Fenster und Luftrotation sind mit dem RLBot-Jump-Modell abgestimmt.
 - Ballradius/-masse, Ruhehöhe, Restitution, Linear-Drag sowie lineare und angulare Caps sind Referenzwerte. Auto-/Ball-Impulse berücksichtigen beide Massen.
@@ -14,7 +14,8 @@ Die RLBot-Seite weist selbst darauf hin, dass manche Details – besonders die e
 
 ## v1.13.6
 
-- Die Holzplanken des Hallenbodens sind deutlich feiner skaliert. Boost-Pads und ihre Bodenringe sind kompakter; eine eng begrenzte **0,38-m-Pickup-Hilfe** fängt knappe Vorbeifahrten ab.
+- Double-Jump-Flicks drehen nun mit **10,5 rad/s** und beenden eine volle Rotation in etwa **0,60 s**. Die Arena verwendet glatte Viertelkreis-Ecken in Rendering, Go-Server, Client-Prediction und lokaler Physik; ein weißes emissives Hexagon-LED-Raster schließt die Glasdecke visuell.
+- Die Holzplanken des Hallenbodens sind nochmals verdichtet, kürzer und mit zusätzlichen Maserungs- und Knotendetails versehen. Boost-Pads und ihre Bodenringe verwenden nur noch **62 %** ihrer ursprünglichen Darstellungsgröße; die eng begrenzte **0,38-m-Pickup-Hilfe** fängt weiterhin knappe Vorbeifahrten ab.
 
 - **MATCH VERLASSEN** führt jetzt direkt zurück zur Lobbyliste. Die bestehende Account- oder Gast-Sitzung wird automatisch fortgesetzt; nur bei einer tatsächlich abgelaufenen Sitzung erscheint wieder die Anmeldung.
 - Alle Web- und Mobile-Screens respektieren jetzt die Hardware-**Safe-Area** von Notch und Dynamic Island, auch im Querformat. Das In-Game-Hauptmenü ist als kleines Popup auf nur zwei Aktionsreihen geschrumpft; ausschließlich der Kameraeditor öffnet eine größere, ebenfalls sicher begrenzte Fläche.
@@ -377,7 +378,7 @@ go test ./...
 go test -race ./...
 ```
 
-Die Tests decken zusätzlich die exakten Arena-/Tor-/Spawn-/Boost-Koordinaten, 45°-Ecken, 120-Hz-Zeitverläufe, Gas- und Lenkkurven, 50,76/79,2/82,8-km/h-Schwellen, Bremsen/Ausrollen, Massen, Ball-Drag/Restitution/Caps, Sprung-Hold/Sticky Force, Boostverbrauch sowie die Übereinstimmung von Server und Client-Prediction ab.
+Die Tests decken zusätzlich die exakten Arena-/Tor-/Spawn-/Boost-Koordinaten, glatten Eckenradien, 120-Hz-Zeitverläufe, Gas- und Lenkkurven, 50,76/79,2/82,8-km/h-Schwellen, Bremsen/Ausrollen, Massen, Ball-Drag/Restitution/Caps, Sprung-Hold/Sticky Force, Boostverbrauch sowie die Übereinstimmung von Server und Client-Prediction ab.
 
 
 ### Mobile Bedienung

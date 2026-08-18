@@ -571,10 +571,19 @@ export class LocalCarPredictor {
     const absZ = Math.abs(this.pos.z);
 
     if (absX > straightX && absZ > straightZ) {
-      const intercept = halfWidth + halfLength - arena.cornerRadius;
-      this.boundaryDistance = (intercept - absX - absZ) * Math.SQRT1_2;
-      this.boundaryNX = Math.sign(this.pos.x || 1) * Math.SQRT1_2;
-      this.boundaryNZ = Math.sign(this.pos.z || 1) * Math.SQRT1_2;
+      const centerX = Math.sign(this.pos.x || 1) * straightX;
+      const centerZ = Math.sign(this.pos.z || 1) * straightZ;
+      const dx = this.pos.x - centerX;
+      const dz = this.pos.z - centerZ;
+      const distance = Math.hypot(dx, dz);
+      this.boundaryDistance = arena.cornerRadius - distance;
+      if (distance > 0.000001) {
+        this.boundaryNX = dx / distance;
+        this.boundaryNZ = dz / distance;
+      } else {
+        this.boundaryNX = Math.sign(this.pos.x || 1) * Math.SQRT1_2;
+        this.boundaryNZ = Math.sign(this.pos.z || 1) * Math.SQRT1_2;
+      }
       return true;
     }
 

@@ -43,8 +43,8 @@ export function applyServerHitboxConfig(config = {}) {
   }
 }
 
-// Utility for systems that need a point constrained to the arena's documented
-// 45-degree plan-view corner planes.
+// Utility for systems that need a point constrained to the arena's smooth
+// quarter-circle plan-view corners.
 // The chase camera deliberately no longer uses this: it may travel outside
 // walls and relies on render-time occlusion hiding instead.
 export function clampPointToRoundedArena(point, margin = 0) {
@@ -61,12 +61,16 @@ export function clampPointToRoundedArena(point, margin = 0) {
   const absX = Math.abs(point.x);
   const absZ = Math.abs(point.z);
   if (absX > cornerX && absZ > cornerZ) {
-    const intercept = arena.width * 0.5 + arena.length * 0.5
-      - arena.cornerRadius - safeMargin * Math.SQRT2;
-    const overflow = absX + absZ - intercept;
-    if (overflow > 0) {
-      point.x -= Math.sign(point.x || 1) * overflow * 0.5;
-      point.z -= Math.sign(point.z || 1) * overflow * 0.5;
+    const centerX = Math.sign(point.x || 1) * cornerX;
+    const centerZ = Math.sign(point.z || 1) * cornerZ;
+    const dx = point.x - centerX;
+    const dz = point.z - centerZ;
+    const distance = Math.hypot(dx, dz);
+    const maximumDistance = arena.cornerRadius - safeMargin;
+    if (distance > maximumDistance && distance > 0.000001) {
+      const scale = maximumDistance / distance;
+      point.x = centerX + dx * scale;
+      point.z = centerZ + dz * scale;
     }
   }
 

@@ -28,7 +28,7 @@ test('reference boost layout contains six full and twenty-eight small pads', () 
 
 test('compact pad visuals retain a restrained near-miss pickup assist', () => {
   const small = BOOST_PADS.find((pad) => pad.kind === 'small');
-  assert.equal(BOOST_PAD_VISUAL_SCALE, 0.78);
+  assert.equal(BOOST_PAD_VISUAL_SCALE, 0.62);
   assert.equal(BOOST_PAD_PICKUP_ASSIST, 0.38);
   assert.ok(Math.abs(boostPadPickupRadius(small) - 1.82) < 1e-12);
   assert.equal(isWithinBoostPadPickup(small, small.x + 1.81, small.z), true);
