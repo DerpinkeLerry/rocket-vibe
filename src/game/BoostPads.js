@@ -1,5 +1,12 @@
 import * as THREE from 'three';
-import { ALL_BOOST_PADS_MASK, BOOST_PADS, isBoostPadActive, withBoostPadActive } from '../shared/boost-tuning.js';
+import {
+  ALL_BOOST_PADS_MASK,
+  BOOST_PADS,
+  BOOST_PAD_VISUAL_SCALE,
+  isBoostPadActive,
+  isWithinBoostPadPickup,
+  withBoostPadActive
+} from '../shared/boost-tuning.js';
 
 export class BoostPads {
   constructor(scene, options = {}) {
@@ -52,7 +59,7 @@ export class BoostPads {
 
   writeUltraLowInstance(pad) {
     if (!this.lowMesh || !this.lowDummy || !pad) return;
-    const radius = pad.spec.kind === 'large' ? 1.55 : 0.68;
+    const radius = (pad.spec.kind === 'large' ? 1.55 : 0.68) * BOOST_PAD_VISUAL_SCALE;
     const scale = pad.active ? radius : 0.001;
     this.lowDummy.position.set(pad.spec.x, 0.045, pad.spec.z);
     this.lowDummy.rotation.set(0, 0, 0);
@@ -64,6 +71,7 @@ export class BoostPads {
   createPad(spec) {
     const group = new THREE.Group();
     group.position.set(spec.x, 0.035, spec.z);
+    group.scale.setScalar(BOOST_PAD_VISUAL_SCALE);
     group.userData.cameraOcclusionIgnore = true;
     this.scene.add(group);
 
@@ -159,9 +167,7 @@ export class BoostPads {
       }
 
       if (p.y > 2.45) continue;
-      const dx = p.x - pad.spec.x;
-      const dz = p.z - pad.spec.z;
-      if (dx * dx + dz * dz > pad.spec.radius * pad.spec.radius) continue;
+      if (!isWithinBoostPadPickup(pad.spec, p.x, p.z)) continue;
 
       const collected = car.collectBoostPad?.(pad.spec.amount, pad.spec.kind === 'large');
       if (!collected) continue;

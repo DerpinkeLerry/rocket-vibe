@@ -298,10 +298,10 @@ test('demolition and respawn control messages carry the spawn-selection data', (
     attackerName: 'Orange', victimName: 'Blue',
     position: [1, 2, 3], durationMs: 4000, stateTick: 912, selectedIndex: 1,
     spawnPoints: [
-      { x: -23.04, y: 0.25515, z: -46.08, yaw: Math.PI },
-      { x: -26.88, y: 0.25515, z: -46.08, yaw: Math.PI },
-      { x: 23.04, y: 0.25515, z: -46.08, yaw: Math.PI },
-      { x: 26.88, y: 0.25515, z: -46.08, yaw: Math.PI }
+      { x: -23.04, y: 0.212625, z: -46.08, yaw: Math.PI },
+      { x: -26.88, y: 0.212625, z: -46.08, yaw: Math.PI },
+      { x: 23.04, y: 0.212625, z: -46.08, yaw: Math.PI },
+      { x: 26.88, y: 0.212625, z: -46.08, yaw: Math.PI }
     ]
   });
   assert.equal(demolition.durationMs, 4000);
@@ -313,7 +313,7 @@ test('demolition and respawn control messages carry the spawn-selection data', (
 
   const respawn = client.applyRespawnMessage({
     type: 'respawn', playerId: 1, spawnIndex: 2,
-    position: [23.04, 0.25515, -46.08], yaw: Math.PI, boost: 33
+    position: [23.04, 0.212625, -46.08], yaw: Math.PI, boost: 33
   });
   assert.equal(respawn.spawnIndex, 2);
   assert.equal(respawn.boost, 33);

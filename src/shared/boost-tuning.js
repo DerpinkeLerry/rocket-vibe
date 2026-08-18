@@ -6,6 +6,24 @@ export const BOOST_TUNING = Object.freeze({
   largeRespawn: 10
 });
 
+// Keep pads visually compact while retaining the published RL trigger sizes.
+// The small horizontal assist makes a near miss count when the edge of the car
+// crosses a pad, without pulling boost from a visibly separate driving lane.
+export const BOOST_PAD_VISUAL_SCALE = 0.78;
+export const BOOST_PAD_PICKUP_ASSIST = 0.38;
+
+export function boostPadPickupRadius(pad) {
+  return Math.max(0, Number(pad?.radius) || 0) + BOOST_PAD_PICKUP_ASSIST;
+}
+
+export function isWithinBoostPadPickup(pad, x, z) {
+  const dx = Number(x) - Number(pad?.x);
+  const dz = Number(z) - Number(pad?.z);
+  if (!Number.isFinite(dx) || !Number.isFinite(dz)) return false;
+  const radius = boostPadPickupRadius(pad);
+  return dx * dx + dz * dz <= radius * radius;
+}
+
 // DFH Stadium FieldInfo order, converted from Unreal Units to metres.
 //
 // IMPORTANT: the server mirrors these exact coordinates and IDs. Keep this

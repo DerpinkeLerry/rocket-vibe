@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ARENA_TUNING } from '../shared/arena-tuning.js';
-import { BOOST_PADS } from '../shared/boost-tuning.js';
+import { BOOST_PADS, BOOST_PAD_VISUAL_SCALE } from '../shared/boost-tuning.js';
 
 let FIELD_W = ARENA_TUNING.width;
 let FIELD_L = ARENA_TUNING.length;
@@ -664,7 +664,7 @@ export class Arena {
     for (const pad of BOOST_PADS) {
       const point = worldPoint(pad.x, pad.z);
       const large = pad.kind === 'large';
-      const radiusWorld = large ? 3.05 : 1.44;
+      const radiusWorld = (large ? 3.05 : 1.44) * BOOST_PAD_VISUAL_SCALE;
       ctx.save();
       ctx.translate(point.x, point.y);
       ctx.strokeStyle = large ? '#ffe06b' : '#ffd35b';
@@ -677,7 +677,7 @@ export class Arena {
         ctx.globalAlpha = 0.24;
         ctx.lineWidth = Math.max(1, 0.12 * lineScale);
         ctx.beginPath();
-        ctx.ellipse(0, 0, radiusWorld * 1.30 * scaleX, radiusWorld * 1.30 * scaleZ, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, 0, radiusWorld * 1.18 * scaleX, radiusWorld * 1.18 * scaleZ, 0, 0, Math.PI * 2);
         ctx.stroke();
       }
       ctx.restore();
@@ -717,9 +717,11 @@ export class Arena {
     ctx.fillStyle = background;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const columns = highDetail ? 76 : (this.lowDetail ? 42 : 62);
+    // Denser boards restore a believable scale beside the car. This changes
+    // only the generated texture detail, never field or collision dimensions.
+    const columns = highDetail ? 126 : (this.lowDetail ? 70 : 104);
     const plankWidth = canvas.width / columns;
-    const basePlankLength = canvas.height / (highDetail ? 18 : 16);
+    const basePlankLength = canvas.height / (highDetail ? 30 : 27);
     const grainPasses = highDetail ? 3 : (this.lowDetail ? 0 : 2);
 
     for (let column = 0; column < columns; column++) {
@@ -878,9 +880,9 @@ export class Arena {
     // The bump map only carries long plank seams and broad grain. No random
     // pixel-height noise is used, so moonlight produces a satin wood response
     // rather than shimmering micro-detail.
-    const columns = 64;
+    const columns = 108;
     const plankWidth = canvas.width / columns;
-    const plankLength = canvas.height / 18;
+    const plankLength = canvas.height / 30;
     for (let column = 0; column <= columns; column++) {
       const x = Math.round(column * plankWidth) + 0.5;
       ctx.strokeStyle = 'rgba(72,72,72,0.72)';

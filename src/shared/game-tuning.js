@@ -33,7 +33,7 @@ export function getDirectionalDodgeLiftScale(forwardAmount) {
 export const UU_PER_METRE = 100;
 // Deliberate readability override: dynamics stay on the RLBot reference while
 // both gameplay objects and their colliders are uniformly 50% larger.
-export const GAMEPLAY_OBJECT_SCALE = 1.5;
+export const GAMEPLAY_OBJECT_SCALE = 1.25;
 export const FULL_STEER_SPEED = 12.34;
 export const FULL_STEER_TIME_CONSTANT = 0.74704;
 

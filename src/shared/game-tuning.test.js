@@ -31,10 +31,10 @@ test('shared defaults match the RLBot arena, car, jump and ball reference', () =
     goalWidth: 17.8551, goalHeight: 6.42775, goalDepth: 8.8,
     goalRampRadius: 2.56, goalMouthRadius: 0.8
   });
-  assert.equal(GAMEPLAY_OBJECT_SCALE, 1.5);
-  assert.ok(Math.abs(CAR_HITBOX.x - 0.6315) < 1e-12);
-  assert.ok(Math.abs(CAR_HITBOX.y - 0.25515) < 1e-12);
-  assert.ok(Math.abs(CAR_HITBOX.z - 0.88506) < 1e-12);
+  assert.equal(GAMEPLAY_OBJECT_SCALE, 1.25);
+  assert.ok(Math.abs(CAR_HITBOX.x - 0.52625) < 1e-12);
+  assert.ok(Math.abs(CAR_HITBOX.y - 0.212625) < 1e-12);
+  assert.ok(Math.abs(CAR_HITBOX.z - 0.73755) < 1e-12);
   assert.equal(CAR_TUNING.mass, 180);
   assert.equal(CAR_TUNING.maxGroundSpeed, 14.1);
   assert.equal(CAR_TUNING.maxBoostSpeed, 23);
@@ -53,8 +53,8 @@ test('shared defaults match the RLBot arena, car, jump and ball reference', () =
   assert.equal(FULL_STEER_SPEED, 12.34);
   assert.equal(FULL_STEER_TIME_CONSTANT, 0.74704);
 
-  assert.ok(Math.abs(BALL_TUNING.radius - 1.36875) < 1e-12);
-  assert.ok(Math.abs(BALL_TUNING.restingHeight - 1.39725) < 1e-12);
+  assert.ok(Math.abs(BALL_TUNING.radius - 1.140625) < 1e-12);
+  assert.ok(Math.abs(BALL_TUNING.restingHeight - 1.164375) < 1e-12);
   assert.equal(BALL_TUNING.mass, 30);
   assert.equal(BALL_TUNING.restitution, 0.6);
   assert.equal(BALL_TUNING.maxSpeed, 60);

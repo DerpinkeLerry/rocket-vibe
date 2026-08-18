@@ -31,6 +31,8 @@ test('green turf is replaced by deterministic high-resolution hardwood', () => {
   assert.match(source, /premium hardwood court/);
   assert.match(source, /createUltraWoodBumpTexture\s*\(/);
   assert.match(source, /arena-hardwood-floor/);
+  assert.match(source, /const columns = highDetail \? 126 : \(this\.lowDetail \? 70 : 104\)/);
+  assert.match(source, /const columns = 108;/);
   assert.doesNotMatch(source, /createTurfTexture\s*\(/);
   assert.doesNotMatch(source, /createUltraTurfBumpTexture\s*\(/);
   assert.doesNotMatch(source, /broadcast-style turf/);

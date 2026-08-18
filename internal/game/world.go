@@ -901,7 +901,8 @@ func (world *World) collectBoostPads() {
 			}
 			dx := car.Position.X - pad.Position.X
 			dz := car.Position.Z - pad.Position.Z
-			if dx*dx+dz*dz > pad.Radius*pad.Radius {
+			pickupRadius := pad.Radius + GameplayBoostPadPickupAssist
+			if dx*dx+dz*dz > pickupRadius*pickupRadius {
 				continue
 			}
 

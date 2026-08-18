@@ -219,6 +219,38 @@ func TestFullCarDoesNotConsumeBoostPad(t *testing.T) {
 	}
 }
 
+func TestBoostPadNearMissAssistHasABoundedRadius(t *testing.T) {
+	config := DefaultConfig()
+
+	inside := NewWorld(config)
+	inside.SetConnected(0, true)
+	insidePad := &inside.BoostPads[6]
+	inside.Cars[0].Boost = 0
+	inside.Cars[0].Position = Vec3{
+		X: insidePad.Position.X + insidePad.Radius + GameplayBoostPadPickupAssist - 0.01,
+		Y: config.Car.HalfExtents.Y,
+		Z: insidePad.Position.Z,
+	}
+	inside.collectBoostPads()
+	if insidePad.Active || inside.Cars[0].Boost != insidePad.Amount {
+		t.Fatal("near-miss assist did not collect a pad inside its grace radius")
+	}
+
+	outside := NewWorld(config)
+	outside.SetConnected(0, true)
+	outsidePad := &outside.BoostPads[6]
+	outside.Cars[0].Boost = 0
+	outside.Cars[0].Position = Vec3{
+		X: outsidePad.Position.X + outsidePad.Radius + GameplayBoostPadPickupAssist + 0.01,
+		Y: config.Car.HalfExtents.Y,
+		Z: outsidePad.Position.Z,
+	}
+	outside.collectBoostPads()
+	if !outsidePad.Active || outside.Cars[0].Boost != 0 {
+		t.Fatal("near-miss assist collected a pad outside its grace radius")
+	}
+}
+
 func TestSnapshotCarriesBoostAndBoostPadMask(t *testing.T) {
 	world := NewWorld(DefaultConfig())
 	world.SetConnected(0, true)

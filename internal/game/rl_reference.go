@@ -10,9 +10,12 @@ const (
 	UUPerMetre = 100.0
 
 	// The exact RL dimensions looked undersized in Rocket Vibe's camera and
-	// arena presentation. Cars and ball therefore use one shared 150% gameplay
+	// arena presentation. Cars and ball therefore use one shared 125% gameplay
 	// scale while their masses, forces, speeds and response curves stay intact.
-	GameplayObjectScale = 1.50
+	GameplayObjectScale = 1.25
+	// A narrow horizontal grace radius lets the car's edge collect a pad when
+	// its centre just misses the published trigger cylinder.
+	GameplayBoostPadPickupAssist = 0.38
 
 	RLArenaWidth        = 81.92
 	RLArenaLength       = 102.40

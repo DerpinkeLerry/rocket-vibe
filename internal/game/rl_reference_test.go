@@ -14,7 +14,8 @@ func closeReference(t *testing.T, label string, got, want, tolerance float64) {
 
 func TestRLBotReferenceDefaults(t *testing.T) {
 	config := DefaultConfig()
-	closeReference(t, "gameplay object scale", GameplayObjectScale, 1.5, 1e-12)
+	closeReference(t, "gameplay object scale", GameplayObjectScale, 1.25, 1e-12)
+	closeReference(t, "boost pad pickup assist", GameplayBoostPadPickupAssist, 0.38, 1e-12)
 	if config.PhysicsHz != 120 {
 		t.Fatalf("physics tick rate = %d, want 120 Hz", config.PhysicsHz)
 	}
@@ -32,9 +33,9 @@ func TestRLBotReferenceDefaults(t *testing.T) {
 
 	closeReference(t, "car mass", config.Car.Mass, 180, 1e-12)
 	closeReference(t, "RL Octane rest elevation", RLOctaneHalfHeight, 0.1701, 1e-12)
-	closeReference(t, "scaled Octane half width", config.Car.HalfExtents.X, 0.6315, 1e-12)
-	closeReference(t, "scaled Octane rest elevation", config.Car.HalfExtents.Y, 0.25515, 1e-12)
-	closeReference(t, "scaled Octane half length", config.Car.HalfExtents.Z, 0.88506, 1e-12)
+	closeReference(t, "scaled Octane half width", config.Car.HalfExtents.X, 0.52625, 1e-12)
+	closeReference(t, "scaled Octane rest elevation", config.Car.HalfExtents.Y, 0.212625, 1e-12)
+	closeReference(t, "scaled Octane half length", config.Car.HalfExtents.Z, 0.73755, 1e-12)
 	closeReference(t, "throttle speed", config.Car.MaxGroundSpeed, 14.10, 1e-12)
 	closeReference(t, "boost speed", config.Car.MaxBoostSpeed, 23.00, 1e-12)
 	closeReference(t, "supersonic speed", config.Car.SupersonicSpeed, 22.00, 1e-12)
@@ -53,8 +54,8 @@ func TestRLBotReferenceDefaults(t *testing.T) {
 	closeReference(t, "maximum angular speed", config.Car.MaxAirAngular, 5.5, 1e-12)
 
 	closeReference(t, "RL ball radius", RLBallRadius, 0.9125, 1e-12)
-	closeReference(t, "scaled ball radius", config.Ball.Radius, 1.36875, 1e-12)
-	closeReference(t, "scaled ball resting height", config.Ball.RestingHeight, 1.39725, 1e-12)
+	closeReference(t, "scaled ball radius", config.Ball.Radius, 1.140625, 1e-12)
+	closeReference(t, "scaled ball resting height", config.Ball.RestingHeight, 1.164375, 1e-12)
 	closeReference(t, "ball mass", config.Ball.Mass, 30, 1e-12)
 	closeReference(t, "ball restitution", config.Ball.Restitution, 0.60, 1e-12)
 	closeReference(t, "ball max speed", config.Ball.MaxSpeed, 60, 1e-12)

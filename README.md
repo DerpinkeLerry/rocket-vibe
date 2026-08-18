@@ -7,12 +7,14 @@
 - Gas nutzt die gemessene stückweise Beschleunigungskurve; Bremsen, Ausrollen, Boost, Supersonic-Schwelle und die geschwindigkeitsabhängige Lenkkurve verwenden die RLBot-Werte.
 - Sprungimpuls, 0,2-s-Hold-Kraft, Sticky Force, Double-Jump-Fenster und Luftrotation sind mit dem RLBot-Jump-Modell abgestimmt.
 - Ballradius/-masse, Ruhehöhe, Restitution, Linear-Drag sowie lineare und angulare Caps sind Referenzwerte. Auto-/Ball-Impulse berücksichtigen beide Massen.
-- Für bessere Lesbarkeit sind Auto und Ball samt Collider einheitlich auf **150 %** skaliert; Massen, Kräfte, Tempo- und Reaktionswerte bleiben unverändert.
+- Für bessere Lesbarkeit sind Auto und Ball samt Collider einheitlich auf **125 %** skaliert; Massen, Kräfte, Tempo- und Reaktionswerte bleiben unverändert.
 - Zentrale Referenz: https://wiki.rlbot.org/v4/botmaking/useful-game-values/; Sprungdetails: https://wiki.rlbot.org/v4/botmaking/jumping-physics/.
 
 Die RLBot-Seite weist selbst darauf hin, dass manche Details – besonders die exakte nicht-kreisförmige Bodenrampe, Reifen-/Gripmodell und Teile des Dodge-/Kontaktverhaltens – nicht vollständig veröffentlicht sind. Dafür verwendet das Spiel weiterhin deterministische, zwischen Go-Server, Browser-Prediction und lokalem Rapier-Modus abgestimmte Näherungen.
 
 ## v1.13.6
+
+- Die Holzplanken des Hallenbodens sind deutlich feiner skaliert. Boost-Pads und ihre Bodenringe sind kompakter; eine eng begrenzte **0,38-m-Pickup-Hilfe** fängt knappe Vorbeifahrten ab.
 
 - **MATCH VERLASSEN** führt jetzt direkt zurück zur Lobbyliste. Die bestehende Account- oder Gast-Sitzung wird automatisch fortgesetzt; nur bei einer tatsächlich abgelaufenen Sitzung erscheint wieder die Anmeldung.
 - Alle Web- und Mobile-Screens respektieren jetzt die Hardware-**Safe-Area** von Notch und Dynamic Island, auch im Querformat. Das In-Game-Hauptmenü ist als kleines Popup auf nur zwei Aktionsreihen geschrumpft; ausschließlich der Kameraeditor öffnet eine größere, ebenfalls sicher begrenzte Fläche.

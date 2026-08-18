@@ -14,7 +14,7 @@ test('all premium car configurations and GLB files are present', async () => {
   for (const [id, relativePath] of carAssets) {
     assert.equal(hasPremiumCarModel(id), true);
     const anchor = getPremiumCarExhaustAnchor(id);
-    assert.ok(anchor.x > 0.2 && anchor.x < 0.24 && anchor.z > 0.94 && anchor.z < 0.97);
+    assert.ok(anchor.x > 0.17 && anchor.x < 0.19 && anchor.z > 0.78 && anchor.z <= 0.8);
     assert.equal(PREMIUM_CAR_ASSET_INFO[id].license, 'CC-BY-4.0');
     const file = new URL(relativePath, import.meta.url);
     assert.ok((await stat(file)).size > 500_000);
