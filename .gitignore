@@ -7,3 +7,4 @@ rocket-server
 !.env.example
 .DS_Store
 *.log
+data/users.json

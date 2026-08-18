@@ -20,6 +20,7 @@ import (
 const (
 	accountPasswordIterations = 210_000
 	accountSessionLifetime    = 7 * 24 * time.Hour
+	guestSessionLifetime      = 24 * time.Hour
 )
 
 var (
@@ -42,7 +43,13 @@ type accountFile struct {
 
 type accountSession struct {
 	Username  string
+	Guest     bool
 	ExpiresAt time.Time
+}
+
+type accountIdentity struct {
+	Username string
+	Guest    bool
 }
 
 type accountStore struct {
@@ -225,27 +232,42 @@ func (store *accountStore) authenticate(username, password string) (storedAccoun
 }
 
 func (store *accountStore) createSession(username string) (string, error) {
+	return store.createIdentitySession(username, false, accountSessionLifetime)
+}
+
+func (store *accountStore) createGuestSession() (string, error) {
+	return store.createIdentitySession("", true, guestSessionLifetime)
+}
+
+func (store *accountStore) createIdentitySession(username string, guest bool, lifetime time.Duration) (string, error) {
 	random := make([]byte, 32)
 	if _, err := rand.Read(random); err != nil {
 		return "", err
 	}
 	token := base64.RawURLEncoding.EncodeToString(random)
 	store.mu.Lock()
-	store.sessions[token] = accountSession{Username: username, ExpiresAt: time.Now().Add(accountSessionLifetime)}
+	store.sessions[token] = accountSession{Username: username, Guest: guest, ExpiresAt: time.Now().Add(lifetime)}
 	store.mu.Unlock()
 	return token, nil
 }
 
-func (store *accountStore) session(token string) (storedAccount, bool) {
+func (store *accountStore) session(token string) (accountIdentity, bool) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	session, exists := store.sessions[token]
 	if !exists || time.Now().After(session.ExpiresAt) {
 		delete(store.sessions, token)
-		return storedAccount{}, false
+		return accountIdentity{}, false
+	}
+	if session.Guest {
+		return accountIdentity{Guest: true}, true
 	}
 	account, exists := store.accounts[strings.ToLower(session.Username)]
-	return account, exists
+	if !exists {
+		delete(store.sessions, token)
+		return accountIdentity{}, false
+	}
+	return accountIdentity{Username: account.Username}, true
 }
 
 func (store *accountStore) deleteSession(token string) {

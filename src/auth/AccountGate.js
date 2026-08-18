@@ -33,7 +33,7 @@ export function requestAuthentication(root) {
       <section class="account-card" aria-labelledby="account-title">
         <div class="join-card__eyebrow">ROCKET VIBE ACCOUNT</div>
         <h1 id="account-title">Willkommen</h1>
-        <p>Melde dich an oder erstelle einen Account, bevor du eine Lobby betrittst.</p>
+        <p>Melde dich an, erstelle einen Account oder spiele ohne gespeicherte Daten als Gast.</p>
         <div class="account-session" data-account-session hidden></div>
         <div class="account-tabs" role="tablist" aria-label="Account auswählen">
           <button type="button" role="tab" data-account-tab="login" aria-selected="true">LOGIN</button>
@@ -46,20 +46,22 @@ export function requestAuthentication(root) {
           <label>Passwort
             <input name="password" type="password" minlength="8" maxlength="128" autocomplete="current-password" required />
           </label>
-          <label data-password-confirm hidden>Passwort wiederholen
-            <input name="passwordConfirm" type="password" minlength="8" maxlength="128" autocomplete="new-password" />
-          </label>
           <small class="account-form__hint">Benutzername: 2–16 Zeichen, Buchstaben, Zahlen, Punkt, Minus oder Unterstrich. Passwörter werden niemals im Klartext gespeichert.</small>
           <div class="account-form__error" data-account-error aria-live="polite"></div>
           <button class="account-form__submit" type="submit">ANMELDEN</button>
         </form>
+        <div class="account-guest">
+          <span>oder</span>
+          <button type="button" data-account-guest>ALS GAST SPIELEN</button>
+          <small>Name und Einstellungen gelten nur für diese Sitzung und werden nicht gespeichert.</small>
+        </div>
       </section>`;
     root.appendChild(overlay);
 
     const form = overlay.querySelector('[data-account-form]');
     const error = overlay.querySelector('[data-account-error]');
     const submit = overlay.querySelector('.account-form__submit');
-    const confirmLabel = overlay.querySelector('[data-password-confirm]');
+    const guestButton = overlay.querySelector('[data-account-guest]');
     const session = overlay.querySelector('[data-account-session]');
     const tabs = [...overlay.querySelectorAll('[data-account-tab]')];
     let mode = 'login';
@@ -67,7 +69,10 @@ export function requestAuthentication(root) {
 
     const finish = (user) => {
       overlay.remove();
-      resolve({ username: String(user?.username || '').slice(0, 16) });
+      resolve({
+        username: String(user?.username || '').slice(0, 16),
+        guest: Boolean(user?.guest)
+      });
     };
 
     const setMode = (nextMode) => {
@@ -77,8 +82,6 @@ export function requestAuthentication(root) {
         tab.classList.toggle('is-selected', selected);
         tab.setAttribute('aria-selected', String(selected));
       }
-      confirmLabel.hidden = mode !== 'register';
-      form.elements.passwordConfirm.required = mode === 'register';
       form.elements.password.autocomplete = mode === 'register' ? 'new-password' : 'current-password';
       submit.textContent = mode === 'register' ? 'ACCOUNT ERSTELLEN' : 'ANMELDEN';
       error.textContent = '';
@@ -92,11 +95,6 @@ export function requestAuthentication(root) {
       const username = form.elements.username.value.trim();
       const password = form.elements.password.value;
       if (!form.reportValidity()) return;
-      if (mode === 'register' && password !== form.elements.passwordConfirm.value) {
-        error.textContent = 'Die Passwörter stimmen nicht überein.';
-        form.elements.passwordConfirm.focus();
-        return;
-      }
       submit.disabled = true;
       submit.textContent = mode === 'register' ? 'ACCOUNT WIRD ERSTELLT …' : 'ANMELDUNG …';
       try {
@@ -112,6 +110,20 @@ export function requestAuthentication(root) {
       }
     });
 
+    guestButton.addEventListener('click', async () => {
+      error.textContent = '';
+      guestButton.disabled = true;
+      guestButton.textContent = 'GAST-SITZUNG WIRD GESTARTET …';
+      try {
+        const payload = await authRequest('/api/auth/guest', { method: 'POST' });
+        finish(payload.user);
+      } catch (requestError) {
+        guestButton.disabled = false;
+        guestButton.textContent = 'ALS GAST SPIELEN';
+        error.textContent = requestError.message;
+      }
+    });
+
     try {
       const payload = await authRequest('/api/auth/session');
       currentUser = payload?.user;
@@ -119,11 +131,11 @@ export function requestAuthentication(root) {
       currentUser = null;
     }
 
-    if (currentUser?.username) {
+    if (currentUser?.username || currentUser?.guest) {
       session.hidden = false;
       session.innerHTML = `
-        <span>Aktive Anmeldung</span>
-        <strong>${escapeHtml(currentUser.username)}</strong>
+        <span>${currentUser.guest ? 'Aktive Gast-Sitzung' : 'Aktive Anmeldung'}</span>
+        <strong>${escapeHtml(currentUser.guest ? 'Gast' : currentUser.username)}</strong>
         <div>
           <button type="button" data-account-continue>WEITER</button>
           <button type="button" data-account-logout>ABMELDEN</button>

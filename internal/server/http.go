@@ -114,6 +114,8 @@ func (server *HTTPServer) authentication(writer http.ResponseWriter, request *ht
 		server.registerAccount(writer, request)
 	case "login":
 		server.loginAccount(writer, request)
+	case "guest":
+		server.beginGuestSession(writer, request)
 	case "session":
 		server.accountSession(writer, request)
 	case "logout":
@@ -139,6 +141,14 @@ func publicAccount(account storedAccount) map[string]string {
 	return map[string]string{"username": account.Username}
 }
 
+func publicIdentity(identity accountIdentity) map[string]any {
+	username := identity.Username
+	if identity.Guest {
+		username = "Gast"
+	}
+	return map[string]any{"username": username, "guest": identity.Guest}
+}
+
 func (server *HTTPServer) beginAccountSession(writer http.ResponseWriter, request *http.Request, account storedAccount) bool {
 	token, err := server.accounts.createSession(strings.ToLower(account.Username))
 	if err != nil {
@@ -153,6 +163,28 @@ func (server *HTTPServer) beginAccountSession(writer http.ResponseWriter, reques
 		Expires: time.Now().Add(accountSessionLifetime),
 	})
 	return true
+}
+
+func (server *HTTPServer) beginGuestSession(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeJSON(writer, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	if cookie, err := request.Cookie(accountSessionCookie); err == nil {
+		server.accounts.deleteSession(cookie.Value)
+	}
+	token, err := server.accounts.createGuestSession()
+	if err != nil {
+		server.logger.Error("guest session creation failed", "error", err)
+		writeJSON(writer, http.StatusInternalServerError, map[string]string{"error": "Gast-Sitzung konnte nicht erstellt werden."})
+		return
+	}
+	secure := request.TLS != nil || strings.EqualFold(request.Header.Get("X-Forwarded-Proto"), "https")
+	http.SetCookie(writer, &http.Cookie{
+		Name: accountSessionCookie, Value: token, Path: "/", HttpOnly: true, Secure: secure,
+		SameSite: http.SameSiteStrictMode,
+	})
+	writeJSON(writer, http.StatusCreated, map[string]any{"user": publicIdentity(accountIdentity{Guest: true})})
 }
 
 func (server *HTTPServer) registerAccount(writer http.ResponseWriter, request *http.Request) {
@@ -209,10 +241,10 @@ func (server *HTTPServer) loginAccount(writer http.ResponseWriter, request *http
 	writeJSON(writer, http.StatusOK, map[string]any{"user": publicAccount(account)})
 }
 
-func (server *HTTPServer) authenticatedAccount(request *http.Request) (storedAccount, bool) {
+func (server *HTTPServer) authenticatedAccount(request *http.Request) (accountIdentity, bool) {
 	cookie, err := request.Cookie(accountSessionCookie)
 	if err != nil || cookie.Value == "" {
-		return storedAccount{}, false
+		return accountIdentity{}, false
 	}
 	return server.accounts.session(cookie.Value)
 }
@@ -233,12 +265,12 @@ func (server *HTTPServer) accountSession(writer http.ResponseWriter, request *ht
 		writeJSON(writer, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
-	account, ok := server.authenticatedAccount(request)
+	identity, ok := server.authenticatedAccount(request)
 	if !ok {
 		writeJSON(writer, http.StatusUnauthorized, map[string]string{"error": "Keine aktive Anmeldung."})
 		return
 	}
-	writeJSON(writer, http.StatusOK, map[string]any{"user": publicAccount(account)})
+	writeJSON(writer, http.StatusOK, map[string]any{"user": publicIdentity(identity)})
 }
 
 func (server *HTTPServer) logoutAccount(writer http.ResponseWriter, request *http.Request) {
@@ -452,10 +484,10 @@ func (server *HTTPServer) webSocket(writer http.ResponseWriter, request *http.Re
 	}
 	playerName := request.URL.Query().Get("name")
 	if !server.options.DisableAuth {
-		if account, authenticated := server.authenticatedAccount(request); authenticated {
+		if identity, authenticated := server.authenticatedAccount(request); authenticated && !identity.Guest {
 			// The authenticated account is the multiplayer identity. Do not trust a
 			// caller-supplied websocket query to impersonate another display name.
-			playerName = account.Username
+			playerName = identity.Username
 		}
 	}
 	connected := newClient(

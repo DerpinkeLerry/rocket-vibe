@@ -48,8 +48,9 @@ export class Game {
     this.playerCarStyle = normalizeCarStyle(network?.carStyle || options.carStyle || DEFAULT_CAR_STYLE);
     this.playerBoostStyle = normalizeBoostStyle(network?.boostStyle || options.boostStyle || DEFAULT_BOOST_STYLE);
     this.playerTeam = network?.team === 'blue' ? 'blue' : 'orange';
+    this.isGuest = Boolean(options.isGuest);
     this.accountName = String(options.accountUsername || this.playerName || 'Gast');
-    this.cameraSettings = loadCameraSettings(this.accountName);
+    this.cameraSettings = loadCameraSettings(this.accountName, this.isGuest ? null : globalThis.localStorage);
     this.gameMode = network?.matchConfig?.gameMode === 'basketball' || options.gameMode === 'basketball' ? 'basketball' : 'normal';
     this.quickChatOptions = network?.quickChats?.length ? network.quickChats : QUICK_CHAT_OPTIONS;
     this.profile = getPerformanceProfile(this.networked, options.graphicsMode);
@@ -268,6 +269,8 @@ export class Game {
     this.mobileGameMenu = new MobileGameMenu(this.root, {
       enabled: true,
       accountName: this.accountName,
+      isGuest: this.isGuest,
+      persistSettings: !this.isGuest,
       getCameraSettings: () => this.chaseCamera.getSettings(),
       onCameraPreview: (settings) => this.applyCameraSettings(settings),
       onCameraMode: (mode) => this.setCameraMode(mode),
@@ -355,7 +358,7 @@ export class Game {
   onPerfToggle(event) {
     if (event.code !== 'F2' || event.repeat) return;
     event.preventDefault();
-    togglePerformanceProfile();
+    togglePerformanceProfile(!this.isGuest);
   }
 
   onQuickChatKeyDown(event) {

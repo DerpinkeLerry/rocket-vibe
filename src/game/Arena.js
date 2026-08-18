@@ -1343,13 +1343,13 @@ export class Arena {
           side: THREE.DoubleSide
         });
     const frameMaterial = this.lowDetail
-      ? new THREE.MeshBasicMaterial({ color: 0x111b24 })
+      ? new THREE.MeshBasicMaterial({ color: 0x294653 })
       : new THREE.MeshStandardMaterial({
-          color: this.ultraHigh ? 0x141d26 : 0x1b2832,
-          emissive: this.ultraHigh ? 0x071923 : 0x0a2836,
-          emissiveIntensity: this.ultraHigh ? 0.18 : 0.32,
-          roughness: this.ultraHigh ? 0.67 : 0.58,
-          metalness: this.ultraHigh ? 0.46 : 0.42
+          color: this.ultraHigh ? 0x294c5c : 0x315b69,
+          emissive: this.ultraHigh ? 0x0a2b3d : 0x0b3b50,
+          emissiveIntensity: this.ultraHigh ? 0.25 : 0.38,
+          roughness: this.ultraHigh ? 0.61 : 0.54,
+          metalness: this.ultraHigh ? 0.38 : 0.34
         });
 
     this.createGlassEnclosure(glassMaterial, frameMaterial);
@@ -1681,74 +1681,110 @@ export class Arena {
     }
   }
 
-  createWallFrameGrid(panels, frameMaterial) {
+  createHexGlassTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 296;
+    const ctx = canvas.getContext('2d');
+    const radiusX = canvas.width / 3;
+    const radiusY = canvas.height / 2;
+    const columnStep = canvas.width / 2;
+    const rowStep = canvas.height;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = this.ultraHigh ? 2.4 : 2.0;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.shadowColor = 'rgba(255,255,255,.82)';
+    ctx.shadowBlur = this.ultraHigh ? 7 : 4;
+
+    // Two staggered columns are one seamless repeat. Drawing cells beyond the
+    // canvas bounds makes every clipped edge continue in the next texture tile.
+    for (let column = -2; column <= 3; column++) {
+      const centerX = column * columnStep;
+      const stagger = Math.abs(column % 2) * rowStep * 0.5;
+      for (let row = -2; row <= 2; row++) {
+        const centerY = row * rowStep + stagger;
+        ctx.beginPath();
+        ctx.moveTo(centerX + radiusX, centerY);
+        ctx.lineTo(centerX + radiusX * 0.5, centerY + radiusY);
+        ctx.lineTo(centerX - radiusX * 0.5, centerY + radiusY);
+        ctx.lineTo(centerX - radiusX, centerY);
+        ctx.lineTo(centerX - radiusX * 0.5, centerY - radiusY);
+        ctx.lineTo(centerX + radiusX * 0.5, centerY - radiusY);
+        ctx.closePath();
+        ctx.stroke();
+      }
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.magFilter = THREE.LinearFilter;
+    texture.minFilter = THREE.LinearMipmapLinearFilter;
+    texture.generateMipmaps = true;
+    texture.needsUpdate = true;
+    return texture;
+  }
+
+  createHexGlassGrid(panels) {
     if (this.lowDetail) return;
+    const texture = this.hexGlassTexture ??= this.createHexGlassTexture();
+    const visualPanels = this.splitVisualPanelsByTeam(panels);
+    const colors = new Map([
+      [-1, 0x158dff],
+      [0, 0x83d9ff],
+      [1, 0xff6a28]
+    ]);
+    for (const teamSign of [-1, 0, 1]) {
+      const teamPanels = visualPanels.filter((panel) => this.panelTeamSign(panel) === teamSign);
+      if (teamPanels.length === 0) continue;
+      const material = new THREE.MeshBasicMaterial({
+        color: colors.get(teamSign),
+        map: texture,
+        transparent: true,
+        opacity: this.ultraHigh ? 0.58 : 0.46,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false
+      });
+      this.createPanelSurfaceMesh(teamPanels, material, {
+        minY: (panel) => this.panelGlassMinY(panel),
+        maxY: (panel) => {
+          const minY = this.panelGlassMinY(panel);
+          const naturalMaxY = panel.upperRamp === false ? WALL_H : WALL_H - CEILING_R;
+          return panel.height ? minY + panel.height : Math.max(minY + 0.2, naturalMaxY);
+        },
+        lengthScale: 1.01,
+        tileWidth: 13.8,
+        tileHeight: 7.96,
+        surfaceOffset: 0.026,
+        name: teamSign > 0
+          ? 'arena-orange-hex-glass-lines'
+          : teamSign < 0
+            ? 'arena-blue-hex-glass-lines'
+            : 'arena-neutral-hex-glass-lines',
+        renderOrder: 6,
+        shadowRole: 'glass'
+      });
+    }
+
+    // Keep one slim team-coloured rail at ground level. The old black rectangular
+    // cage members are gone; the hex overlay now carries the full glass pattern.
+    const accentPanels = visualPanels.filter((panel) => this.panelTeamSign(panel) !== 0);
     const geometry = new THREE.BoxGeometry(1, 1, 1);
-    let frameCount = 0;
-    for (const panel of panels) {
-      const minY = this.panelGlassMinY(panel);
-      const maxY = panel.upperRamp === false ? WALL_H : WALL_H - CEILING_R;
-      const height = panel.height ?? Math.max(0.2, maxY - minY);
-      if (height < 0.8) continue;
-      if (!panel.goalHeader) frameCount += Math.max(0, Math.floor(panel.length / 7.0));
-      frameCount += Math.max(0, Math.floor(height / 4.25));
-    }
-
-    const gridMaterial = frameMaterial.clone();
-    gridMaterial.transparent = false;
-    gridMaterial.opacity = 1;
-    if ('emissiveIntensity' in gridMaterial) gridMaterial.emissiveIntensity *= 0.24;
-    const frames = new THREE.InstancedMesh(geometry, gridMaterial, frameCount);
-    frames.name = 'arena-glass-grid';
-    frames.userData.shadowRole = 'arena-frame';
-    const dummy = new THREE.Object3D();
-    let index = 0;
-    for (const panel of panels) {
-      const minY = this.panelGlassMinY(panel);
-      const maxY = panel.upperRamp === false ? WALL_H : WALL_H - CEILING_R;
-      const height = panel.height ?? Math.max(0.2, maxY - minY);
-      if (height < 0.8) continue;
-      const tx = Math.cos(panel.yaw);
-      const tz = -Math.sin(panel.yaw);
-      const surfaceX = panel.x - panel.nx * (WALL_T * 0.5 + 0.012);
-      const surfaceZ = panel.z - panel.nz * (WALL_T * 0.5 + 0.012);
-      // Do not place vertical cage members in the glass header above a goal.
-      // The coloured goal rim already supplies the visual side termination and
-      // must be allowed to end at its upper curve without a dark mast behind it.
-      const verticalCount = panel.goalHeader ? 0 : Math.max(0, Math.floor(panel.length / 7.0));
-      for (let column = 1; column <= verticalCount; column++) {
-        const offset = -panel.length * 0.5 + panel.length * column / (verticalCount + 1);
-        dummy.position.set(surfaceX + tx * offset, minY + height * 0.5, surfaceZ + tz * offset);
-        dummy.rotation.set(0, panel.yaw, 0);
-        dummy.scale.set(0.11, height, 0.14);
-        dummy.updateMatrix();
-        frames.setMatrixAt(index++, dummy.matrix);
-      }
-      const rowCount = Math.max(0, Math.floor(height / 4.25));
-      for (let row = 1; row <= rowCount; row++) {
-        dummy.position.set(surfaceX, minY + height * row / (rowCount + 1), surfaceZ);
-        dummy.rotation.set(0, panel.yaw, 0);
-        dummy.scale.set(panel.length * 1.014, 0.10, 0.14);
-        dummy.updateMatrix();
-        frames.setMatrixAt(index++, dummy.matrix);
-      }
-    }
-    frames.count = index;
-    frames.instanceMatrix.needsUpdate = true;
-    this.group.add(frames);
-
-    // A bright continuous team rail now follows the entire lower glass edge,
-    // including curved corners. It replaces the old neutral black/grey strip
-    // and makes the blue/orange half obvious from ground level.
-    const visualPanels = this.splitVisualPanelsByTeam(panels).filter((panel) => this.panelTeamSign(panel) !== 0);
     const accentMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
-    const accents = new THREE.InstancedMesh(geometry, accentMaterial, visualPanels.length);
+    const accents = new THREE.InstancedMesh(geometry, accentMaterial, accentPanels.length);
     accents.name = 'arena-team-lower-accent';
     accents.userData.shadowRole = 'arena-frame';
     const blue = new THREE.Color(0x078fff);
     const orange = new THREE.Color(0xff6208);
-    for (let panelIndex = 0; panelIndex < visualPanels.length; panelIndex++) {
-      const panel = visualPanels[panelIndex];
+    const dummy = new THREE.Object3D();
+    for (let panelIndex = 0; panelIndex < accentPanels.length; panelIndex++) {
+      const panel = accentPanels[panelIndex];
       const minY = this.panelGlassMinY(panel);
       const surfaceX = panel.x - panel.nx * (WALL_T * 0.5 + 0.018);
       const surfaceZ = panel.z - panel.nz * (WALL_T * 0.5 + 0.018);
@@ -1882,7 +1918,7 @@ export class Arena {
     rails.userData.shadowRole = 'arena-frame';
     this.group.add(rails);
 
-    this.createWallFrameGrid(panels, frameMaterial);
+    this.createHexGlassGrid(panels);
     this.createTeamSideRibbons();
 
     const straightX = FIELD_W * 0.5 - CORNER_R;

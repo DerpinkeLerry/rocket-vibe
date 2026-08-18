@@ -32,10 +32,11 @@ export function normalizePerformanceMode(value, mobile = isMobileDevice()) {
   return mode;
 }
 
-export function getRememberedPerformanceMode() {
+export function getRememberedPerformanceMode(allowStoredPreference = true) {
   const mobile = isMobileDevice();
   const queryMode = safeParams().get('perf');
   if (queryMode) return normalizePerformanceMode(queryMode, mobile);
+  if (!allowStoredPreference) return MODE_NORMAL;
   try {
     return normalizePerformanceMode(localStorage.getItem('rocket-vibe-graphics-mode'), mobile);
   } catch {
@@ -43,12 +44,14 @@ export function getRememberedPerformanceMode() {
   }
 }
 
-export function setPerformancePreference(mode) {
+export function setPerformancePreference(mode, persist = true) {
   const normalized = normalizePerformanceMode(mode);
-  try {
-    localStorage.setItem('rocket-vibe-graphics-mode', normalized);
-  } catch {
-    // Storage is optional; Game still receives the selected mode directly.
+  if (persist) {
+    try {
+      localStorage.setItem('rocket-vibe-graphics-mode', normalized);
+    } catch {
+      // Storage is optional; Game still receives the selected mode directly.
+    }
   }
   return normalized;
 }
@@ -105,13 +108,13 @@ export function getPerformanceProfile(networked, explicitMode = null) {
   };
 }
 
-export function togglePerformanceProfile() {
+export function togglePerformanceProfile(persist = true) {
   if (typeof window === 'undefined') return;
   const mobile = isMobileDevice();
-  const current = normalizePerformanceMode(getRememberedPerformanceMode(), mobile);
+  const current = normalizePerformanceMode(getRememberedPerformanceMode(persist), mobile);
   const order = [MODE_NORMAL, MODE_ULTRA_HIGH, MODE_ULTRA_LOW];
   const next = order[(order.indexOf(current) + 1) % order.length];
-  setPerformancePreference(next);
+  setPerformancePreference(next, persist);
 
   const url = new URL(window.location.href);
   if (next === MODE_NORMAL) url.searchParams.delete('perf');

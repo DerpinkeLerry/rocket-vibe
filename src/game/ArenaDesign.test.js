@@ -44,3 +44,15 @@ test('basketball mode closes soccar goals and renders physical hoops and court g
   assert.match(source, /createBasketballPhysics\s*\(/);
   assert.match(source, /roundedOpeningHalfWidth = this\.basketballMode \? 0/);
 });
+
+test('glass walls use glowing team-coloured hexagons instead of black rectangular bars', () => {
+  assert.match(source, /createHexGlassTexture\s*\(/);
+  assert.match(source, /texture\.wrapS = THREE\.RepeatWrapping/);
+  assert.match(source, /arena-orange-hex-glass-lines/);
+  assert.match(source, /arena-blue-hex-glass-lines/);
+  assert.match(source, /tileWidth:\s*13\.8/);
+  assert.match(source, /blending:\s*THREE\.AdditiveBlending/);
+  assert.doesNotMatch(source, /createWallFrameGrid\s*\(/);
+  assert.doesNotMatch(source, /arena-glass-grid/);
+  assert.doesNotMatch(source, /new THREE\.MeshBasicMaterial\(\{ color: 0x111b24 \}\)/);
+});

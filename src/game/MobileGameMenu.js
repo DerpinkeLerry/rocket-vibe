@@ -24,6 +24,8 @@ export class MobileGameMenu {
     this.root = root;
     this.enabled = Boolean(options.enabled);
     this.accountName = String(options.accountName || 'Gast');
+    this.isGuest = Boolean(options.isGuest);
+    this.persistSettings = options.persistSettings !== false;
     this.getCameraSettings = options.getCameraSettings;
     this.onCameraPreview = options.onCameraPreview;
     this.onCameraMode = options.onCameraMode;
@@ -46,7 +48,7 @@ export class MobileGameMenu {
             <div><span>ROCKET VIBE</span><strong>Match-Menü</strong></div>
             <button type="button" data-game-menu-close aria-label="Menü schließen">×</button>
           </header>
-          <div class="mobile-game-menu__account">Angemeldet als <strong>${escapeHtml(this.accountName)}</strong></div>
+          <div class="mobile-game-menu__account">${this.isGuest ? 'Gastmodus' : 'Angemeldet als'} <strong>${escapeHtml(this.accountName)}</strong></div>
           <div class="mobile-game-menu__home" data-menu-home>
             <button class="mobile-game-menu__primary" type="button" data-camera-settings>KAMERA-EINSTELLUNGEN</button>
             <button class="mobile-game-menu__secondary" type="button" data-game-menu-close>WEITERSPIELEN</button>
@@ -176,11 +178,17 @@ export class MobileGameMenu {
 
   saveCamera(event) {
     event.preventDefault();
-    this.savedSettings = saveCameraSettings(this.accountName, this.draftSettings);
+    this.savedSettings = saveCameraSettings(
+      this.accountName,
+      this.draftSettings,
+      this.persistSettings ? globalThis.localStorage : null
+    );
     this.draftSettings = { ...this.savedSettings };
     this.onCameraPreview?.(this.savedSettings);
     this.onCameraMode?.(this.savedSettings.mode);
-    this.status.textContent = 'Kameraeinstellungen gespeichert.';
+    this.status.textContent = this.persistSettings
+      ? 'Kameraeinstellungen gespeichert.'
+      : 'Kameraeinstellungen für diese Sitzung übernommen.';
   }
 
   renderCameraForm() {

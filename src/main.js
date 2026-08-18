@@ -674,9 +674,10 @@ function requestLobby(root, notice = '') {
 
 function requestPlayerIdentity(root, lobby = null, account = null) {
   return new Promise((resolve) => {
-    const selectedStyle = rememberedCarStyle();
-    const selectedBoostStyle = rememberedBoostStyle();
-    const selectedGraphics = getRememberedPerformanceMode();
+    const isGuest = Boolean(account?.guest);
+    const selectedStyle = isGuest ? DEFAULT_CAR_STYLE : rememberedCarStyle();
+    const selectedBoostStyle = isGuest ? DEFAULT_BOOST_STYLE : rememberedBoostStyle();
+    const selectedGraphics = getRememberedPerformanceMode(!isGuest);
     const ultraHighAvailable = canUseUltraHigh();
     const mobileGraphics = prefersMobileControls();
     const overlay = document.createElement('div');
@@ -691,9 +692,10 @@ function requestPlayerIdentity(root, lobby = null, account = null) {
           <button class="join-card__fullscreen" type="button" data-start-fullscreen>⛶ VOLLBILD STARTEN</button>
           <span class="join-card__fullscreen-status" data-fullscreen-status aria-live="polite"></span>
         </div>
-        <label for="player-name">${account ? 'Account & Spielername' : 'Spielername'}</label>
+        <label for="player-name">${isGuest ? 'Gastname' : (account ? 'Account & Spielername' : 'Spielername')}</label>
         <input id="player-name" name="playerName" type="text" minlength="2" maxlength="16"
-          autocomplete="nickname" enterkeyhint="go" spellcheck="false" placeholder="z. B. Goofy" ${account ? 'readonly' : ''} required />
+          autocomplete="nickname" enterkeyhint="go" spellcheck="false" placeholder="z. B. Goofy" ${account && !isGuest ? 'readonly' : ''} required />
+        ${isGuest ? '<div class="join-card__guest-note">Gastmodus · Deine Auswahl wird nur für dieses Match verwendet und nicht gespeichert.</div>' : ''}
 
         <fieldset class="car-select">
           <legend>Auto auswählen</legend>
@@ -781,7 +783,7 @@ function requestPlayerIdentity(root, lobby = null, account = null) {
     document.addEventListener('webkitfullscreenchange', updateFullscreenUi);
     updateFullscreenUi();
 
-    input.value = account?.username || rememberedPlayerName();
+    input.value = isGuest ? '' : (account?.username || rememberedPlayerName());
     if (!prefersMobileControls()) requestAnimationFrame(() => input.focus());
 
     form.addEventListener('change', (event) => {
@@ -811,25 +813,28 @@ function requestPlayerIdentity(root, lobby = null, account = null) {
       const formData = new FormData(form);
       const carStyle = normalizeCarStyle(formData.get('carStyle'));
       const boostStyle = normalizeBoostStyle(formData.get('boostStyle'));
-      const graphicsMode = setPerformancePreference(formData.get('graphicsMode') || 'normal');
+      const graphicsMode = setPerformancePreference(formData.get('graphicsMode') || 'normal', !isGuest);
       if (name.length < 2) {
         error.textContent = 'Bitte mindestens 2 Zeichen eingeben.';
         input.focus();
         return;
       }
-      try {
-        localStorage.setItem('rocket-vibe-player-name', name);
-        localStorage.setItem('rocket-vibe-car-style', carStyle);
-        localStorage.setItem('rocket-vibe-boost-style', boostStyle);
-      } catch {
-        // Private browsing may disable storage; the match can still start.
+      if (!isGuest) {
+        try {
+          localStorage.setItem('rocket-vibe-player-name', name);
+          localStorage.setItem('rocket-vibe-car-style', carStyle);
+          localStorage.setItem('rocket-vibe-boost-style', boostStyle);
+        } catch {
+          // Private browsing may disable storage; the match can still start.
+        }
       }
       document.removeEventListener('fullscreenchange', updateFullscreenUi);
       document.removeEventListener('webkitfullscreenchange', updateFullscreenUi);
       overlay.remove();
       resolve({
         playerName: name.slice(0, 16),
-        accountUsername: account?.username || name.slice(0, 16),
+        accountUsername: isGuest ? 'Gast' : (account?.username || name.slice(0, 16)),
+        isGuest,
         carStyle,
         boostStyle,
         graphicsMode

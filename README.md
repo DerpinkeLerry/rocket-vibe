@@ -2,6 +2,9 @@
 
 ## v1.13.6
 
+- Die komplette **Phone-Oberfläche** nutzt jetzt ein kompaktes Layout: Fahrzeug, Boost und Grafik liegen in horizontalen Auswahlleisten, Lobbies sind deutlich flacher, das Match-Menü öffnet als Bottom-Sheet und Kameraoptionen stehen in einem dichten Zweispaltenraster. Touch-Steuerung, Chat, Lade- und Accountscreen beanspruchen ebenfalls weniger Platz.
+- Beim Einstieg kann jetzt **ALS GAST SPIELEN** gewählt werden. Gast-Sitzungen existieren nur temporär im Serverspeicher; Name, Auto, Boost, Grafik- und Kameraeinstellungen werden nicht dauerhaft gespeichert. Bei der Registrierung reicht ein einziges Passwortfeld.
+- Die dunklen rechteckigen Streben auf den Glaswänden wurden durch große, versetzte **Hexagon-Glaslinien** ersetzt. Blau und Orange leuchten dezent in ihrer jeweiligen Spielfeldhälfte; das Muster liegt als wiederholbare transparente Textur auf nur zwei kombinierten Wandmeshes und verändert keine Collider.
 - Online startet jetzt mit **Login oder Registrierung**, bevor Lobby-Daten oder der Match-WebSocket erreichbar sind. Accounts werden in der konfigurierbaren Serverdatei gespeichert; Passwörter stehen dort ausschließlich als zufällig gesalzene PBKDF2-SHA256-Hashes, niemals im Klartext.
 - Touchgeräte besitzen oben rechts ein neues **Match-Menü** zum Weiterspielen, Verlassen des Matches und Bearbeiten der Kamera. Der alte kleine Vollbildknopf innerhalb der Touch-Steuerung wurde entfernt.
 - Dasselbe Match-Menü ist auch in der Desktop-Webversion oben rechts verfügbar. „Match verlassen“ trennt den Socket direkt und navigiert zuverlässig zurück zur Account-/Lobby-Auswahl; das Web-Frontend verwendet außerdem das Rocket-Vibe-SVG als Favicon.
