@@ -36,9 +36,10 @@ export class Hud {
         <div class="hud__respawn-countdown">RESPAWN IN <strong data-respawn-seconds>4.0</strong>s</div>
         <div class="hud__respawn-hint">SPAWNPUNKT WÄHLEN</div>
         <div class="hud__respawn-choices" role="group" aria-label="Spawnpunkt wählen">
-          <button type="button" data-respawn-choice="0"><kbd>1</kbd><span>LINKS</span></button>
-          <button type="button" data-respawn-choice="1"><kbd>2</kbd><span>MITTE</span></button>
-          <button type="button" data-respawn-choice="2"><kbd>3</kbd><span>RECHTS</span></button>
+          <button type="button" data-respawn-choice="0"><kbd>1</kbd><span>RECHTS INNEN</span></button>
+          <button type="button" data-respawn-choice="1"><kbd>2</kbd><span>RECHTS AUSSEN</span></button>
+          <button type="button" data-respawn-choice="2"><kbd>3</kbd><span>LINKS INNEN</span></button>
+          <button type="button" data-respawn-choice="3"><kbd>4</kbd><span>LINKS AUSSEN</span></button>
         </div>
       </div>
       <div class="hud__quickchat" aria-label="Spielchat">
@@ -287,7 +288,7 @@ export class Hud {
 
   requestRespawnSelection(index) {
     if (!this.respawn || this.respawn.hidden) return false;
-    const choice = Math.max(0, Math.min(2, Math.round(Number(index) || 0)));
+    const choice = Math.max(0, Math.min(3, Math.round(Number(index) || 0)));
     this.respawnSelectedIndex = choice;
     this.respawnChoices.forEach((button, buttonIndex) => {
       const selected = buttonIndex === choice;
@@ -309,7 +310,7 @@ export class Hud {
       const seconds = Math.max(0, Number(remainingMs) || 0) / 1000;
       this.respawnSeconds.textContent = seconds.toFixed(1);
     }
-    const choice = Math.max(0, Math.min(2, Math.round(Number(selectedIndex) || 0)));
+    const choice = Math.max(0, Math.min(3, Math.round(Number(selectedIndex) || 0)));
     if (choice !== this.respawnSelectedIndex || !this.respawnChoices.some((button) => button.classList.contains('is-selected'))) {
       this.respawnSelectedIndex = choice;
       this.respawnChoices.forEach((button, buttonIndex) => {

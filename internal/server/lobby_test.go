@@ -100,7 +100,7 @@ func TestSanitizeLobbyConfigClampsUnsafeRelationships(t *testing.T) {
 	if got.MaxPlayers != game.MaxPlayers {
 		t.Fatalf("max players not clamped: %d", got.MaxPlayers)
 	}
-	if got.Arena.Width < 110 || got.Arena.Length < 160 || got.Arena.Ceiling < 14 {
+	if got.Arena.Width < 60 || got.Arena.Length < 80 || got.Arena.Ceiling < 10 {
 		t.Fatalf("arena safety minimums not applied: %+v", got.Arena)
 	}
 	if got.Arena.GoalWidth >= got.Arena.Width || got.Arena.GoalHeight >= got.Arena.Ceiling {
@@ -112,8 +112,8 @@ func TestSanitizeLobbyConfigClampsUnsafeRelationships(t *testing.T) {
 	if got.BoostPads.FullAmount > got.Car.BoostCapacity || got.BoostPads.SmallAmount > got.Car.BoostCapacity {
 		t.Fatalf("boost pad amount exceeds capacity: %+v capacity=%f", got.BoostPads, got.Car.BoostCapacity)
 	}
-	if got.Ball.SpawnY < got.Ball.Radius+0.05 {
-		t.Fatalf("ball spawn is inside floor: radius=%f spawn=%f", got.Ball.Radius, got.Ball.SpawnY)
+	if got.Ball.RestingHeight < got.Ball.Radius || got.Ball.SpawnY < got.Ball.RestingHeight {
+		t.Fatalf("ball spawn/resting height is inside floor: radius=%f resting=%f spawn=%f", got.Ball.Radius, got.Ball.RestingHeight, got.Ball.SpawnY)
 	}
 }
 

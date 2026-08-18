@@ -155,29 +155,30 @@ const LOBBY_PHYSICS_SECTIONS = [
     title: 'Arena-Geometrie',
     hint: 'Größe und Form des Spielfelds. Boostpads und Standard-Spawns bleiben an ihren bekannten Positionen.',
     fields: [
-      ['config.arena.width', 'Arena-Breite', 110, 240, 1, 'm'],
-      ['config.arena.length', 'Arena-Länge', 160, 360, 1, 'm'],
-      ['config.arena.ceiling', 'Deckenhöhe', 14, 80, 0.5, 'm'],
-      ['config.arena.wallHeight', 'Wandhöhe', 8, 80, 0.5, 'm'],
-      ['config.arena.cornerRadius', 'Eckenradius', 4, 40, 0.5, 'm'],
-      ['config.arena.rampRadius', 'Boden-Rampenradius', 0.5, 12, 0.1, 'm'],
-      ['config.arena.ceilingRampRadius', 'Decken-Rampenradius', 0.5, 18, 0.1, 'm'],
-      ['config.arena.goalWidth', 'Torbreite', 10, 70, 0.5, 'm'],
-      ['config.arena.goalHeight', 'Torhöhe', 4, 30, 0.5, 'm'],
-      ['config.arena.goalDepth', 'Tortiefe', 4, 35, 0.5, 'm'],
-      ['config.arena.goalRampRadius', 'Tor-Rampenradius', 0.3, 10, 0.1, 'm'],
-      ['config.arena.goalMouthRadius', 'Tor-Mundradius', 0.2, 10, 0.1, 'm']
+      ['config.arena.width', 'Arena-Breite', 60, 240, 0.01, 'm'],
+      ['config.arena.length', 'Arena-Länge', 80, 360, 0.01, 'm'],
+      ['config.arena.ceiling', 'Deckenhöhe', 10, 80, 0.01, 'm'],
+      ['config.arena.wallHeight', 'Wandhöhe', 8, 80, 0.01, 'm'],
+      ['config.arena.cornerRadius', '45°-Eckenabschnitt', 4, 40, 0.01, 'm'],
+      ['config.arena.rampRadius', 'Boden-Rampenradius', 0.5, 12, 0.01, 'm'],
+      ['config.arena.ceilingRampRadius', 'Decken-Rampenradius', 0.5, 18, 0.01, 'm'],
+      ['config.arena.goalWidth', 'Torbreite', 10, 70, 0.00001, 'm'],
+      ['config.arena.goalHeight', 'Torhöhe', 4, 30, 0.00001, 'm'],
+      ['config.arena.goalDepth', 'Tortiefe', 4, 35, 0.01, 'm'],
+      ['config.arena.goalRampRadius', 'Tor-Rampenradius', 0.3, 10, 0.01, 'm'],
+      ['config.arena.goalMouthRadius', 'Tor-Mundradius', 0.2, 10, 0.01, 'm']
     ]
   },
   {
     title: 'Auto · Hitbox & Geschwindigkeit',
     fields: [
-      ['config.car.halfExtents.x', 'Hitbox halbe Breite', 0.35, 2.5, 0.01, 'm'],
-      ['config.car.halfExtents.y', 'Hitbox halbe Höhe', 0.2, 1.5, 0.01, 'm'],
-      ['config.car.halfExtents.z', 'Hitbox halbe Länge', 0.5, 3.5, 0.01, 'm'],
-      ['config.car.mass', 'Masse', 50, 2500, 10, 'kg'],
-      ['config.car.maxGroundSpeed', 'Max. Bodentempo', 7.2, 288, 0.1, 'km/h', 3.6],
-      ['config.car.maxBoostSpeed', 'Max. Boosttempo', 7.2, 432, 0.1, 'km/h', 3.6],
+      ['config.car.halfExtents.x', 'Hitbox halbe Breite', 0.35, 2.5, 0.0001, 'm'],
+      ['config.car.halfExtents.y', 'Hitbox halbe Höhe', 0.1, 1.5, 0.0001, 'm'],
+      ['config.car.halfExtents.z', 'Hitbox halbe Länge', 0.3, 3.5, 0.0001, 'm'],
+      ['config.car.mass', 'Masse', 50, 2500, 1, 'u'],
+      ['config.car.maxGroundSpeed', 'Max. Bodentempo', 7.2, 288, 0.01, 'km/h', 3.6],
+      ['config.car.maxBoostSpeed', 'Max. Boosttempo', 7.2, 432, 0.01, 'km/h', 3.6],
+      ['config.car.supersonicSpeed', 'Supersonic-Schwelle', 7.2, 432, 0.01, 'km/h', 3.6],
       ['config.car.linearDamping', 'Linear Damping', 0, 10, 0.01, ''],
       ['config.car.angularDamping', 'Angular Damping', 0, 10, 0.01, ''],
       ['config.car.restitution', 'Auto-Bounce', 0, 1.5, 0.01, '']
@@ -191,9 +192,11 @@ const LOBBY_PHYSICS_SECTIONS = [
       ['config.car.driveAcceleration', 'Beschleunigung vorwärts', 0, 80, 0.5, 'm/s²'],
       ['config.car.reverseAcceleration', 'Beschleunigung rückwärts', 0, 80, 0.5, 'm/s²'],
       ['config.car.brakeAcceleration', 'Bremskraft', 0, 120, 0.5, 'm/s²'],
-      ['config.car.coastDeceleration', 'Ausroll-Bremse', 0, 40, 0.1, 'm/s²'],
-      ['config.car.boostAcceleration', 'Boost-Beschleunigung Boden', 0, 100, 0.5, 'm/s²'],
-      ['config.car.airBoostAcceleration', 'Boost-Beschleunigung Luft', 0, 140, 0.5, 'm/s²'],
+      ['config.car.coastDeceleration', 'Ausroll-Bremse', 0, 40, 0.01, 'm/s²'],
+      ['config.car.boostAcceleration', 'Boost-Beschleunigung Boden', 0, 100, 0.00001, 'm/s²'],
+      ['config.car.airBoostAcceleration', 'Boost-Beschleunigung Luft', 0, 140, 0.00001, 'm/s²'],
+      ['config.car.airThrottleAcceleration', 'Luft-Gas', 0, 10, 0.001, 'm/s²'],
+      ['config.car.airReverseAcceleration', 'Luft-Rückwärtsgas', 0, 10, 0.001, 'm/s²'],
       ['config.car.grip', 'Grip', 0, 80, 0.1, ''],
       ['config.car.driftGrip', 'Drift-Grip', 0, 40, 0.1, ''],
       ['config.car.steerRate', 'Lenkrate', 0, 12, 0.05, ''],
@@ -206,19 +209,22 @@ const LOBBY_PHYSICS_SECTIONS = [
   {
     title: 'Auto · Aerials, Jump & Dodge',
     fields: [
-      ['config.car.airPitchAcceleration', 'Air Pitch Acceleration', 0, 50, 0.1, ''],
-      ['config.car.airYawAcceleration', 'Air Yaw Acceleration', 0, 50, 0.1, ''],
-      ['config.car.airRollAcceleration', 'Air Roll Acceleration', 0, 50, 0.1, ''],
+      ['config.car.airPitchAcceleration', 'Air Pitch Acceleration', 0, 50, 0.01, ''],
+      ['config.car.airYawAcceleration', 'Air Yaw Acceleration', 0, 50, 0.01, ''],
+      ['config.car.airRollAcceleration', 'Air Roll Acceleration', 0, 50, 0.01, ''],
       ['config.car.airPitchRate', 'Air Pitch Rate', 0, 18, 0.05, 'rad/s'],
       ['config.car.airYawRate', 'Air Yaw Rate', 0, 18, 0.05, 'rad/s'],
       ['config.car.airRollRate', 'Air Roll Rate', 0, 18, 0.05, 'rad/s'],
       ['config.car.airControlResponse', 'Air-Control-Reaktion', 0, 50, 0.1, ''],
       ['config.car.airNeutralResponse', 'Air-Neutral-Stabilisierung', 0, 50, 0.1, ''],
-      ['config.car.maxAirAngular', 'Max. Luftrotation', 0, 24, 0.1, 'rad/s'],
-      ['config.car.jumpSpeed', 'Jump Speed', 0, 40, 0.1, 'm/s'],
+      ['config.car.maxAirAngular', 'Max. Luftrotation', 0, 24, 0.01, 'rad/s'],
+      ['config.car.jumpSpeed', 'Jump Speed', 0, 40, 0.01, 'm/s'],
       ['config.car.jumpHoldAcceleration', 'Jump Hold Acceleration', 0, 120, 0.5, 'm/s²'],
       ['config.car.jumpHoldDuration', 'Jump Hold Dauer', 0, 2, 0.01, 's'],
-      ['config.car.doubleJumpSpeed', 'Double-Jump Speed', 0, 50, 0.1, 'm/s'],
+      ['config.car.jumpMinimumHoldDuration', 'Minimum Jump Hold', 0, 0.2, 0.001, 's'],
+      ['config.car.jumpStickyAcceleration', 'Jump Sticky Force', 0, 20, 0.01, 'm/s²'],
+      ['config.car.jumpStickyDuration', 'Jump Sticky Dauer', 0, 0.2, 0.001, 's'],
+      ['config.car.doubleJumpSpeed', 'Double-Jump Speed', 0, 50, 0.00001, 'm/s'],
       ['config.car.dodgeImpulse', 'Dodge Impuls', 0, 50, 0.1, ''],
       ['config.car.dodgeLift', 'Dodge Lift', -10, 20, 0.1, ''],
       ['config.car.dodgeAngularSpeed', 'Dodge Rotationsspeed', 0, 40, 0.01, 'rad/s'],
@@ -234,19 +240,20 @@ const LOBBY_PHYSICS_SECTIONS = [
   {
     title: 'Ball',
     fields: [
-      ['config.ball.radius', 'Radius', 0.5, 6, 0.05, 'm'],
-      ['config.ball.mass', 'Masse', 1, 500, 1, 'kg'],
+      ['config.ball.radius', 'Radius', 0.4, 6, 0.0001, 'm'],
+      ['config.ball.mass', 'Masse', 1, 500, 1, 'u'],
       ['config.ball.restitution', 'Bounce / Restitution', 0, 1.5, 0.01, ''],
       ['config.ball.friction', 'Reibung', 0, 2, 0.01, ''],
       ['config.ball.rollingResistance', 'Rollwiderstand', 0, 4, 0.01, ''],
-      ['config.ball.linearDamping', 'Linear Damping', 0, 5, 0.005, ''],
+      ['config.ball.linearDamping', 'Linear Damping', 0, 5, 0.000001, ''],
       ['config.ball.angularDamping', 'Angular Damping', 0, 5, 0.005, ''],
       ['config.ball.maxSpeed', 'Max. Balltempo', 7.2, 576, 0.1, 'km/h', 3.6],
       ['config.ball.maxAngularSpeed', 'Max. Ballrotation', 0, 120, 0.5, 'rad/s'],
       ['config.ball.carHitPower', 'Car Hit Power', 0, 3, 0.01, ''],
       ['config.ball.carHitLift', 'Car Hit Lift', -1, 2, 0.01, ''],
       ['config.ball.carHitLiftBase', 'Car Hit Lift Base', -5, 10, 0.05, ''],
-      ['config.ball.spawnY', 'Spawn-Höhe', 0.55, 20, 0.05, 'm']
+      ['config.ball.spawnY', 'Spawn-Höhe', 0.4, 20, 0.0001, 'm'],
+      ['config.ball.restingHeight', 'Ruhehöhe', 0.4, 6.5, 0.0001, 'm']
     ]
   },
   {
@@ -380,7 +387,7 @@ function syncLobbyModeConstraints(form) {
   const basketball = form.elements.gameMode?.value === 'basketball';
   const ceiling = form.querySelector('[data-lobby-setting="config.arena.ceiling"]');
   if (!ceiling) return;
-  const minimum = basketball ? BASKETBALL_MIN_CEILING : 14;
+  const minimum = basketball ? BASKETBALL_MIN_CEILING : 10;
   ceiling.min = String(minimum);
   if (Number(ceiling.value) < minimum) ceiling.value = String(minimum);
   const minLabel = form.querySelector('[data-range-min-for="config.arena.ceiling"]');

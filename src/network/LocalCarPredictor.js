@@ -1,5 +1,16 @@
 import * as THREE from 'three';
-import { CAR_TUNING, INPUT_BITS, INPUT_EDGES, INPUT_FLAGS, getDirectionalDodgeLiftScale } from '../shared/game-tuning.js';
+import {
+  CAR_TUNING,
+  FULL_STEER_SPEED,
+  FULL_STEER_TIME_CONSTANT,
+  INPUT_BITS,
+  INPUT_EDGES,
+  INPUT_FLAGS,
+  fullSteerDecelerationAtSpeed,
+  getDirectionalDodgeLiftScale,
+  throttleAccelerationAtSpeed,
+  turningAngularSpeed
+} from '../shared/game-tuning.js';
 import { ARENA_TUNING, CAR_HITBOX } from '../shared/arena-tuning.js';
 
 const VEC_FORWARD = new THREE.Vector3(0, 0, -1);
@@ -28,6 +39,7 @@ export class LocalCarPredictor {
     this.jumpCount = 0;
     this.jumpHoldTime = 0;
     this.jumpHoldActive = false;
+    this.jumpStickyTime = 0;
     this.airTime = 0;
     this.groundLockout = 0;
     this.dodgeTime = 0;
@@ -84,6 +96,7 @@ export class LocalCarPredictor {
     this.jumpCount = 0;
     this.jumpHoldTime = 0;
     this.jumpHoldActive = false;
+    this.jumpStickyTime = 0;
     this.airTime = 0;
     this.groundLockout = 0;
     this.dodgeTime = 0;
@@ -102,7 +115,7 @@ export class LocalCarPredictor {
     const half = (Number(yaw) || 0) * 0.5;
     this.body.setTranslation({
       x: Number(spawn?.x) || 0,
-      y: Number(spawn?.y) || 0.52,
+      y: Number(spawn?.y) || CAR_HITBOX.y,
       z: Number(spawn?.z) || 0
     }, true);
     this.body.setRotation({ x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) }, true);
@@ -117,6 +130,7 @@ export class LocalCarPredictor {
     this.jumpCount = 0;
     this.jumpHoldTime = 0;
     this.jumpHoldActive = false;
+    this.jumpStickyTime = 0;
     this.airTime = 0;
     this.groundLockout = 0;
     this.dodgeTime = 0;
@@ -147,6 +161,7 @@ export class LocalCarPredictor {
       this.jumpCount = 0;
       this.jumpHoldTime = 0;
       this.jumpHoldActive = false;
+      this.jumpStickyTime = 0;
       this.dodgeTime = 0;
       this.dodgeAngleRemaining = 0;
       this.dodgeAxis.set(0, 0, 0);
@@ -232,29 +247,38 @@ export class LocalCarPredictor {
 
     if (this.consumeEdge(INPUT_EDGES.JUMP)) {
       if (driveGrounded && this.jumpCount === 0) {
-        const normalSpeed = this.vel.dot(this.groundNormal);
-        this.vel.addScaledVector(this.groundNormal, Math.max(0, CAR_TUNING.jumpSpeed - normalSpeed));
+        this.vel.addScaledVector(this.groundNormal, CAR_TUNING.jumpSpeed);
         this.jumpCount = 1;
         this.jumpHoldTime = 0;
-        this.jumpHoldActive = this.isDown(INPUT_BITS.JUMP);
+        this.jumpHoldActive = true;
+        this.jumpStickyTime = CAR_TUNING.jumpStickyDuration;
         this.airTime = 0;
         this.grounded = false;
         this.groundLockout = 0.16;
         driveGrounded = false;
-      } else if (!driveGrounded && this.jumpCount === 1 && this.airTime <= CAR_TUNING.dodgeWindow) {
+      } else if (!driveGrounded && this.jumpCount === 1
+        && this.airTime <= CAR_TUNING.dodgeWindow + Math.min(CAR_TUNING.jumpHoldDuration, this.jumpHoldTime)) {
         this.applySecondJumpOrDodge(forwardInput, sideInput);
       }
     }
 
     if (this.jumpCount === 1 && this.jumpHoldActive) {
-      if (!this.isDown(INPUT_BITS.JUMP)) {
+      const released = !this.isDown(INPUT_BITS.JUMP);
+      if (released && this.jumpHoldTime >= CAR_TUNING.jumpMinimumHoldDuration) {
         this.jumpHoldActive = false;
       } else if (this.jumpHoldTime < CAR_TUNING.jumpHoldDuration) {
         const holdDt = Math.min(dt, CAR_TUNING.jumpHoldDuration - this.jumpHoldTime);
         this.vel.addScaledVector(this.up, CAR_TUNING.jumpHoldAcceleration * holdDt);
         this.jumpHoldTime += holdDt;
-        if (this.jumpHoldTime >= CAR_TUNING.jumpHoldDuration - 1e-6) this.jumpHoldActive = false;
+        if (this.jumpHoldTime >= CAR_TUNING.jumpHoldDuration - 1e-6
+          || (released && this.jumpHoldTime >= CAR_TUNING.jumpMinimumHoldDuration - 1e-6)) this.jumpHoldActive = false;
       }
+    }
+
+    if (this.jumpStickyTime > 0) {
+      const stickyDt = Math.min(dt, this.jumpStickyTime);
+      this.vel.addScaledVector(this.up, -CAR_TUNING.jumpStickyAcceleration * stickyDt);
+      this.jumpStickyTime = Math.max(0, this.jumpStickyTime - stickyDt);
     }
 
     if (driveGrounded) this.applySurfaceForces(dt);
@@ -315,32 +339,47 @@ export class LocalCarPredictor {
 
     const speedForward = this.vel.dot(this.forward);
     const speedLateral = this.vel.dot(this.right);
-    const tangentSpeed = Math.hypot(speedForward, speedLateral);
-    const reverseTarget = -CAR_TUNING.maxGroundSpeed * 0.68;
-    const opposing = throttle !== 0
-      && Math.abs(speedForward) > 0.05
-      && Math.sign(throttle) !== Math.sign(speedForward);
-
+    const effectiveThrottle = boosting ? 1 : clamp(throttle, -1, 1);
     let nextForward = speedForward;
+    const opposing = Math.abs(effectiveThrottle) >= 0.01
+      && Math.abs(speedForward) > 0.01
+      && Math.sign(effectiveThrottle) !== Math.sign(speedForward);
     if (opposing) {
-      const brakeTarget = throttle < 0 ? reverseTarget : CAR_TUNING.maxGroundSpeed;
-      nextForward = moveTowards(speedForward, brakeTarget, CAR_TUNING.brakeAcceleration * Math.abs(throttle) * dt);
-    } else if (throttle > 0) {
-      // Normal throttle can accelerate to 70 km/h, but it never drags a
-      // previously boosted car back down from the 70-120 km/h momentum band.
-      if (speedForward < CAR_TUNING.maxGroundSpeed) {
-        nextForward = moveTowards(speedForward, CAR_TUNING.maxGroundSpeed, CAR_TUNING.driveAcceleration * Math.abs(throttle) * dt);
-      }
-    } else if (throttle < 0) {
-      nextForward = moveTowards(speedForward, reverseTarget, CAR_TUNING.reverseAcceleration * Math.abs(throttle) * dt);
-    } else if (speedForward <= CAR_TUNING.maxGroundSpeed + 0.01) {
-      // Below normal top speed the familiar coast slowdown remains. Above it,
-      // boosted momentum is retained until braking/collision actually slows us.
+      nextForward = moveTowards(speedForward, 0, CAR_TUNING.brakeAcceleration * dt);
+    } else if (Math.abs(effectiveThrottle) < 0.01) {
       nextForward = moveTowards(speedForward, 0, CAR_TUNING.coastDeceleration * dt);
+    } else {
+      const direction = Math.sign(effectiveThrottle);
+      const directionalSpeed = nextForward * direction;
+      if (directionalSpeed < CAR_TUNING.maxGroundSpeed) {
+        const accelerationScale = direction > 0
+          ? CAR_TUNING.driveAcceleration / 16
+          : CAR_TUNING.reverseAcceleration / 16;
+        let acceleration = throttleAccelerationAtSpeed(directionalSpeed) * accelerationScale;
+        const steerBlend = drifting ? 0 : Math.abs(clamp(steer, -1, 1)) ** 2;
+        if (steerBlend > 0) {
+          const turnAcceleration = Math.max(0, (FULL_STEER_SPEED - directionalSpeed) / FULL_STEER_TIME_CONSTANT);
+          acceleration = acceleration * (1 - steerBlend) + turnAcceleration * steerBlend;
+        }
+        nextForward += direction * acceleration * Math.abs(effectiveThrottle) * dt;
+        if (nextForward * direction > CAR_TUNING.maxGroundSpeed) nextForward = direction * CAR_TUNING.maxGroundSpeed;
+      }
     }
 
     if (boosting) {
-      nextForward = moveTowards(nextForward, CAR_TUNING.maxBoostSpeed, CAR_TUNING.boostAcceleration * dt);
+      nextForward = Math.min(CAR_TUNING.maxBoostSpeed, nextForward + CAR_TUNING.boostAcceleration * dt);
+    }
+
+    const steerAmount = Math.abs(clamp(steer, -1, 1));
+    if (!drifting && steerAmount > 0.001) {
+      const steerLimit = CAR_TUNING.maxGroundSpeed
+        - (CAR_TUNING.maxGroundSpeed - FULL_STEER_SPEED) * steerAmount * steerAmount;
+      if (Math.abs(speedForward) <= steerLimit + 0.02 && Math.abs(nextForward) > steerLimit) {
+        nextForward = Math.sign(nextForward || 1) * steerLimit;
+      } else if (Math.abs(speedForward) > FULL_STEER_SPEED) {
+        const turnLoss = fullSteerDecelerationAtSpeed(speedForward) * steerAmount * steerAmount * dt;
+        nextForward = moveTowards(nextForward, Math.sign(nextForward || 1) * FULL_STEER_SPEED, turnLoss);
+      }
     }
 
     const activeGrip = drifting ? CAR_TUNING.driftGrip : CAR_TUNING.grip;
@@ -350,13 +389,10 @@ export class LocalCarPredictor {
       .addScaledVector(this.right, nextLateral)
       .addScaledVector(this.groundNormal, normalSpeed);
 
-    const steerStrength = clamp(Math.max(Math.abs(nextForward), 1.5) / 7, 0.18, 1)
-      * clamp(1 - tangentSpeed / 70, 0.48, 1);
-    const reverseSign = Math.sign(nextForward || throttle || 1);
-    const steerRate = drifting ? CAR_TUNING.driftSteerRate : CAR_TUNING.steerRate;
     const steerResponse = drifting ? CAR_TUNING.driftSteerResponse : CAR_TUNING.steerResponse;
-    const driftStrength = drifting ? Math.max(0.72, steerStrength) : steerStrength;
-    const targetYaw = steer * steerRate * driftStrength * reverseSign;
+    const targetYaw = drifting
+      ? steer * CAR_TUNING.driftSteerRate * Math.sign(nextForward || 1)
+      : turningAngularSpeed(nextForward, steer) * CAR_TUNING.steerRate / 2.75;
     let spin = this.ang.dot(this.groundNormal);
     this.ang.addScaledVector(this.groundNormal, -spin).multiplyScalar(Math.exp(-CAR_TUNING.angularGroundDamping * dt));
     spin = damp(spin, targetYaw, steerResponse, dt);
@@ -371,27 +407,26 @@ export class LocalCarPredictor {
       : CAR_TUNING.maxAirAngular;
 
     if (!dodging) {
-      // Match the authoritative Rocket-style aerial assist: controls request
-      // angular velocity directly and releasing them actively removes residual
-      // spin instead of letting old momentum rotate the car indefinitely.
-      this.targetAng.set(0, 0, 0)
-        .addScaledVector(this.right, -forwardInput * CAR_TUNING.airPitchRate)
-        .addScaledVector(this.up, sideInput * CAR_TUNING.airYawRate)
-        .addScaledVector(this.forward, rollInput * CAR_TUNING.airRollRate);
-      const inputAmount = Math.max(Math.abs(forwardInput), Math.abs(sideInput), Math.abs(rollInput));
-      const response = inputAmount > 0.02
-        ? CAR_TUNING.airControlResponse
-        : CAR_TUNING.airNeutralResponse;
-      this.ang.lerp(this.targetAng, 1 - Math.exp(-Math.max(0, response) * dt));
+      const pitchRate = moveTowards(this.ang.dot(this.right), -forwardInput * CAR_TUNING.airPitchRate,
+        CAR_TUNING.airPitchAcceleration * (Math.abs(forwardInput) || 1) * dt);
+      const yawRate = moveTowards(this.ang.dot(this.up), sideInput * CAR_TUNING.airYawRate,
+        CAR_TUNING.airYawAcceleration * (Math.abs(sideInput) || 1) * dt);
+      const rollRate = moveTowards(this.ang.dot(this.forward), rollInput * CAR_TUNING.airRollRate,
+        CAR_TUNING.airRollAcceleration * (Math.abs(rollInput) || 1) * dt);
+      this.ang.copy(this.right).multiplyScalar(pitchRate)
+        .addScaledVector(this.up, yawRate)
+        .addScaledVector(this.forward, rollRate);
     }
     const angularLength = this.ang.length();
     if (angularLength > maxAngular) this.ang.multiplyScalar(maxAngular / angularLength);
 
-    if (boosting) {
-      this.vel.addScaledVector(this.forward, CAR_TUNING.airBoostAcceleration * dt);
-      const speed = this.vel.length();
-      if (speed > CAR_TUNING.maxBoostSpeed) this.vel.multiplyScalar(CAR_TUNING.maxBoostSpeed / speed);
-    }
+    const airThrottle = forwardInput >= 0
+      ? CAR_TUNING.airThrottleAcceleration * forwardInput
+      : CAR_TUNING.airReverseAcceleration * forwardInput;
+    this.vel.addScaledVector(this.forward, airThrottle * dt);
+    if (boosting) this.vel.addScaledVector(this.forward, CAR_TUNING.airBoostAcceleration * dt);
+    const speed = this.vel.length();
+    if (speed > CAR_TUNING.maxBoostSpeed) this.vel.multiplyScalar(CAR_TUNING.maxBoostSpeed / speed);
   }
 
   applySecondJumpOrDodge(forwardInput, sideInput) {
@@ -536,15 +571,10 @@ export class LocalCarPredictor {
     const absZ = Math.abs(this.pos.z);
 
     if (absX > straightX && absZ > straightZ) {
-      const centerX = Math.sign(this.pos.x || 1) * straightX;
-      const centerZ = Math.sign(this.pos.z || 1) * straightZ;
-      const dx = this.pos.x - centerX;
-      const dz = this.pos.z - centerZ;
-      const distance = Math.hypot(dx, dz);
-      if (distance < 0.000001) return false;
-      this.boundaryDistance = arena.cornerRadius - distance;
-      this.boundaryNX = dx / distance;
-      this.boundaryNZ = dz / distance;
+      const intercept = halfWidth + halfLength - arena.cornerRadius;
+      this.boundaryDistance = (intercept - absX - absZ) * Math.SQRT1_2;
+      this.boundaryNX = Math.sign(this.pos.x || 1) * Math.SQRT1_2;
+      this.boundaryNZ = Math.sign(this.pos.z || 1) * Math.SQRT1_2;
       return true;
     }
 
@@ -916,6 +946,7 @@ export class LocalCarPredictor {
     this.jumpCount = 0;
     this.jumpHoldTime = 0;
     this.jumpHoldActive = false;
+    this.jumpStickyTime = 0;
     this.dodgeTime = 0;
     this.dodgeAngleRemaining = 0;
     this.dodgeAxis.set(0, 0, 0);

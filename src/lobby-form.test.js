@@ -12,8 +12,8 @@ test('lobby numeric settings use visible range sliders', () => {
 });
 
 test('lobby speed sliders cover the shipped km\/h defaults', () => {
-  assert.match(source, /config\.car\.maxGroundSpeed'.*7\.2, 288, 0\.1, 'km\/h', 3\.6/);
-  assert.match(source, /config\.car\.maxBoostSpeed'.*7\.2, 432, 0\.1, 'km\/h', 3\.6/);
+  assert.match(source, /config\.car\.maxGroundSpeed'.*7\.2, 288, 0\.01, 'km\/h', 3\.6/);
+  assert.match(source, /config\.car\.maxBoostSpeed'.*7\.2, 432, 0\.01, 'km\/h', 3\.6/);
   assert.match(source, /config\.ball\.maxSpeed'.*7\.2, 576, 0\.1, 'km\/h', 3\.6/);
 });
 

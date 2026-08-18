@@ -1,7 +1,16 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { TransformBody } from '../network/TransformBody.js';
-import { CAR_TUNING, getDirectionalDodgeLiftScale } from '../shared/game-tuning.js';
+import {
+  CAR_TUNING,
+  FULL_STEER_SPEED,
+  FULL_STEER_TIME_CONSTANT,
+  fullSteerDecelerationAtSpeed,
+  getDirectionalDodgeLiftScale,
+  throttleAccelerationAtSpeed,
+  turningAngularSpeed
+} from '../shared/game-tuning.js';
+import { CAR_HITBOX } from '../shared/arena-tuning.js';
 import { getCarStyle, normalizeCarStyle, shouldUsePremiumCarModel } from '../shared/car-styles.js';
 import { getBoostStyle, normalizeBoostStyle } from '../shared/boost-styles.js';
 import { BoostTrail } from './BoostTrail.js';
@@ -17,6 +26,7 @@ const moveTowards = (current, target, maxDelta) => {
   if (Math.abs(target - current) <= maxDelta) return target;
   return current + Math.sign(target - current) * maxDelta;
 };
+const CAR_VISUAL_SCALE = (CAR_HITBOX.z * 2) / 2.95;
 
 export class Car {
   constructor(scene, world, RAPIER, input, options = {}) {
@@ -29,7 +39,7 @@ export class Car {
     this.premiumVisualsEnabled = options.initiallyVisible !== false;
     this.clientOnly = Boolean(options.clientOnly);
 
-    const spawn = options.spawn ?? { x: 0, y: 0.52, z: 34 };
+    const spawn = options.spawn ?? { x: 0, y: CAR_HITBOX.y, z: 25.6 };
     this.spawn = new THREE.Vector3(spawn.x, spawn.y, spawn.z);
     this.spawnYaw = options.spawnYaw ?? 0;
     this.paintColor = options.color ?? 0xf46b20;
@@ -52,23 +62,15 @@ export class Car {
     this.premiumSpinQuaternion = new THREE.Quaternion();
     this.premiumSpinAxis = new THREE.Vector3();
     this.wheelPivots = [];
-    this.maxGroundSpeed = CAR_TUNING.maxGroundSpeed;
-    this.maxBoostSpeed = CAR_TUNING.maxBoostSpeed;
     this.boost = CAR_TUNING.boostCapacity;
     this.boosting = false;
     this.boostVisualHold = 0;
-    this.grip = CAR_TUNING.grip;
-    this.steerRate = CAR_TUNING.steerRate;
-    this.steerResponse = CAR_TUNING.steerResponse;
-    this.airPitchTorque = 2100;
-    this.airYawTorque = 1700;
-    this.airRollTorque = 2050;
-
     this.grounded = false;
     this.groundNormal = new THREE.Vector3(0, 1, 0);
     this.jumpCount = 0;
     this.jumpHoldTime = 0;
     this.jumpHoldActive = false;
+    this.jumpStickyTime = 0;
     this.airTime = 0;
     this.groundContactLockout = 0;
     this.dodgeTime = 0;
@@ -87,10 +89,10 @@ export class Car {
     this.groundAvg = new THREE.Vector3();
     this.sampleWorld = new THREE.Vector3();
     this.wheelSamples = [
-      new THREE.Vector3(-0.67, -0.28, -0.92),
-      new THREE.Vector3(0.67, -0.28, -0.92),
-      new THREE.Vector3(-0.67, -0.28, 0.94),
-      new THREE.Vector3(0.67, -0.28, 0.94)
+      new THREE.Vector3(-CAR_HITBOX.x * 0.78, -CAR_HITBOX.y * 0.72, -CAR_HITBOX.z * 0.74),
+      new THREE.Vector3(CAR_HITBOX.x * 0.78, -CAR_HITBOX.y * 0.72, -CAR_HITBOX.z * 0.74),
+      new THREE.Vector3(-CAR_HITBOX.x * 0.78, -CAR_HITBOX.y * 0.72, CAR_HITBOX.z * 0.74),
+      new THREE.Vector3(CAR_HITBOX.x * 0.78, -CAR_HITBOX.y * 0.72, CAR_HITBOX.z * 0.74)
     ];
     this.rayDir = { x: 0, y: -1, z: 0 };
     this.rayOrigin = { x: 0, y: 0, z: 0 };
@@ -126,11 +128,11 @@ export class Car {
     this.body = this.world.createRigidBody(bodyDesc);
     this.setSpawnRotation();
 
-    const colliderDesc = R.ColliderDesc.cuboid(0.83, 0.45, 1.48)
-      .setDensity(145)
+    const colliderDesc = R.ColliderDesc.cuboid(CAR_HITBOX.x, CAR_HITBOX.y, CAR_HITBOX.z)
+      .setDensity(532.4939211622848)
       .setFriction(0.04)
       .setRestitution(0)
-      .setContactSkin(0.015);
+      .setContactSkin(0);
 
     this.collider = this.world.createCollider(colliderDesc, this.body);
     this.body.setAdditionalSolverIterations(6);
@@ -145,6 +147,7 @@ export class Car {
     this.scene.add(this.group);
     this.proceduralRoot = new THREE.Group();
     this.proceduralRoot.name = 'ProceduralCarVisual';
+    this.proceduralRoot.scale.setScalar(CAR_VISUAL_SCALE);
     this.group.add(this.proceduralRoot);
 
     const paint = this.ultraHigh
@@ -349,6 +352,10 @@ export class Car {
   createLowDetailVisual() {
     this.group = new THREE.Group();
     this.scene.add(this.group);
+    this.proceduralRoot = new THREE.Group();
+    this.proceduralRoot.name = 'ProceduralCarVisual';
+    this.proceduralRoot.scale.setScalar(CAR_VISUAL_SCALE);
+    this.group.add(this.proceduralRoot);
 
     // Software WebGL cares about draw calls more than cosmetic polygon detail.
     // Two opaque, unlit boxes are enough to preserve car/team/style readability
@@ -358,11 +365,11 @@ export class Car {
 
     const body = new THREE.Mesh(new THREE.BoxGeometry(1.66, 0.62, 2.95), paint);
     body.position.y = 0.02;
-    this.group.add(body);
+    this.proceduralRoot.add(body);
 
     const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.34, 0.50, 1.06), cabinMaterial);
     cabin.position.set(0, 0.58, 0.22);
-    this.group.add(cabin);
+    this.proceduralRoot.add(cabin);
 
     this.wheels = [];
     this.frontWheelPivots = [];
@@ -477,7 +484,11 @@ export class Car {
     }
     for (let index = 0; index < this.exhaust.length; index++) {
       const side = index === 0 ? -1 : 1;
-      this.exhaust[index].position.set(side * style.exhaustX, -0.03, style.exhaustZ);
+      this.exhaust[index].position.set(
+        side * style.exhaustX * CAR_VISUAL_SCALE,
+        -0.03,
+        style.exhaustZ * CAR_VISUAL_SCALE
+      );
     }
   }
 
@@ -500,7 +511,7 @@ export class Car {
       if (premiumAnchor) return premiumAnchor;
     }
     const style = this.carStyle || getCarStyle();
-    return { x: style.exhaustX, z: style.exhaustZ };
+    return { x: style.exhaustX * CAR_VISUAL_SCALE, z: style.exhaustZ * CAR_VISUAL_SCALE };
   }
 
   disposePremiumVisual() {
@@ -640,8 +651,8 @@ export class Car {
       toneMapped: false
     });
     this.nameTag = new THREE.Sprite(material);
-    this.nameTag.position.set(0, 2.05, 0);
-    this.nameTag.scale.set(4.8, 1.2, 1);
+    this.nameTag.position.set(0, 0.86, 0);
+    this.nameTag.scale.set(2.15, 0.54, 1);
     this.nameTag.renderOrder = 30;
     this.group.add(this.nameTag);
     this.redrawNameTag();
@@ -719,7 +730,7 @@ export class Car {
       this.rayOrigin.z = this.sampleWorld.z + pos.z;
 
       const ray = new R.Ray(this.rayOrigin, this.rayDir);
-      const hit = this.world.castRayAndGetNormal(ray, 1.15, true, undefined, undefined, undefined, this.body);
+      const hit = this.world.castRayAndGetNormal(ray, CAR_HITBOX.y * 1.65, true, undefined, undefined, undefined, this.body);
       if (hit) {
         hits += 1;
         this.groundAvg.x += hit.normal.x;
@@ -743,6 +754,7 @@ export class Car {
       if (this.jumpCount > 0) this.jumpCount = 0;
       this.jumpHoldTime = 0;
       this.jumpHoldActive = false;
+      this.jumpStickyTime = 0;
       if (this.dodgeAngleRemaining > 1e-6 || this.dodgeStopPending) this.stopDodgeRotation();
       this.dodgeTime = 0;
       this.dodgeAngleRemaining = 0;
@@ -804,21 +816,21 @@ export class Car {
     if (this.input.consumePressed('Space')) {
       if (driveGrounded && this.jumpCount === 0) {
         const lin = this.body.linvel();
-        const normalSpeed = lin.x * this.groundNormal.x + lin.y * this.groundNormal.y + lin.z * this.groundNormal.z;
-        const deltaSpeed = Math.max(0, CAR_TUNING.jumpSpeed - normalSpeed);
         this.body.setLinvel({
-          x: lin.x + this.groundNormal.x * deltaSpeed,
-          y: lin.y + this.groundNormal.y * deltaSpeed,
-          z: lin.z + this.groundNormal.z * deltaSpeed
+          x: lin.x + this.groundNormal.x * CAR_TUNING.jumpSpeed,
+          y: lin.y + this.groundNormal.y * CAR_TUNING.jumpSpeed,
+          z: lin.z + this.groundNormal.z * CAR_TUNING.jumpSpeed
         }, true);
         this.jumpCount = 1;
         this.jumpHoldTime = 0;
-        this.jumpHoldActive = this.input.isDown('Space');
+        this.jumpHoldActive = true;
+        this.jumpStickyTime = CAR_TUNING.jumpStickyDuration;
         this.airTime = 0;
         this.grounded = false;
         this.groundContactLockout = 0.16;
         driveGrounded = false;
-      } else if (!driveGrounded && this.jumpCount === 1 && this.airTime <= CAR_TUNING.dodgeWindow) {
+      } else if (!driveGrounded && this.jumpCount === 1
+        && this.airTime <= CAR_TUNING.dodgeWindow + Math.min(CAR_TUNING.jumpHoldDuration, this.jumpHoldTime)) {
         this.applySecondJumpOrDodge(forwardInput, sideInput);
       }
     }
@@ -827,7 +839,8 @@ export class Car {
     // press is held continuously. Releasing Space permanently ends hold lift
     // for this jump, so a later second press is reserved for double-jump/dodge.
     if (this.jumpCount === 1 && this.jumpHoldActive) {
-      if (!this.input.isDown('Space')) {
+      const released = !this.input.isDown('Space');
+      if (released && this.jumpHoldTime >= CAR_TUNING.jumpMinimumHoldDuration) {
         this.jumpHoldActive = false;
       } else if (this.jumpHoldTime < CAR_TUNING.jumpHoldDuration) {
         const holdDt = Math.min(dt, CAR_TUNING.jumpHoldDuration - this.jumpHoldTime);
@@ -838,8 +851,20 @@ export class Car {
           z: lin.z + this.up.z * CAR_TUNING.jumpHoldAcceleration * holdDt
         }, true);
         this.jumpHoldTime += holdDt;
-        if (this.jumpHoldTime >= CAR_TUNING.jumpHoldDuration - 1e-6) this.jumpHoldActive = false;
+        if (this.jumpHoldTime >= CAR_TUNING.jumpHoldDuration - 1e-6
+          || (released && this.jumpHoldTime >= CAR_TUNING.jumpMinimumHoldDuration - 1e-6)) this.jumpHoldActive = false;
       }
+    }
+
+    if (this.jumpStickyTime > 0) {
+      const stickyDt = Math.min(dt, this.jumpStickyTime);
+      const lin = this.body.linvel();
+      this.body.setLinvel({
+        x: lin.x - this.up.x * CAR_TUNING.jumpStickyAcceleration * stickyDt,
+        y: lin.y - this.up.y * CAR_TUNING.jumpStickyAcceleration * stickyDt,
+        z: lin.z - this.up.z * CAR_TUNING.jumpStickyAcceleration * stickyDt
+      }, true);
+      this.jumpStickyTime = Math.max(0, this.jumpStickyTime - stickyDt);
     }
 
     if (driveGrounded) {
@@ -880,32 +905,45 @@ export class Car {
     this.velocityVec.set(lin.x, lin.y, lin.z);
     const speedForward = this.velocityVec.dot(this.forward);
     const speedLateral = this.velocityVec.dot(this.right);
-    const tangentSpeed = Math.hypot(speedForward, speedLateral);
-    const reverseTarget = -CAR_TUNING.maxGroundSpeed * 0.68;
-    const opposing = throttle !== 0
-      && Math.abs(speedForward) > 0.05
-      && Math.sign(throttle) !== Math.sign(speedForward);
-
+    const effectiveThrottle = boosting ? 1 : clamp(throttle, -1, 1);
     let nextForward = speedForward;
+    const opposing = Math.abs(effectiveThrottle) >= 0.01
+      && Math.abs(speedForward) > 0.01
+      && Math.sign(effectiveThrottle) !== Math.sign(speedForward);
     if (opposing) {
-      const brakeTarget = throttle < 0 ? reverseTarget : CAR_TUNING.maxGroundSpeed;
-      nextForward = moveTowards(speedForward, brakeTarget, CAR_TUNING.brakeAcceleration * Math.abs(throttle) * dt);
-    } else if (throttle > 0) {
-      // Normal throttle can accelerate to 70 km/h, but it never drags a
-      // previously boosted car back down from the 70-120 km/h momentum band.
-      if (speedForward < CAR_TUNING.maxGroundSpeed) {
-        nextForward = moveTowards(speedForward, CAR_TUNING.maxGroundSpeed, CAR_TUNING.driveAcceleration * Math.abs(throttle) * dt);
-      }
-    } else if (throttle < 0) {
-      nextForward = moveTowards(speedForward, reverseTarget, CAR_TUNING.reverseAcceleration * Math.abs(throttle) * dt);
-    } else if (speedForward <= CAR_TUNING.maxGroundSpeed + 0.01) {
-      // Below normal top speed the familiar coast slowdown remains. Above it,
-      // boosted momentum is retained until braking/collision actually slows us.
+      nextForward = moveTowards(speedForward, 0, CAR_TUNING.brakeAcceleration * dt);
+    } else if (Math.abs(effectiveThrottle) < 0.01) {
       nextForward = moveTowards(speedForward, 0, CAR_TUNING.coastDeceleration * dt);
+    } else {
+      const direction = Math.sign(effectiveThrottle);
+      const directionalSpeed = nextForward * direction;
+      if (directionalSpeed < CAR_TUNING.maxGroundSpeed) {
+        const accelerationScale = direction > 0
+          ? CAR_TUNING.driveAcceleration / 16
+          : CAR_TUNING.reverseAcceleration / 16;
+        let acceleration = throttleAccelerationAtSpeed(directionalSpeed) * accelerationScale;
+        const steerBlend = drifting ? 0 : Math.abs(clamp(steer, -1, 1)) ** 2;
+        if (steerBlend > 0) {
+          const turnAcceleration = Math.max(0, (FULL_STEER_SPEED - directionalSpeed) / FULL_STEER_TIME_CONSTANT);
+          acceleration = acceleration * (1 - steerBlend) + turnAcceleration * steerBlend;
+        }
+        nextForward += direction * acceleration * Math.abs(effectiveThrottle) * dt;
+        if (nextForward * direction > CAR_TUNING.maxGroundSpeed) nextForward = direction * CAR_TUNING.maxGroundSpeed;
+      }
     }
 
-    if (boosting) {
-      nextForward = moveTowards(nextForward, CAR_TUNING.maxBoostSpeed, CAR_TUNING.boostAcceleration * dt);
+    if (boosting) nextForward = Math.min(CAR_TUNING.maxBoostSpeed, nextForward + CAR_TUNING.boostAcceleration * dt);
+
+    const steerAmount = Math.abs(clamp(steer, -1, 1));
+    if (!drifting && steerAmount > 0.001) {
+      const steerLimit = CAR_TUNING.maxGroundSpeed
+        - (CAR_TUNING.maxGroundSpeed - FULL_STEER_SPEED) * steerAmount * steerAmount;
+      if (Math.abs(speedForward) <= steerLimit + 0.02 && Math.abs(nextForward) > steerLimit) {
+        nextForward = Math.sign(nextForward || 1) * steerLimit;
+      } else if (Math.abs(speedForward) > FULL_STEER_SPEED) {
+        nextForward = moveTowards(nextForward, Math.sign(nextForward || 1) * FULL_STEER_SPEED,
+          fullSteerDecelerationAtSpeed(speedForward) * steerAmount * steerAmount * dt);
+      }
     }
 
     const activeGrip = drifting ? CAR_TUNING.driftGrip : CAR_TUNING.grip;
@@ -916,13 +954,10 @@ export class Car {
       .addScaledVector(this.groundNormal, normalSpeed);
     this.body.setLinvel({ x: this.workVec.x, y: this.workVec.y, z: this.workVec.z }, true);
 
-    const steerStrength = clamp(Math.max(Math.abs(nextForward), 1.5) / 7, 0.18, 1)
-      * clamp(1 - tangentSpeed / 70, 0.48, 1);
-    const reverseSign = Math.sign(nextForward || throttle || 1);
-    const steerRate = drifting ? CAR_TUNING.driftSteerRate : CAR_TUNING.steerRate;
     const steerResponse = drifting ? CAR_TUNING.driftSteerResponse : CAR_TUNING.steerResponse;
-    const driftStrength = drifting ? Math.max(0.72, steerStrength) : steerStrength;
-    const targetYaw = steer * steerRate * driftStrength * reverseSign;
+    const targetYaw = drifting
+      ? steer * CAR_TUNING.driftSteerRate * Math.sign(nextForward || 1)
+      : turningAngularSpeed(nextForward, steer) * CAR_TUNING.steerRate / 2.75;
     const ang = this.body.angvel();
     const spin = ang.x * this.groundNormal.x + ang.y * this.groundNormal.y + ang.z * this.groundNormal.z;
     const tangentDamping = Math.exp(-CAR_TUNING.angularGroundDamping * dt);
@@ -955,18 +990,19 @@ export class Car {
 
     if (!dodging) {
       const ang = this.body.angvel();
-      this.workVec.set(0, 0, 0)
-        .addScaledVector(this.right, -forwardInput * CAR_TUNING.airPitchRate)
-        .addScaledVector(this.up, sideInput * CAR_TUNING.airYawRate)
-        .addScaledVector(this.forward, rollInput * CAR_TUNING.airRollRate);
-      const inputAmount = Math.max(Math.abs(forwardInput), Math.abs(sideInput), Math.abs(rollInput));
-      const response = inputAmount > 0.02
-        ? CAR_TUNING.airControlResponse
-        : CAR_TUNING.airNeutralResponse;
-      const blend = 1 - Math.exp(-Math.max(0, response) * dt);
-      let nextX = THREE.MathUtils.lerp(ang.x, this.workVec.x, blend);
-      let nextY = THREE.MathUtils.lerp(ang.y, this.workVec.y, blend);
-      let nextZ = THREE.MathUtils.lerp(ang.z, this.workVec.z, blend);
+      this.workVec.set(ang.x, ang.y, ang.z);
+      const pitchRate = moveTowards(this.workVec.dot(this.right), -forwardInput * CAR_TUNING.airPitchRate,
+        CAR_TUNING.airPitchAcceleration * (Math.abs(forwardInput) || 1) * dt);
+      const yawRate = moveTowards(this.workVec.dot(this.up), sideInput * CAR_TUNING.airYawRate,
+        CAR_TUNING.airYawAcceleration * (Math.abs(sideInput) || 1) * dt);
+      const rollRate = moveTowards(this.workVec.dot(this.forward), rollInput * CAR_TUNING.airRollRate,
+        CAR_TUNING.airRollAcceleration * (Math.abs(rollInput) || 1) * dt);
+      this.workVec.copy(this.right).multiplyScalar(pitchRate)
+        .addScaledVector(this.up, yawRate)
+        .addScaledVector(this.forward, rollRate);
+      let nextX = this.workVec.x;
+      let nextY = this.workVec.y;
+      let nextZ = this.workVec.z;
       const mag = Math.hypot(nextX, nextY, nextZ);
       if (mag > maxAirAngular) {
         const scale = maxAirAngular / mag;
@@ -975,13 +1011,15 @@ export class Car {
       this.body.setAngvel({ x: nextX, y: nextY, z: nextZ }, true);
     }
 
-    if (boosting) {
-      const lin = this.body.linvel();
-      this.velocityVec.set(lin.x, lin.y, lin.z).addScaledVector(this.forward, CAR_TUNING.airBoostAcceleration * dt);
-      const speed = this.velocityVec.length();
-      if (speed > CAR_TUNING.maxBoostSpeed) this.velocityVec.multiplyScalar(CAR_TUNING.maxBoostSpeed / speed);
-      this.body.setLinvel({ x: this.velocityVec.x, y: this.velocityVec.y, z: this.velocityVec.z }, true);
-    }
+    const lin = this.body.linvel();
+    const airThrottle = forwardInput >= 0
+      ? CAR_TUNING.airThrottleAcceleration * forwardInput
+      : CAR_TUNING.airReverseAcceleration * forwardInput;
+    this.velocityVec.set(lin.x, lin.y, lin.z).addScaledVector(this.forward, airThrottle * dt);
+    if (boosting) this.velocityVec.addScaledVector(this.forward, CAR_TUNING.airBoostAcceleration * dt);
+    const speed = this.velocityVec.length();
+    if (speed > CAR_TUNING.maxBoostSpeed) this.velocityVec.multiplyScalar(CAR_TUNING.maxBoostSpeed / speed);
+    this.body.setLinvel({ x: this.velocityVec.x, y: this.velocityVec.y, z: this.velocityVec.z }, true);
   }
 
   applySecondJumpOrDodge(forwardInput, sideInput) {
@@ -1144,9 +1182,9 @@ export class Car {
     if (this.shadow) {
       this.shadow.position.x = p.x;
       this.shadow.position.z = p.z;
-      const height = Math.max(0, p.y - 0.45);
+      const height = Math.max(0, p.y - CAR_HITBOX.y);
       const shadowScale = THREE.MathUtils.clamp(1.0 - height * 0.035, 0.58, 1.0);
-      this.shadow.scale.set(0.72 * shadowScale, shadowScale, 1);
+      this.shadow.scale.set(0.72 * CAR_VISUAL_SCALE * shadowScale, CAR_VISUAL_SCALE * shadowScale, 1);
       this.shadow.material.opacity = THREE.MathUtils.clamp(0.24 - height * 0.01, 0.05, 0.24);
     }
   }
@@ -1194,6 +1232,7 @@ export class Car {
     this.jumpCount = 0;
     this.jumpHoldTime = 0;
     this.jumpHoldActive = false;
+    this.jumpStickyTime = 0;
     this.airTime = 0;
     this.groundContactLockout = 0;
     this.dodgeTime = 0;

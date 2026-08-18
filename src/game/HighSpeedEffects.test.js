@@ -5,9 +5,9 @@ import test from 'node:test';
 const effectsSource = await readFile(new URL('./HighSpeedEffects.js', import.meta.url), 'utf8');
 const gameSource = await readFile(new URL('./Game.js', import.meta.url), 'utf8');
 
-test('ultra-high speed immersion begins subtly above 80 km/h and reaches full strength by boost top speed', () => {
-  assert.match(effectsSource, /const SPEED_START_KMH = 80;/);
-  assert.match(effectsSource, /const SPEED_FULL_KMH = 120;/);
+test('ultra-high speed immersion follows the 2200 to 2300 uu/s supersonic band', () => {
+  assert.match(effectsSource, /const SPEED_START_KMH = 79\.2;/);
+  assert.match(effectsSource, /const SPEED_FULL_KMH = 82\.8;/);
   assert.match(effectsSource, /smoothstep01/);
 });
 

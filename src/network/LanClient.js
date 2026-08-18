@@ -2,6 +2,7 @@ import { DEFAULT_CAR_STYLE, normalizeCarStyle } from '../shared/car-styles.js';
 import { DEFAULT_BOOST_STYLE, normalizeBoostStyle } from '../shared/boost-styles.js';
 import { ALL_BOOST_PADS_MASK } from '../shared/boost-tuning.js';
 import { QUICK_CHAT_OPTIONS, findQuickChat, normalizeQuickChatOptions } from '../shared/quick-chat.js';
+import { CAR_HITBOX } from '../shared/arena-tuning.js';
 
 const MSG_INPUT = 1;
 const MSG_STATE = 2;
@@ -334,7 +335,7 @@ export class LanClient {
   applyDemolitionMessage(message) {
     const normalizePoint = (point) => ({
       x: Number(point?.x) || 0,
-      y: Number(point?.y) || 0.52,
+      y: Number(point?.y) || CAR_HITBOX.y,
       z: Number(point?.z) || 0,
       yaw: Number(point?.yaw) || 0
     });
@@ -348,8 +349,8 @@ export class LanClient {
         : [0, 0, 0],
       durationMs: Math.max(200, Number(message?.durationMs) || 4000),
       stateTick: Number.isFinite(Number(message?.stateTick)) ? Math.max(0, Math.floor(Number(message.stateTick))) : -1,
-      selectedIndex: Math.max(0, Math.min(2, Math.round(Number(message?.selectedIndex) || 1))),
-      spawnPoints: Array.isArray(message?.spawnPoints) ? message.spawnPoints.slice(0, 3).map(normalizePoint) : []
+      selectedIndex: Math.max(0, Math.min(3, Math.round(Number(message?.selectedIndex) || 1))),
+      spawnPoints: Array.isArray(message?.spawnPoints) ? message.spawnPoints.slice(0, 4).map(normalizePoint) : []
     };
     this.demolition = demolition;
     this.onDemolition?.(demolition);
@@ -358,11 +359,11 @@ export class LanClient {
 
   applyRespawnMessage(message) {
     const position = Array.isArray(message?.position)
-      ? [Number(message.position[0]) || 0, Number(message.position[1]) || 0.52, Number(message.position[2]) || 0]
-      : [0, 0.52, 0];
+      ? [Number(message.position[0]) || 0, Number(message.position[1]) || CAR_HITBOX.y, Number(message.position[2]) || 0]
+      : [0, CAR_HITBOX.y, 0];
     const respawn = {
       playerId: Number.isInteger(Number(message?.playerId)) ? Number(message.playerId) : -1,
-      spawnIndex: Math.max(0, Math.min(2, Math.round(Number(message?.spawnIndex) || 1))),
+      spawnIndex: Math.max(0, Math.min(3, Math.round(Number(message?.spawnIndex) || 1))),
       position,
       yaw: Number(message?.yaw) || 0,
       boost: Math.max(0, Math.min(100, Number(message?.boost) || 0))
@@ -557,7 +558,7 @@ export class LanClient {
 
   sendRespawnSelection(index) {
     if (!this.connected || this.socket?.readyState !== WebSocket.OPEN) return false;
-    const choice = Math.max(0, Math.min(2, Math.round(Number(index) || 0)));
+    const choice = Math.max(0, Math.min(3, Math.round(Number(index) || 0)));
     this.socket.send(JSON.stringify({ type: 'respawn-select', index: choice }));
     return true;
   }

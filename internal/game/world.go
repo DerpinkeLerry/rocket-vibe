@@ -53,6 +53,7 @@ type Car struct {
 	JumpCount           int     `json:"-"`
 	JumpHoldTime        float64 `json:"-"`
 	JumpHoldActive      bool    `json:"-"`
+	JumpStickyTime      float64 `json:"-"`
 	AirTime             float64 `json:"-"`
 	GroundLockout       float64 `json:"-"`
 	DodgeTime           float64 `json:"-"`
@@ -70,6 +71,7 @@ type BoostPad struct {
 	Position       Vec3
 	Amount         float64
 	Radius         float64
+	Height         float64
 	RespawnSeconds float64
 	Full           bool
 	Active         bool
@@ -134,7 +136,7 @@ func TeamForSlot(slot int) string {
 	return TeamBlue
 }
 
-const DemolitionSpawnCount = 3
+const DemolitionSpawnCount = 4
 
 type DemolitionEvent struct {
 	AttackerSlot int
@@ -150,18 +152,18 @@ type RespawnPoint struct {
 func RespawnPointsForSlot(slot int) [DemolitionSpawnCount]RespawnPoint {
 	team := TeamForSlot(slot)
 	if team == TeamBlue {
-		// Order is screen-relative from the blue goal looking toward midfield:
-		// left / middle / right. The X order is therefore mirrored.
 		return [DemolitionSpawnCount]RespawnPoint{
-			{Position: Vec3{X: 28, Y: 0.52, Z: -52}, Yaw: math.Pi},
-			{Position: Vec3{X: 0, Y: 0.52, Z: -52}, Yaw: math.Pi},
-			{Position: Vec3{X: -28, Y: 0.52, Z: -52}, Yaw: math.Pi},
+			{Position: Vec3{X: -23.04, Y: RLOctaneHalfHeight, Z: -46.08}, Yaw: math.Pi},
+			{Position: Vec3{X: -26.88, Y: RLOctaneHalfHeight, Z: -46.08}, Yaw: math.Pi},
+			{Position: Vec3{X: 23.04, Y: RLOctaneHalfHeight, Z: -46.08}, Yaw: math.Pi},
+			{Position: Vec3{X: 26.88, Y: RLOctaneHalfHeight, Z: -46.08}, Yaw: math.Pi},
 		}
 	}
 	return [DemolitionSpawnCount]RespawnPoint{
-		{Position: Vec3{X: -28, Y: 0.52, Z: 52}, Yaw: 0},
-		{Position: Vec3{X: 0, Y: 0.52, Z: 52}, Yaw: 0},
-		{Position: Vec3{X: 28, Y: 0.52, Z: 52}, Yaw: 0},
+		{Position: Vec3{X: 23.04, Y: RLOctaneHalfHeight, Z: 46.08}, Yaw: 0},
+		{Position: Vec3{X: 26.88, Y: RLOctaneHalfHeight, Z: 46.08}, Yaw: 0},
+		{Position: Vec3{X: -23.04, Y: RLOctaneHalfHeight, Z: 46.08}, Yaw: 0},
+		{Position: Vec3{X: -26.88, Y: RLOctaneHalfHeight, Z: 46.08}, Yaw: 0},
 	}
 }
 
@@ -169,54 +171,56 @@ var playerSpawns = [MaxPlayers]struct {
 	Position Vec3
 	Yaw      float64
 }{
-	{Position: Vec3{X: -13, Y: 0.52, Z: 44}, Yaw: 0},
-	{Position: Vec3{X: -13, Y: 0.52, Z: -44}, Yaw: math.Pi},
-	{Position: Vec3{X: 13, Y: 0.52, Z: 44}, Yaw: 0},
-	{Position: Vec3{X: 13, Y: 0.52, Z: -44}, Yaw: math.Pi},
-	{Position: Vec3{X: -32, Y: 0.52, Z: 34}, Yaw: 0},
-	{Position: Vec3{X: -32, Y: 0.52, Z: -34}, Yaw: math.Pi},
-	{Position: Vec3{X: 32, Y: 0.52, Z: 34}, Yaw: 0},
-	{Position: Vec3{X: 32, Y: 0.52, Z: -34}, Yaw: math.Pi},
+	// RLBot's yaw uses a different zero axis; these values are converted to the
+	// local convention where yaw 0 faces -Z. The diagonal cars deliberately
+	// point at 45 degrees, as in Rocket League, rather than directly at the ball.
+	{Position: Vec3{X: 20.48, Y: RLOctaneHalfHeight, Z: 25.60}, Yaw: math.Pi / 4},
+	{Position: Vec3{X: -20.48, Y: RLOctaneHalfHeight, Z: -25.60}, Yaw: -3 * math.Pi / 4},
+	{Position: Vec3{X: -20.48, Y: RLOctaneHalfHeight, Z: 25.60}, Yaw: -math.Pi / 4},
+	{Position: Vec3{X: 20.48, Y: RLOctaneHalfHeight, Z: -25.60}, Yaw: 3 * math.Pi / 4},
+	{Position: Vec3{X: 2.56, Y: RLOctaneHalfHeight, Z: 38.40}, Yaw: 0},
+	{Position: Vec3{X: -2.56, Y: RLOctaneHalfHeight, Z: -38.40}, Yaw: math.Pi},
+	{Position: Vec3{X: -2.56, Y: RLOctaneHalfHeight, Z: 38.40}, Yaw: 0},
+	{Position: Vec3{X: 2.56, Y: RLOctaneHalfHeight, Z: -38.40}, Yaw: math.Pi},
 }
 
 var boostPadSpecs = [BoostPadCount]BoostPad{
-	// Full boost pads (100): four deep corners plus the two midfield wall pads.
-	{Position: Vec3{X: -42, Z: -66}, Amount: 100, Radius: 2.8, RespawnSeconds: 10, Full: true},
-	{Position: Vec3{X: 42, Z: -66}, Amount: 100, Radius: 2.8, RespawnSeconds: 10, Full: true},
-	{Position: Vec3{X: -49, Z: 0}, Amount: 100, Radius: 2.8, RespawnSeconds: 10, Full: true},
-	{Position: Vec3{X: 49, Z: 0}, Amount: 100, Radius: 2.8, RespawnSeconds: 10, Full: true},
-	{Position: Vec3{X: -42, Z: 66}, Amount: 100, Radius: 2.8, RespawnSeconds: 10, Full: true},
-	{Position: Vec3{X: 42, Z: 66}, Amount: 100, Radius: 2.8, RespawnSeconds: 10, Full: true},
-
-	// Small boost pads (12), matching the reference rotation lanes.
-	{Position: Vec3{X: 0, Z: -68}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: -24, Z: -68}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: 24, Z: -68}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: -13, Z: -53}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: 13, Z: -53}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: 0, Z: -46}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: -48, Z: -40}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: 48, Z: -40}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: -24, Z: -37}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: 24, Z: -37}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: -28, Z: -17}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: 0, Z: -17}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: 28, Z: -17}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: -14, Z: 0}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: 14, Z: 0}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: -28, Z: 17}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: 0, Z: 17}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: 28, Z: 17}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: -24, Z: 37}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: 24, Z: 37}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: -48, Z: 40}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: 48, Z: 40}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: 0, Z: 46}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: -13, Z: 53}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: 13, Z: 53}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: -24, Z: 68}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: 0, Z: 68}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
-	{Position: Vec3{X: 24, Z: 68}, Amount: 12, Radius: 1.55, RespawnSeconds: 4},
+	// DFH Stadium coordinates from RLBot, converted from uu to metres. IDs stay
+	// in FieldInfo order so clients and the authoritative 34-bit mask agree.
+	{Position: Vec3{X: 0, Z: -42.40}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: -17.92, Z: -41.84}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: 17.92, Z: -41.84}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: -30.72, Z: -40.96}, Amount: 100, Radius: 2.08, Height: 1.68, RespawnSeconds: 10, Full: true},
+	{Position: Vec3{X: 30.72, Z: -40.96}, Amount: 100, Radius: 2.08, Height: 1.68, RespawnSeconds: 10, Full: true},
+	{Position: Vec3{X: -9.40, Z: -33.08}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: 9.40, Z: -33.08}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: 0, Z: -28.16}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: -35.84, Z: -24.84}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: 35.84, Z: -24.84}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: -17.88, Z: -23.00}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: 17.88, Z: -23.00}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: -20.48, Z: -10.36}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: 0, Z: -10.24}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: 20.48, Z: -10.36}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: -35.84, Z: 0}, Amount: 100, Radius: 2.08, Height: 1.68, RespawnSeconds: 10, Full: true},
+	{Position: Vec3{X: -10.24, Z: 0}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: 10.24, Z: 0}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: 35.84, Z: 0}, Amount: 100, Radius: 2.08, Height: 1.68, RespawnSeconds: 10, Full: true},
+	{Position: Vec3{X: -20.48, Z: 10.36}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: 0, Z: 10.24}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: 20.48, Z: 10.36}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: -17.88, Z: 23.00}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: 17.88, Z: 23.00}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: -35.84, Z: 24.84}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: 35.84, Z: 24.84}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: 0, Z: 28.16}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: -9.40, Z: 33.08}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: 9.40, Z: 33.08}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: -30.72, Z: 40.96}, Amount: 100, Radius: 2.08, Height: 1.68, RespawnSeconds: 10, Full: true},
+	{Position: Vec3{X: 30.72, Z: 40.96}, Amount: 100, Radius: 2.08, Height: 1.68, RespawnSeconds: 10, Full: true},
+	{Position: Vec3{X: -17.92, Z: 41.84}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: 17.92, Z: 41.84}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
+	{Position: Vec3{X: 0, Z: 42.40}, Amount: 12, Radius: 1.44, Height: 1.65, RespawnSeconds: 4},
 }
 
 func NewWorld(config Config) *World {
@@ -494,16 +498,16 @@ func (world *World) stepCar(car *Car, dt float64) {
 	if car.Input.Edges&EdgeJump != 0 {
 		if driveGrounded && car.JumpCount == 0 {
 			groundNormal := car.GroundNormal.NormalizeOr(Vec3{Y: 1})
-			normalSpeed := car.Velocity.Dot(groundNormal)
-			car.Velocity = car.Velocity.Add(groundNormal.Mul(math.Max(0, config.JumpSpeed-normalSpeed)))
+			car.Velocity = car.Velocity.Add(groundNormal.Mul(config.JumpSpeed))
 			car.JumpCount = 1
 			car.JumpHoldTime = 0
-			car.JumpHoldActive = inputMask&InputJump != 0
+			car.JumpHoldActive = true
+			car.JumpStickyTime = config.JumpStickyDuration
 			car.AirTime = 0
 			car.Grounded = false
 			car.GroundLockout = 0.16
 			driveGrounded = false
-		} else if !driveGrounded && car.JumpCount == 1 && car.AirTime <= config.DodgeWindow {
+		} else if !driveGrounded && car.JumpCount == 1 && car.AirTime <= config.DodgeWindow+math.Min(config.JumpHoldDuration, car.JumpHoldTime) {
 			world.applySecondJumpOrDodge(car, forward, right, up, forwardInput, steerInput)
 		}
 	}
@@ -512,16 +516,24 @@ func (world *World) stepCar(car *Car, dt float64) {
 	// original jump press remains continuously held; once released it cannot be
 	// re-armed until the car lands. This keeps the second press free for a dodge.
 	if car.JumpCount == 1 && car.JumpHoldActive {
-		if inputMask&InputJump == 0 {
+		released := inputMask&InputJump == 0
+		if released && car.JumpHoldTime >= config.JumpMinimumHoldDuration {
 			car.JumpHoldActive = false
 		} else if car.JumpHoldTime < config.JumpHoldDuration {
 			holdDt := math.Min(dt, config.JumpHoldDuration-car.JumpHoldTime)
 			car.Velocity = car.Velocity.Add(up.Mul(config.JumpHoldAcceleration * holdDt))
 			car.JumpHoldTime += holdDt
-			if car.JumpHoldTime >= config.JumpHoldDuration-1e-9 {
+			if car.JumpHoldTime >= config.JumpHoldDuration-1e-9 ||
+				(released && car.JumpHoldTime >= config.JumpMinimumHoldDuration-1e-9) {
 				car.JumpHoldActive = false
 			}
 		}
+	}
+
+	if car.JumpStickyTime > 0 {
+		stickyDt := math.Min(dt, car.JumpStickyTime)
+		car.Velocity = car.Velocity.Sub(up.Mul(config.JumpStickyAcceleration * stickyDt))
+		car.JumpStickyTime = math.Max(0, car.JumpStickyTime-stickyDt)
 	}
 
 	if driveGrounded {
@@ -662,33 +674,56 @@ func (world *World) applyGroundDrive(car *Car, forward, right Vec3, throttle, st
 
 	forwardSpeed := car.Velocity.Dot(forward)
 	lateralSpeed := car.Velocity.Dot(right)
-	tangentSpeed := math.Hypot(forwardSpeed, lateralSpeed)
-	reverseTarget := -config.MaxGroundSpeed * 0.68
-	opposing := throttle != 0 && math.Abs(forwardSpeed) > 0.05 && math.Signbit(throttle) != math.Signbit(forwardSpeed)
-
+	effectiveThrottle := clamp(throttle, -1, 1)
+	if boosting {
+		// Rocket League forces throttle to +1 while boost is active.
+		effectiveThrottle = 1
+	}
 	nextForward := forwardSpeed
+	opposing := math.Abs(effectiveThrottle) >= 0.01 && math.Abs(forwardSpeed) > 0.01 &&
+		math.Signbit(effectiveThrottle) != math.Signbit(forwardSpeed)
 	if opposing {
-		brakeTarget := config.MaxGroundSpeed
-		if throttle < 0 {
-			brakeTarget = reverseTarget
-		}
-		nextForward = moveTowards(forwardSpeed, brakeTarget, config.BrakeAcceleration*math.Abs(throttle)*dt)
-	} else if throttle > 0 {
-		// Normal throttle accelerates to 70 km/h but intentionally preserves
-		// any speed already earned with boost up to the 120 km/h hard cap.
-		if forwardSpeed < config.MaxGroundSpeed {
-			nextForward = moveTowards(forwardSpeed, config.MaxGroundSpeed, config.DriveAcceleration*math.Abs(throttle)*dt)
-		}
-	} else if throttle < 0 {
-		nextForward = moveTowards(forwardSpeed, reverseTarget, config.ReverseAcceleration*math.Abs(throttle)*dt)
-	} else if forwardSpeed <= config.MaxGroundSpeed+0.01 {
-		// Ordinary coasting still slows the car below cruise speed. Once boost
-		// has pushed it past cruise speed, momentum stays until something else
-		// (braking, collision, turning losses) actually reduces it.
+		// Any non-zero opposite throttle invokes the measured 3500 uu/s² brake.
+		nextForward = moveTowards(forwardSpeed, 0, config.BrakeAcceleration*dt)
+	} else if math.Abs(effectiveThrottle) < 0.01 {
 		nextForward = moveTowards(forwardSpeed, 0, config.CoastDeceleration*dt)
+	} else {
+		direction := math.Copysign(1, effectiveThrottle)
+		directionalSpeed := nextForward * direction
+		if directionalSpeed < config.MaxGroundSpeed {
+			accelerationScale := config.DriveAcceleration / 16.0
+			if direction < 0 {
+				accelerationScale = config.ReverseAcceleration / 16.0
+			}
+			acceleration := throttleAccelerationAtSpeed(directionalSpeed) * accelerationScale
+			steerBlend := math.Pow(math.Abs(clamp(steer, -1, 1)), 2)
+			if !drifting && steerBlend > 0 {
+				turnAcceleration := math.Max(0, (RLFullSteerSpeed-directionalSpeed)/RLFullSteerTimeConstant)
+				acceleration = acceleration*(1-steerBlend) + turnAcceleration*steerBlend
+			}
+			acceleration *= math.Abs(effectiveThrottle)
+			nextForward += direction * acceleration * dt
+			if nextForward*direction > config.MaxGroundSpeed {
+				nextForward = direction * config.MaxGroundSpeed
+			}
+		}
 	}
 	if boosting {
-		nextForward = moveTowards(nextForward, config.MaxBoostSpeed, config.BoostAcceleration*dt)
+		nextForward += config.BoostAcceleration * dt
+		nextForward = math.Min(nextForward, config.MaxBoostSpeed)
+	}
+
+	steerAmount := math.Abs(clamp(steer, -1, 1))
+	if !drifting && steerAmount > 0.001 {
+		// Full steering settles near 1234 uu/s. Cars already above that speed use
+		// the measured piecewise deceleration trace instead of snapping to a cap.
+		steerLimit := config.MaxGroundSpeed - (config.MaxGroundSpeed-RLFullSteerSpeed)*steerAmount*steerAmount
+		if math.Abs(forwardSpeed) <= steerLimit+0.02 && math.Abs(nextForward) > steerLimit {
+			nextForward = math.Copysign(steerLimit, nextForward)
+		} else if math.Abs(forwardSpeed) > RLFullSteerSpeed {
+			turnLoss := fullSteerDecelerationAtSpeed(forwardSpeed) * steerAmount * steerAmount * dt
+			nextForward = moveTowards(nextForward, math.Copysign(RLFullSteerSpeed, nextForward), turnLoss)
+		}
 	}
 	activeGrip := config.Grip
 	if drifting {
@@ -700,20 +735,13 @@ func (world *World) applyGroundDrive(car *Car, forward, right Vec3, throttle, st
 		Add(right.Mul(nextLateral)).
 		Add(groundNormal.Mul(normalSpeed))
 
-	steerStrength := clamp(math.Max(math.Abs(nextForward), 1.5)/7, 0.18, 1) * clamp(1-tangentSpeed/70, 0.48, 1)
-	reverseSign := 1.0
-	if nextForward < -0.01 || (math.Abs(nextForward) <= 0.01 && throttle < 0) {
-		reverseSign = -1
-	}
-	steerRate := config.SteerRate
+	targetYaw := turningAngularSpeed(nextForward, steer) * config.SteerRate / 2.75
 	steerResponse := config.SteerResponse
-	driftStrength := steerStrength
 	if drifting {
-		steerRate = config.DriftSteerRate
 		steerResponse = config.DriftSteerResponse
-		driftStrength = math.Max(0.72, steerStrength)
+		reverseSign := math.Copysign(1, nextForward)
+		targetYaw = steer * config.DriftSteerRate * reverseSign
 	}
-	targetYaw := steer * steerRate * driftStrength * reverseSign
 	spin := car.AngularVelocity.Dot(groundNormal)
 	tangentAngular := car.AngularVelocity.Sub(groundNormal.Mul(spin)).Mul(math.Exp(-config.GroundAngularDamping * dt))
 	spin = damp(spin, targetYaw, steerResponse, dt)
@@ -753,27 +781,39 @@ func (world *World) applyAirControl(car *Car, forward, right, up Vec3, pitch, ya
 		// must not fight or extend it.
 		maximumAngular = math.Max(maximumAngular, config.DodgeAngularSpeed)
 	} else {
-		// Rocket-style aerial assist: input requests a target angular velocity
-		// instead of adding torque forever. Releasing the controls therefore
-		// arrests inherited spin quickly and leaves the current orientation
-		// stable; pitch/yaw/roll only change while the player actually asks.
-		targetAngular := right.Mul(-pitch * config.AirPitchRate).
-			Add(up.Mul(yaw * config.AirYawRate)).
-			Add(forward.Mul(roll * config.AirRollRate))
-		inputAmount := math.Max(math.Abs(pitch), math.Max(math.Abs(yaw), math.Abs(roll)))
-		response := config.AirNeutralResponse
-		if inputAmount > 0.02 {
-			response = config.AirControlResponse
+		// Move each local rotation component toward its requested rate while
+		// respecting the measured maximum pitch/yaw/roll accelerations.
+		pitchRate := car.AngularVelocity.Dot(right)
+		yawRate := car.AngularVelocity.Dot(up)
+		rollRate := car.AngularVelocity.Dot(forward)
+		pitchAccelerationScale := math.Abs(pitch)
+		if pitchAccelerationScale < 0.001 {
+			pitchAccelerationScale = 1
 		}
-		blend := 1 - math.Exp(-math.Max(0, response)*dt)
-		car.AngularVelocity = car.AngularVelocity.Mul(1 - blend).Add(targetAngular.Mul(blend))
+		yawAccelerationScale := math.Abs(yaw)
+		if yawAccelerationScale < 0.001 {
+			yawAccelerationScale = 1
+		}
+		rollAccelerationScale := math.Abs(roll)
+		if rollAccelerationScale < 0.001 {
+			rollAccelerationScale = 1
+		}
+		pitchRate = moveTowards(pitchRate, -pitch*config.AirPitchRate, config.AirPitchAcceleration*pitchAccelerationScale*dt)
+		yawRate = moveTowards(yawRate, yaw*config.AirYawRate, config.AirYawAcceleration*yawAccelerationScale*dt)
+		rollRate = moveTowards(rollRate, roll*config.AirRollRate, config.AirRollAcceleration*rollAccelerationScale*dt)
+		car.AngularVelocity = right.Mul(pitchRate).Add(up.Mul(yawRate)).Add(forward.Mul(rollRate))
 	}
 	car.AngularVelocity = clampMagnitude(car.AngularVelocity, maximumAngular)
 
+	airThrottle := config.AirThrottleAcceleration * math.Max(0, pitch)
+	if pitch < 0 {
+		airThrottle = config.AirReverseAcceleration * pitch
+	}
+	car.Velocity = car.Velocity.Add(forward.Mul(airThrottle * dt))
 	if boosting {
 		car.Velocity = car.Velocity.Add(forward.Mul(config.AirBoostAcceleration * dt))
-		car.Velocity = clampMagnitude(car.Velocity, config.MaxBoostSpeed)
 	}
+	car.Velocity = clampMagnitude(car.Velocity, config.MaxBoostSpeed)
 }
 
 func (world *World) stepBall(dt float64) {
@@ -801,6 +841,7 @@ func (world *World) finishCarStep(car *Car, dt float64) {
 	car.JumpCount = 0
 	car.JumpHoldTime = 0
 	car.JumpHoldActive = false
+	car.JumpStickyTime = 0
 	car.DodgeTime = 0
 	car.DodgeAngleRemaining = 0
 	car.DodgeAxis = Vec3{}
@@ -847,12 +888,15 @@ func (world *World) refreshBoostPads() {
 func (world *World) collectBoostPads() {
 	for carIndex := range world.Cars {
 		car := &world.Cars[carIndex]
-		if !car.Connected || car.Demolished || car.Position.Y > 2.45 {
+		if !car.Connected || car.Demolished {
 			continue
 		}
 		for padIndex := range world.BoostPads {
 			pad := &world.BoostPads[padIndex]
 			if !pad.Active {
+				continue
+			}
+			if car.Position.Y < -0.05 || car.Position.Y > pad.Height {
 				continue
 			}
 			dx := car.Position.X - pad.Position.X
@@ -894,6 +938,7 @@ func (world *World) resetCarAt(car *Car, position Vec3, yaw, boost float64) {
 	car.JumpCount = 0
 	car.JumpHoldTime = 0
 	car.JumpHoldActive = false
+	car.JumpStickyTime = 0
 	car.AirTime = 0
 	car.GroundLockout = 0
 	car.DodgeTime = 0
@@ -983,6 +1028,7 @@ func (world *World) markDemolished(car *Car) {
 	car.JumpCount = 0
 	car.JumpHoldTime = 0
 	car.JumpHoldActive = false
+	car.JumpStickyTime = 0
 	car.AirTime = 0
 	car.GroundLockout = 0
 	car.DodgeTime = 0

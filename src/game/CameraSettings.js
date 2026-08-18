@@ -1,16 +1,16 @@
-export const CAMERA_SETTINGS_STORAGE_PREFIX = 'rocket-vibe-camera-settings-v1';
+export const CAMERA_SETTINGS_STORAGE_PREFIX = 'rocket-vibe-camera-settings-v2';
 
 export const DEFAULT_CAMERA_SETTINGS = Object.freeze({
   mode: 'BALL',
   fov: 72,
-  distance: 7.3,
-  height: 2.9,
+  distance: 2.95,
+  height: 1.17,
   lookHeight: 0,
   positionStiffness: 14.5,
   lookStiffness: 13.5,
   rotationStiffness: 11.5,
-  speedDistance: 1,
-  speedHeight: 0.3,
+  speedDistance: 0.4,
+  speedHeight: 0.12,
   highBallAssist: 1,
   dynamicFov: 1,
   occlusion: true
@@ -18,8 +18,8 @@ export const DEFAULT_CAMERA_SETTINGS = Object.freeze({
 
 export const CAMERA_SETTING_FIELDS = Object.freeze([
   { key: 'fov', label: 'Sichtfeld', hint: 'Breiter oder enger Bildausschnitt', min: 55, max: 100, step: 1, unit: '°' },
-  { key: 'distance', label: 'Abstand', hint: 'Entfernung hinter dem Auto', min: 4, max: 13, step: 0.1, unit: 'm' },
-  { key: 'height', label: 'Höhe', hint: 'Kamerahöhe über dem Auto', min: 1, max: 8, step: 0.1, unit: 'm' },
+  { key: 'distance', label: 'Abstand', hint: 'Entfernung hinter dem Auto', min: 1.5, max: 13, step: 0.05, unit: 'm' },
+  { key: 'height', label: 'Höhe', hint: 'Kamerahöhe über dem Auto', min: 0.5, max: 8, step: 0.05, unit: 'm' },
   { key: 'lookHeight', label: 'Blickhöhe', hint: 'Zielpunkt über oder unter dem Auto', min: -1, max: 4, step: 0.1, unit: 'm' },
   { key: 'positionStiffness', label: 'Positions-Reaktion', hint: 'Wie schnell die Kamera folgt', min: 2, max: 30, step: 0.5, unit: '' },
   { key: 'lookStiffness', label: 'Blick-Reaktion', hint: 'Wie schnell der Zielpunkt folgt', min: 2, max: 30, step: 0.5, unit: '' },

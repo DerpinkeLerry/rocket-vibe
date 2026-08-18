@@ -18,7 +18,8 @@ import { GoalExplosion } from './GoalExplosion.js';
 import { DemolitionExplosion } from './DemolitionExplosion.js';
 import { HighSpeedEffects } from './HighSpeedEffects.js';
 import { BallLandingCue } from './BallLandingCue.js';
-import { ARENA_TUNING } from '../shared/arena-tuning.js';
+import { ARENA_TUNING, CAR_HITBOX } from '../shared/arena-tuning.js';
+import { CAR_TUNING } from '../shared/game-tuning.js';
 import { evaluateDemolitionSnapshot } from '../shared/demolition-respawn.js';
 import { DEFAULT_CAR_STYLE, normalizeCarStyle } from '../shared/car-styles.js';
 import { DEFAULT_BOOST_STYLE, normalizeBoostStyle } from '../shared/boost-styles.js';
@@ -27,14 +28,14 @@ import { QUICK_CHAT_OPTIONS, findQuickChat } from '../shared/quick-chat.js';
 const CLIENT_INPUT_HEARTBEAT_HZ = 30;
 
 const PLAYER_CONFIGS = [
-  { spawn: { x: -13, y: 0.52, z: 44 }, spawnYaw: 0, color: 0xf45a13, team: 'orange' },
-  { spawn: { x: -13, y: 0.52, z: -44 }, spawnYaw: Math.PI, color: 0x087dff, team: 'blue' },
-  { spawn: { x: 13, y: 0.52, z: 44 }, spawnYaw: 0, color: 0xff8b16, team: 'orange' },
-  { spawn: { x: 13, y: 0.52, z: -44 }, spawnYaw: Math.PI, color: 0x23bfff, team: 'blue' },
-  { spawn: { x: -32, y: 0.52, z: 34 }, spawnYaw: 0, color: 0xff7430, team: 'orange' },
-  { spawn: { x: -32, y: 0.52, z: -34 }, spawnYaw: Math.PI, color: 0x398dff, team: 'blue' },
-  { spawn: { x: 32, y: 0.52, z: 34 }, spawnYaw: 0, color: 0xffa02e, team: 'orange' },
-  { spawn: { x: 32, y: 0.52, z: -34 }, spawnYaw: Math.PI, color: 0x52caff, team: 'blue' }
+  { spawn: { x: 20.48, y: CAR_HITBOX.y, z: 25.60 }, spawnYaw: Math.PI / 4, color: 0xf45a13, team: 'orange' },
+  { spawn: { x: -20.48, y: CAR_HITBOX.y, z: -25.60 }, spawnYaw: -3 * Math.PI / 4, color: 0x087dff, team: 'blue' },
+  { spawn: { x: -20.48, y: CAR_HITBOX.y, z: 25.60 }, spawnYaw: -Math.PI / 4, color: 0xff8b16, team: 'orange' },
+  { spawn: { x: 20.48, y: CAR_HITBOX.y, z: -25.60 }, spawnYaw: 3 * Math.PI / 4, color: 0x23bfff, team: 'blue' },
+  { spawn: { x: 2.56, y: CAR_HITBOX.y, z: 38.40 }, spawnYaw: 0, color: 0xff7430, team: 'orange' },
+  { spawn: { x: -2.56, y: CAR_HITBOX.y, z: -38.40 }, spawnYaw: Math.PI, color: 0x398dff, team: 'blue' },
+  { spawn: { x: -2.56, y: CAR_HITBOX.y, z: 38.40 }, spawnYaw: 0, color: 0xffa02e, team: 'orange' },
+  { spawn: { x: 2.56, y: CAR_HITBOX.y, z: -38.40 }, spawnYaw: Math.PI, color: 0x52caff, team: 'blue' }
 ];
 
 export class Game {
@@ -55,7 +56,7 @@ export class Game {
     this.quickChatOptions = network?.quickChats?.length ? network.quickChats : QUICK_CHAT_OPTIONS;
     this.profile = getPerformanceProfile(this.networked, options.graphicsMode);
 
-    this.fixedDt = 1 / 60;
+    this.fixedDt = 1 / 120;
     this.accumulator = 0;
     this.lastTime = performance.now() / 1000;
     this.lastRenderTime = 0;
@@ -153,7 +154,7 @@ export class Game {
     if (this.networked) {
       this.world = null;
     } else {
-      this.world = new RAPIER.World({ x: 0, y: -20.5, z: 0 });
+      this.world = new RAPIER.World({ x: 0, y: -CAR_TUNING.gravity, z: 0 });
       this.world.timestep = this.fixedDt;
       this.world.numSolverIterations = 8;
       this.world.maxCcdSubsteps = 4;
@@ -231,7 +232,7 @@ export class Game {
     this.car = this.cars[this.playerId] ?? this.car0;
     this.localPredictor = this.networked
       ? new LocalCarPredictor(this.car, {
-          simulationHz: this.profile.predictionHz,
+          simulationHz: 120,
           lowLatency: this.profile.ultraLow
         })
       : null;
@@ -398,8 +399,9 @@ export class Game {
     if (event.code === 'Digit1' || event.code === 'Numpad1') choice = 0;
     else if (event.code === 'Digit2' || event.code === 'Numpad2') choice = 1;
     else if (event.code === 'Digit3' || event.code === 'Numpad3') choice = 2;
-    else if (event.code === 'ArrowLeft' || event.code === 'KeyA') choice = (this.respawnSelectedIndex + 2) % 3;
-    else if (event.code === 'ArrowRight' || event.code === 'KeyD') choice = (this.respawnSelectedIndex + 1) % 3;
+    else if (event.code === 'Digit4' || event.code === 'Numpad4') choice = 3;
+    else if (event.code === 'ArrowLeft' || event.code === 'KeyA') choice = (this.respawnSelectedIndex + 3) % 4;
+    else if (event.code === 'ArrowRight' || event.code === 'KeyD') choice = (this.respawnSelectedIndex + 1) % 4;
     if (choice === null) return;
     event.preventDefault();
     event.stopPropagation?.();
@@ -946,12 +948,12 @@ export class Game {
     } else {
       this.accumulator += frameDt;
       let steps = 0;
-      while (this.accumulator >= this.fixedDt && steps < 4) {
+      while (this.accumulator >= this.fixedDt && steps < 8) {
         this.stepOffline(this.fixedDt);
         this.accumulator -= this.fixedDt;
         steps += 1;
       }
-      if (steps === 4 && this.accumulator > this.fixedDt * 2) this.accumulator = this.fixedDt;
+      if (steps === 8 && this.accumulator > this.fixedDt * 2) this.accumulator = this.fixedDt;
     }
 
     // Feed current speed back into the mobile response curve. The analog stick
@@ -1105,15 +1107,17 @@ export class Game {
   defaultRespawnPoints(team = this.playerTeam) {
     if (team === 'blue') {
       return [
-        { x: 28, y: 0.52, z: -52, yaw: Math.PI },
-        { x: 0, y: 0.52, z: -52, yaw: Math.PI },
-        { x: -28, y: 0.52, z: -52, yaw: Math.PI }
+        { x: -23.04, y: CAR_HITBOX.y, z: -46.08, yaw: Math.PI },
+        { x: -26.88, y: CAR_HITBOX.y, z: -46.08, yaw: Math.PI },
+        { x: 23.04, y: CAR_HITBOX.y, z: -46.08, yaw: Math.PI },
+        { x: 26.88, y: CAR_HITBOX.y, z: -46.08, yaw: Math.PI }
       ];
     }
     return [
-      { x: -28, y: 0.52, z: 52, yaw: 0 },
-      { x: 0, y: 0.52, z: 52, yaw: 0 },
-      { x: 28, y: 0.52, z: 52, yaw: 0 }
+      { x: 23.04, y: CAR_HITBOX.y, z: 46.08, yaw: 0 },
+      { x: 26.88, y: CAR_HITBOX.y, z: 46.08, yaw: 0 },
+      { x: -23.04, y: CAR_HITBOX.y, z: 46.08, yaw: 0 },
+      { x: -26.88, y: CAR_HITBOX.y, z: 46.08, yaw: 0 }
     ];
   }
 
@@ -1142,9 +1146,9 @@ export class Game {
     this.demolitionSnapshotConfirmed = false;
     this.lastRespawnSelectionSentAt = 0;
     this.lastRespawnSelectionSentIndex = -1;
-    this.respawnSelectedIndex = Math.max(0, Math.min(2, Math.round(Number(demolition.selectedIndex) || 1)));
-    this.respawnPoints = Array.isArray(demolition.spawnPoints) && demolition.spawnPoints.length >= 3
-      ? demolition.spawnPoints.slice(0, 3)
+    this.respawnSelectedIndex = Math.max(0, Math.min(3, Math.round(Number(demolition.selectedIndex) || 1)));
+    this.respawnPoints = Array.isArray(demolition.spawnPoints) && demolition.spawnPoints.length >= 4
+      ? demolition.spawnPoints.slice(0, 4)
       : this.defaultRespawnPoints(this.playerTeam);
     this.root.classList.add('demolition-respawn-active');
     this.mobileControls?.releaseAll?.();
@@ -1159,8 +1163,8 @@ export class Game {
     const playerId = Number(respawn.playerId);
     if (!Number.isInteger(playerId) || playerId < 0 || playerId >= this.cars.length) return;
     const position = Array.isArray(respawn.position)
-      ? { x: Number(respawn.position[0]) || 0, y: Number(respawn.position[1]) || 0.52, z: Number(respawn.position[2]) || 0 }
-      : { x: 0, y: 0.52, z: 0 };
+      ? { x: Number(respawn.position[0]) || 0, y: Number(respawn.position[1]) || CAR_HITBOX.y, z: Number(respawn.position[2]) || 0 }
+      : { x: 0, y: CAR_HITBOX.y, z: 0 };
     const yaw = Number(respawn.yaw) || 0;
     const boost = Math.max(0, Math.min(100, Number(respawn.boost) || 0));
     const car = this.cars[playerId];
@@ -1182,7 +1186,7 @@ export class Game {
 
   selectRespawnPoint(index, send = true) {
     if (!this.demolitionRespawnActive) return false;
-    const choice = Math.max(0, Math.min(2, Math.round(Number(index) || 0)));
+    const choice = Math.max(0, Math.min(3, Math.round(Number(index) || 0)));
     this.respawnSelectedIndex = choice;
     const remainingMs = Math.max(0, (this.demolitionRespawnEndsAt - performance.now() / 1000) * 1000);
     this.hud.setRespawnSelection?.(true, remainingMs, choice);

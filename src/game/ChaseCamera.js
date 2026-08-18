@@ -39,7 +39,7 @@ export class ChaseCamera {
     this.respawnTeamSign = 1;
     this.respawnPoints = [];
 
-    this.position = new THREE.Vector3(0, 4.4, 8.8);
+    this.position = new THREE.Vector3(0, 1.8, 3.6);
     this.desired = new THREE.Vector3();
     this.carPosition = new THREE.Vector3();
     this.ballPosition = new THREE.Vector3();
@@ -116,10 +116,10 @@ export class ChaseCamera {
     this.respawnPoints = Array.isArray(points) ? points : [];
     const centerZ = this.respawnPoints.length
       ? this.respawnPoints.reduce((sum, point) => sum + (Number(point?.z) || 0), 0) / this.respawnPoints.length
-      : this.respawnTeamSign * 52;
+      : this.respawnTeamSign * 46.08;
     const portrait = this.camera.aspect < 0.82;
-    const height = portrait ? 86 : 70;
-    this.position.set(0, height, centerZ + this.respawnTeamSign * (portrait ? 33 : 28));
+    const height = portrait ? 55 : 45;
+    this.position.set(0, height, centerZ + this.respawnTeamSign * (portrait ? 24 : 18));
     this.lookTarget.set(0, 0.5, centerZ - this.respawnTeamSign * 7);
     this.camera.position.copy(this.position);
     this.camera.up.set(0, 1, 0);
@@ -203,7 +203,7 @@ export class ChaseCamera {
       this.pivot.copy(this.carPosition).addScaledVector(this.carUp, CAR_TARGET_LOCAL_HEIGHT);
     }
 
-    const speed = Math.min(this.car.getSpeedKmh() / 120, 1);
+    const speed = Math.min(this.car.getSpeedKmh() / 82.8, 1);
 
     this.desiredLookTarget.copy(this.pivot);
     if (this.goalCelebrationActive) this.updateGoalCelebrationCam(speed);
@@ -228,10 +228,10 @@ export class ChaseCamera {
   updateRespawnSelectionCam(dt) {
     const centerZ = this.respawnPoints.length
       ? this.respawnPoints.reduce((sum, point) => sum + (Number(point?.z) || 0), 0) / this.respawnPoints.length
-      : this.respawnTeamSign * 52;
+      : this.respawnTeamSign * 46.08;
     const portrait = this.camera.aspect < 0.82;
-    const height = portrait ? 86 : 70;
-    const backOffset = portrait ? 33 : 28;
+    const height = portrait ? 55 : 45;
+    const backOffset = portrait ? 24 : 18;
     this.desired.set(0, height, centerZ + this.respawnTeamSign * backOffset);
     this.desiredLookTarget.set(0, 0.55, centerZ - this.respawnTeamSign * 7);
 
@@ -249,8 +249,8 @@ export class ChaseCamera {
     // Rocket-style goal explosion camera: follow the translated car but ignore
     // its forced tumble. A fixed world-horizontal bearing removes roll/pitch
     // wobble while still showing the car being launched by the explosion.
-    const distance = 8.2 + speed * 1.4;
-    const height = 3.65 + speed * 0.55;
+    const distance = 3.3 + speed * 0.55;
+    const height = 1.46 + speed * 0.22;
     this.desired.copy(this.pivot)
       .addScaledVector(this.celebrationOrbitDirection, -distance);
     this.desired.y += height;

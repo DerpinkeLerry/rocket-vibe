@@ -12,8 +12,8 @@ func setupDemoContact(t *testing.T, speed float64, attackerYaw float64, attacker
 	world.SetConnected(victimSlot, true)
 	attacker := &world.Cars[attackerSlot]
 	victim := &world.Cars[victimSlot]
-	attacker.Position = Vec3{X: 0, Y: 0.52, Z: 0}
-	victim.Position = Vec3{X: 0, Y: 0.52, Z: -2.0}
+	attacker.Position = Vec3{X: 0, Y: RLOctaneHalfHeight, Z: 0}
+	victim.Position = Vec3{X: 0, Y: RLOctaneHalfHeight, Z: -1.0}
 	attacker.Rotation = QuatFromYaw(attackerYaw)
 	victim.Rotation = QuatFromYaw(math.Pi)
 	attacker.Velocity = Vec3{Z: -speed}
@@ -25,18 +25,18 @@ func setupDemoContact(t *testing.T, speed float64, attackerYaw float64, attacker
 	return world, attacker, victim, contact
 }
 
-func TestDemolitionRequiresNinetyKmh(t *testing.T) {
-	world, attacker, victim, contact := setupDemoContact(t, 89.9/3.6, 0, 0, 1)
+func TestDemolitionRequiresSupersonicSpeed(t *testing.T) {
+	world, attacker, victim, contact := setupDemoContact(t, 79.1/3.6, 0, 0, 1)
 	if world.tryCarCarDemolition(attacker, victim, contact) {
-		t.Fatal("89.9 km/h triggered a demolition; threshold is 90 km/h")
+		t.Fatal("79.1 km/h triggered a demolition below the 2200 uu/s supersonic threshold")
 	}
 	if victim.Demolished {
-		t.Fatal("victim was marked demolished below 90 km/h")
+		t.Fatal("victim was marked demolished below supersonic speed")
 	}
 
-	world, attacker, victim, contact = setupDemoContact(t, 90.0/3.6, 0, 0, 1)
+	world, attacker, victim, contact = setupDemoContact(t, 79.2/3.6, 0, 0, 1)
 	if !world.tryCarCarDemolition(attacker, victim, contact) {
-		t.Fatal("90 km/h frontal hit on a slower enemy did not trigger demolition")
+		t.Fatal("79.2 km/h frontal supersonic hit on a slower enemy did not trigger demolition")
 	}
 	if !victim.Demolished || attacker.Demolished {
 		t.Fatalf("unexpected demolition state: attacker=%v victim=%v", attacker.Demolished, victim.Demolished)
@@ -170,8 +170,11 @@ func TestDemolishedCarRespawnsAtSelectedOwnHalfPoint(t *testing.T) {
 	}
 
 	points := RespawnPointsForSlot(1)
-	if points[0].Position.X <= points[2].Position.X {
-		t.Fatalf("blue spawn order is not screen-relative left/middle/right: %+v", points)
+	wantX := [DemolitionSpawnCount]float64{-23.04, -26.88, 23.04, 26.88}
+	for index, expected := range wantX {
+		if points[index].Position.X != expected || points[index].Position.Z != -46.08 {
+			t.Fatalf("blue demolition spawn %d = %+v, want x=%.2f z=-46.08", index, points[index], expected)
+		}
 	}
 }
 

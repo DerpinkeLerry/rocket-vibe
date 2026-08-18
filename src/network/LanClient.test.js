@@ -298,21 +298,22 @@ test('demolition and respawn control messages carry the spawn-selection data', (
     attackerName: 'Orange', victimName: 'Blue',
     position: [1, 2, 3], durationMs: 4000, stateTick: 912, selectedIndex: 1,
     spawnPoints: [
-      { x: 28, y: 0.52, z: -52, yaw: Math.PI },
-      { x: 0, y: 0.52, z: -52, yaw: Math.PI },
-      { x: -28, y: 0.52, z: -52, yaw: Math.PI }
+      { x: -23.04, y: 0.1701, z: -46.08, yaw: Math.PI },
+      { x: -26.88, y: 0.1701, z: -46.08, yaw: Math.PI },
+      { x: 23.04, y: 0.1701, z: -46.08, yaw: Math.PI },
+      { x: 26.88, y: 0.1701, z: -46.08, yaw: Math.PI }
     ]
   });
   assert.equal(demolition.durationMs, 4000);
   assert.equal(demolition.stateTick, 912);
   assert.equal(client.demolition, demolition);
-  assert.equal(demolition.spawnPoints.length, 3);
-  assert.equal(demolition.spawnPoints[0].z, -52);
+  assert.equal(demolition.spawnPoints.length, 4);
+  assert.equal(demolition.spawnPoints[0].z, -46.08);
   assert.deepEqual(demolitionReceived, demolition);
 
   const respawn = client.applyRespawnMessage({
     type: 'respawn', playerId: 1, spawnIndex: 2,
-    position: [-28, 0.52, -52], yaw: Math.PI, boost: 33
+    position: [23.04, 0.1701, -46.08], yaw: Math.PI, boost: 33
   });
   assert.equal(respawn.spawnIndex, 2);
   assert.equal(respawn.boost, 33);
@@ -330,7 +331,7 @@ test('client sends a clamped demolition respawn selection', () => {
     client.socket = { readyState: 1, send(value) { sent.push(value); } };
 
     assert.equal(client.sendRespawnSelection(9), true);
-    assert.deepEqual(JSON.parse(sent[0]), { type: 'respawn-select', index: 2 });
+    assert.deepEqual(JSON.parse(sent[0]), { type: 'respawn-select', index: 3 });
   } finally {
     if (previousWebSocket === undefined) delete globalThis.WebSocket;
     else globalThis.WebSocket = previousWebSocket;

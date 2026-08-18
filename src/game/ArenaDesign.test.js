@@ -15,7 +15,7 @@ test('field has no geometric 3D grass or grass culling', () => {
 test('field markings use a high-resolution clean overlay', () => {
   assert.match(source, /canvas\.width = 2048;/);
   assert.match(source, /canvas\.height = 3072;/);
-  assert.match(source, /drawRoute\(\[\[0, sign \* 68\]/);
+  assert.match(source, /drawRoute\(\[\[0, sign \* 42\.40\]/);
   assert.doesNotMatch(source, /directional chevrons/i);
   assert.doesNotMatch(source, /side runways/i);
 });
@@ -55,6 +55,13 @@ test('glass walls use glowing team-coloured hexagons instead of black rectangula
   assert.doesNotMatch(source, /createWallFrameGrid\s*\(/);
   assert.doesNotMatch(source, /arena-glass-grid/);
   assert.doesNotMatch(source, /new THREE\.MeshBasicMaterial\(\{ color: 0x111b24 \}\)/);
+});
+
+test('arena floor, walls and colliders share the RL 45-degree corner planes', () => {
+  assert.match(source, /shape\.lineTo\(halfWidth, -halfLength \+ radius\)/);
+  assert.match(source, /length: CORNER_R \* Math\.SQRT2/);
+  assert.match(source, /yaw: Math\.atan2\(nx, nz\)/);
+  assert.doesNotMatch(source, /Math\.PI \* 0\.5 \/ CORNER_SEGMENTS/);
 });
 
 test('team wall meshes meet cleanly at midfield without coplanar overlap', () => {

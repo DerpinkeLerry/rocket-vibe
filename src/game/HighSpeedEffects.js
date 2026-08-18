@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 
-const SPEED_START_KMH = 80;
-const SPEED_FULL_KMH = 120;
-const PULSE_SPEED_KMH = 108;
+// RLBot reference: supersonic begins at 2200 uu/s and the hard cap is
+// 2300 uu/s (79.2 and 82.8 km/h respectively).
+const SPEED_START_KMH = 79.2;
+const SPEED_FULL_KMH = 82.8;
+const PULSE_SPEED_KMH = 81.0;
 const TRAIL_LIFE = 0.82;
 const RIGHT = new THREE.Vector3(1, 0, 0);
 const UP = new THREE.Vector3(0, 1, 0);

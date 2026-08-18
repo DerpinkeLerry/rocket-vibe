@@ -1,24 +1,24 @@
 export const ARENA_TUNING = {
-  width: 110,
-  length: 160,
-  ceiling: 25,
-  wallHeight: 25,
-  cornerRadius: 16,
-  rampRadius: 3.4,
+  width: 81.92,
+  length: 102.40,
+  ceiling: 20.44,
+  wallHeight: 20.44,
+  cornerRadius: 11.52,
+  rampRadius: 2.56,
   rampSegments: 16,
-  ceilingRampRadius: 6,
-  wallThickness: 0.8,
-  goalWidth: 34,
-  goalHeight: 12,
-  goalDepth: 14,
-  goalRampRadius: 3.4,
-  goalMouthRadius: 2.8
+  ceilingRampRadius: 2.56,
+  wallThickness: 0.4,
+  goalWidth: 17.8551,
+  goalHeight: 6.42775,
+  goalDepth: 8.8,
+  goalRampRadius: 2.56,
+  goalMouthRadius: 0.8
 };
 
 export const CAR_HITBOX = {
-  x: 0.83,
-  y: 0.45,
-  z: 1.48
+  x: 0.421,
+  y: 0.1701,
+  z: 0.59004
 };
 
 
@@ -41,7 +41,8 @@ export function applyServerHitboxConfig(config = {}) {
   }
 }
 
-// Utility for systems that need a point constrained to the rounded arena.
+// Utility for systems that need a point constrained to the arena's documented
+// 45-degree plan-view corner planes.
 // The chase camera deliberately no longer uses this: it may travel outside
 // walls and relies on render-time occlusion hiding instead.
 export function clampPointToRoundedArena(point, margin = 0) {
@@ -49,7 +50,6 @@ export function clampPointToRoundedArena(point, margin = 0) {
   const safeMargin = Math.max(0, Math.min(Number(margin) || 0, arena.cornerRadius - 0.1));
   const halfWidth = arena.width * 0.5 - safeMargin;
   const halfLength = arena.length * 0.5 - safeMargin;
-  const radius = arena.cornerRadius - safeMargin;
   const cornerX = arena.width * 0.5 - arena.cornerRadius;
   const cornerZ = arena.length * 0.5 - arena.cornerRadius;
 
@@ -59,13 +59,12 @@ export function clampPointToRoundedArena(point, margin = 0) {
   const absX = Math.abs(point.x);
   const absZ = Math.abs(point.z);
   if (absX > cornerX && absZ > cornerZ) {
-    const dx = absX - cornerX;
-    const dz = absZ - cornerZ;
-    const distance = Math.hypot(dx, dz);
-    if (distance > radius && distance > 0.000001) {
-      const scale = radius / distance;
-      point.x = Math.sign(point.x || 1) * (cornerX + dx * scale);
-      point.z = Math.sign(point.z || 1) * (cornerZ + dz * scale);
+    const intercept = arena.width * 0.5 + arena.length * 0.5
+      - arena.cornerRadius - safeMargin * Math.SQRT2;
+    const overflow = absX + absZ - intercept;
+    if (overflow > 0) {
+      point.x -= Math.sign(point.x || 1) * overflow * 0.5;
+      point.z -= Math.sign(point.z || 1) * overflow * 0.5;
     }
   }
 

@@ -13,8 +13,13 @@ test('reference boost layout contains six full and twenty-eight small pads', () 
   assert.equal(BOOST_PADS.filter((pad) => pad.kind === 'large').length, 6);
   assert.equal(BOOST_PADS.filter((pad) => pad.kind === 'small').length, 28);
   assert.equal(BOOST_TUNING.smallAmount, 12);
-  assert.equal(BOOST_PADS.find((pad) => pad.id === 2)?.x, -49);
-  assert.equal(BOOST_PADS.find((pad) => pad.id === 3)?.x, 49);
+  assert.equal(BOOST_TUNING.consumptionPerSecond, 33.3);
+  assert.deepEqual(BOOST_PADS.find((pad) => pad.id === 15), {
+    id: 15, kind: 'large', x: -35.84, z: 0, amount: 100, radius: 2.08, height: 1.68, respawn: 10
+  });
+  assert.deepEqual(BOOST_PADS.find((pad) => pad.id === 33), {
+    id: 33, kind: 'small', x: 0, z: 42.40, amount: 12, radius: 1.44, height: 1.65, respawn: 4
+  });
 });
 
 test('boost mask helpers preserve pads above the JavaScript 32-bit bitwise range', () => {

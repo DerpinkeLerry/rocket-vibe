@@ -7,6 +7,9 @@ const gameSource = await readFile(new URL('./Game.js', import.meta.url), 'utf8')
 
 test('ball landing cue predicts a future ground impact point and clamps it to the playable arena', () => {
   assert.match(cueSource, /computeImpactTime\(posY, velY, radius\)/);
+  assert.match(cueSource, /CAR_TUNING\.gravity/);
+  assert.match(cueSource, /BALL_TUNING\.restingHeight/);
+  assert.doesNotMatch(cueSource, /const GRAVITY = 20\.5/);
   assert.match(cueSource, /translation\.x \+ velocity\.x \* impactTime/);
   assert.match(cueSource, /translation\.z \+ velocity\.z \* impactTime/);
   assert.match(cueSource, /clampPointToRoundedArena\(this\.impactPoint/);

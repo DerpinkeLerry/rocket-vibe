@@ -13,7 +13,7 @@ const (
 
 	DemolitionRespawnSeconds = 4.0
 	DemolitionRespawnBoost   = 33.0
-	DemolitionMinSpeed       = 90.0 / 3.6
+	DemolitionMinSpeed       = RLSupersonicSpeed
 )
 
 type ArenaConfig struct {
@@ -32,51 +32,57 @@ type ArenaConfig struct {
 }
 
 type CarConfig struct {
-	HalfExtents          Vec3    `json:"halfExtents"`
-	Mass                 float64 `json:"mass"`
-	MaxGroundSpeed       float64 `json:"maxGroundSpeed"`
-	MaxBoostSpeed        float64 `json:"maxBoostSpeed"`
-	BoostCapacity        float64 `json:"boostCapacity"`
-	BoostConsumption     float64 `json:"boostConsumptionPerSecond"`
-	DriveAcceleration    float64 `json:"driveAcceleration"`
-	ReverseAcceleration  float64 `json:"reverseAcceleration"`
-	BrakeAcceleration    float64 `json:"brakeAcceleration"`
-	CoastDeceleration    float64 `json:"coastDeceleration"`
-	BoostAcceleration    float64 `json:"boostAcceleration"`
-	AirBoostAcceleration float64 `json:"airBoostAcceleration"`
-	Grip                 float64 `json:"grip"`
-	DriftGrip            float64 `json:"driftGrip"`
-	SteerRate            float64 `json:"steerRate"`
-	DriftSteerRate       float64 `json:"driftSteerRate"`
-	SteerResponse        float64 `json:"steerResponse"`
-	DriftSteerResponse   float64 `json:"driftSteerResponse"`
-	GroundAngularDamping float64 `json:"groundAngularDamping"`
-	AirPitchAcceleration float64 `json:"airPitchAcceleration"`
-	AirYawAcceleration   float64 `json:"airYawAcceleration"`
-	AirRollAcceleration  float64 `json:"airRollAcceleration"`
-	AirPitchRate         float64 `json:"airPitchRate"`
-	AirYawRate           float64 `json:"airYawRate"`
-	AirRollRate          float64 `json:"airRollRate"`
-	AirControlResponse   float64 `json:"airControlResponse"`
-	AirNeutralResponse   float64 `json:"airNeutralResponse"`
-	MaxAirAngular        float64 `json:"maxAirAngular"`
-	JumpSpeed            float64 `json:"jumpSpeed"`
-	JumpHoldAcceleration float64 `json:"jumpHoldAcceleration"`
-	JumpHoldDuration     float64 `json:"jumpHoldDuration"`
-	DoubleJumpSpeed      float64 `json:"doubleJumpSpeed"`
-	DodgeImpulse         float64 `json:"dodgeImpulse"`
-	DodgeLift            float64 `json:"dodgeLift"`
-	DodgeAngularSpeed    float64 `json:"dodgeAngularSpeed"`
-	DodgeRotation        float64 `json:"dodgeRotation"`
-	DodgeWindow          float64 `json:"dodgeWindow"`
-	DodgeDuration        float64 `json:"dodgeDuration"`
-	DodgeControlScale    float64 `json:"dodgeControlScale"`
-	DownAcceleration     float64 `json:"downAcceleration"`
-	WallGravityCancel    float64 `json:"wallGravityCancel"`
-	SurfaceAlignResponse float64 `json:"surfaceAlignResponse"`
-	LinearDamping        float64 `json:"linearDamping"`
-	AngularDamping       float64 `json:"angularDamping"`
-	Restitution          float64 `json:"restitution"`
+	HalfExtents             Vec3    `json:"halfExtents"`
+	Mass                    float64 `json:"mass"`
+	MaxGroundSpeed          float64 `json:"maxGroundSpeed"`
+	MaxBoostSpeed           float64 `json:"maxBoostSpeed"`
+	SupersonicSpeed         float64 `json:"supersonicSpeed"`
+	BoostCapacity           float64 `json:"boostCapacity"`
+	BoostConsumption        float64 `json:"boostConsumptionPerSecond"`
+	DriveAcceleration       float64 `json:"driveAcceleration"`
+	ReverseAcceleration     float64 `json:"reverseAcceleration"`
+	BrakeAcceleration       float64 `json:"brakeAcceleration"`
+	CoastDeceleration       float64 `json:"coastDeceleration"`
+	BoostAcceleration       float64 `json:"boostAcceleration"`
+	AirBoostAcceleration    float64 `json:"airBoostAcceleration"`
+	AirThrottleAcceleration float64 `json:"airThrottleAcceleration"`
+	AirReverseAcceleration  float64 `json:"airReverseAcceleration"`
+	Grip                    float64 `json:"grip"`
+	DriftGrip               float64 `json:"driftGrip"`
+	SteerRate               float64 `json:"steerRate"`
+	DriftSteerRate          float64 `json:"driftSteerRate"`
+	SteerResponse           float64 `json:"steerResponse"`
+	DriftSteerResponse      float64 `json:"driftSteerResponse"`
+	GroundAngularDamping    float64 `json:"groundAngularDamping"`
+	AirPitchAcceleration    float64 `json:"airPitchAcceleration"`
+	AirYawAcceleration      float64 `json:"airYawAcceleration"`
+	AirRollAcceleration     float64 `json:"airRollAcceleration"`
+	AirPitchRate            float64 `json:"airPitchRate"`
+	AirYawRate              float64 `json:"airYawRate"`
+	AirRollRate             float64 `json:"airRollRate"`
+	AirControlResponse      float64 `json:"airControlResponse"`
+	AirNeutralResponse      float64 `json:"airNeutralResponse"`
+	MaxAirAngular           float64 `json:"maxAirAngular"`
+	JumpSpeed               float64 `json:"jumpSpeed"`
+	JumpHoldAcceleration    float64 `json:"jumpHoldAcceleration"`
+	JumpHoldDuration        float64 `json:"jumpHoldDuration"`
+	JumpMinimumHoldDuration float64 `json:"jumpMinimumHoldDuration"`
+	JumpStickyAcceleration  float64 `json:"jumpStickyAcceleration"`
+	JumpStickyDuration      float64 `json:"jumpStickyDuration"`
+	DoubleJumpSpeed         float64 `json:"doubleJumpSpeed"`
+	DodgeImpulse            float64 `json:"dodgeImpulse"`
+	DodgeLift               float64 `json:"dodgeLift"`
+	DodgeAngularSpeed       float64 `json:"dodgeAngularSpeed"`
+	DodgeRotation           float64 `json:"dodgeRotation"`
+	DodgeWindow             float64 `json:"dodgeWindow"`
+	DodgeDuration           float64 `json:"dodgeDuration"`
+	DodgeControlScale       float64 `json:"dodgeControlScale"`
+	DownAcceleration        float64 `json:"downAcceleration"`
+	WallGravityCancel       float64 `json:"wallGravityCancel"`
+	SurfaceAlignResponse    float64 `json:"surfaceAlignResponse"`
+	LinearDamping           float64 `json:"linearDamping"`
+	AngularDamping          float64 `json:"angularDamping"`
+	Restitution             float64 `json:"restitution"`
 }
 
 type BallConfig struct {
@@ -93,6 +99,7 @@ type BallConfig struct {
 	CarHitLift        float64 `json:"carHitLift"`
 	CarHitLiftBase    float64 `json:"carHitLiftBase"`
 	SpawnY            float64 `json:"spawnY"`
+	RestingHeight     float64 `json:"restingHeight"`
 }
 
 type BoostPadConfig struct {
@@ -134,79 +141,88 @@ func DefaultConfig() Config {
 		SnapshotHz:  SnapshotHz,
 		MaxPlayers:  DefaultMaxPlayers,
 		SolverSteps: 4,
-		Gravity:     20.5,
+		Gravity:     RLGravity,
 		GameMode:    GameModeNormal,
 		Arena: ArenaConfig{
-			Width: 110, Length: 160, Ceiling: 25, WallHeight: 25, CornerRadius: 16, RampRadius: 3.4, CeilingRampRadius: 6,
-			GoalWidth: 34, GoalHeight: 12, GoalDepth: 14, GoalRampRadius: 3.4, GoalMouthRadius: 2.8,
+			Width: RLArenaWidth, Length: RLArenaLength, Ceiling: RLArenaCeiling, WallHeight: RLArenaCeiling,
+			CornerRadius: RLArenaCornerRadius, RampRadius: RLArenaRampRadius, CeilingRampRadius: RLArenaRampRadius,
+			GoalWidth: RLGoalWidth, GoalHeight: RLGoalHeight, GoalDepth: RLGoalDepth,
+			GoalRampRadius: RLArenaRampRadius, GoalMouthRadius: 0.8,
 		},
 		Car: CarConfig{
-			HalfExtents:          Vec3{X: 0.83, Y: 0.45, Z: 1.48},
-			Mass:                 420,
-			MaxGroundSpeed:       70.0 / 3.6,
-			MaxBoostSpeed:        120.0 / 3.6,
-			BoostCapacity:        100,
-			BoostConsumption:     100.0 / 3.0,
-			DriveAcceleration:    14,
-			ReverseAcceleration:  10,
-			BrakeAcceleration:    28,
-			CoastDeceleration:    3.5,
-			BoostAcceleration:    16,
-			AirBoostAcceleration: 34,
-			Grip:                 18,
-			DriftGrip:            3.0,
-			SteerRate:            2.75,
-			DriftSteerRate:       4.65,
-			SteerResponse:        14,
-			DriftSteerResponse:   19,
-			GroundAngularDamping: 11,
-			AirPitchAcceleration: 11,
-			AirYawAcceleration:   8.8,
-			AirRollAcceleration:  10.5,
-			AirPitchRate:         5.2,
-			AirYawRate:           4.5,
-			AirRollRate:          5.0,
-			AirControlResponse:   11.5,
-			AirNeutralResponse:   8.5,
-			MaxAirAngular:        6.6,
-			JumpSpeed:            10.5,
-			JumpHoldAcceleration: 32,
-			JumpHoldDuration:     0.20,
-			DoubleJumpSpeed:      10,
-			DodgeImpulse:         14.0,
-			DodgeLift:            1.8,
-			DodgeAngularSpeed:    11.22,
-			DodgeRotation:        6.283185307179586,
-			DodgeWindow:          1.25,
-			DodgeDuration:        0.56,
-			DodgeControlScale:    0.0,
-			DownAcceleration:     18,
-			WallGravityCancel:    1,
-			SurfaceAlignResponse: 16,
-			LinearDamping:        0.0,
-			AngularDamping:       0.55,
-			Restitution:          0,
+			HalfExtents:             Vec3{X: RLOctaneHalfWidth, Y: RLOctaneHalfHeight, Z: RLOctaneHalfLength},
+			Mass:                    RLCarMass,
+			MaxGroundSpeed:          RLCarMaxThrottleSpeed,
+			MaxBoostSpeed:           RLCarMaxSpeed,
+			SupersonicSpeed:         RLSupersonicSpeed,
+			BoostCapacity:           100,
+			BoostConsumption:        RLBoostConsumptionPerSecond,
+			DriveAcceleration:       16,
+			ReverseAcceleration:     16,
+			BrakeAcceleration:       RLBrakeAcceleration,
+			CoastDeceleration:       RLCoastDeceleration,
+			BoostAcceleration:       RLGroundBoostAcceleration,
+			AirBoostAcceleration:    RLAirBoostAcceleration,
+			AirThrottleAcceleration: RLAirThrottleAcceleration,
+			AirReverseAcceleration:  RLAirReverseAcceleration,
+			Grip:                    18,
+			DriftGrip:               3.0,
+			SteerRate:               2.75,
+			DriftSteerRate:          4.65,
+			SteerResponse:           14,
+			DriftSteerResponse:      19,
+			GroundAngularDamping:    11,
+			AirPitchAcceleration:    RLAirPitchAcceleration,
+			AirYawAcceleration:      RLAirYawAcceleration,
+			AirRollAcceleration:     RLAirRollAcceleration,
+			AirPitchRate:            RLMaxCarAngularSpeed,
+			AirYawRate:              RLMaxCarAngularSpeed,
+			AirRollRate:             RLMaxCarAngularSpeed,
+			AirControlResponse:      11.5,
+			AirNeutralResponse:      8.5,
+			MaxAirAngular:           RLMaxCarAngularSpeed,
+			JumpSpeed:               RLJumpImpulse,
+			JumpHoldAcceleration:    RLJumpHoldAcceleration,
+			JumpHoldDuration:        RLJumpHoldDuration,
+			JumpMinimumHoldDuration: RLJumpMinimumHoldDuration,
+			JumpStickyAcceleration:  RLJumpStickyAcceleration,
+			JumpStickyDuration:      RLJumpStickyDuration,
+			DoubleJumpSpeed:         RLDoubleJumpImpulse,
+			DodgeImpulse:            5.0,
+			DodgeLift:               1.8,
+			DodgeAngularSpeed:       RLMaxCarAngularSpeed,
+			DodgeRotation:           6.283185307179586,
+			DodgeWindow:             1.25,
+			DodgeDuration:           6.283185307179586 / RLMaxCarAngularSpeed,
+			DodgeControlScale:       0.0,
+			DownAcceleration:        RLJumpStickyAcceleration,
+			WallGravityCancel:       1,
+			SurfaceAlignResponse:    16,
+			LinearDamping:           0.0,
+			AngularDamping:          0.55,
+			Restitution:             0,
 		},
 		Ball: BallConfig{
-			Radius:            2.2,
-			Mass:              30,
-			Restitution:       0.68,
+			Radius:            RLBallRadius,
+			Mass:              RLBallMass,
+			Restitution:       RLBallRestitution,
 			Friction:          0.22,
 			RollingResistance: 0.18,
-			LinearDamping:     0.015,
+			LinearDamping:     RLBallLinearDrag,
 			AngularDamping:    0.055,
-			MaxSpeed:          60,
-			MaxAngularSpeed:   34,
+			MaxSpeed:          RLBallMaxSpeed,
+			MaxAngularSpeed:   RLBallMaxAngularSpeed,
 			CarHitPower:       0.34,
 			CarHitLift:        0.11,
 			CarHitLiftBase:    0.45,
-			SpawnY:            5.5,
+			SpawnY:            RLBallRestingHeight,
+			RestingHeight:     RLBallRestingHeight,
 		},
 		BoostPads: BoostPadConfig{
 			FullAmount: 100, SmallAmount: 12, SmallRespawnSeconds: 4, FullRespawnSeconds: 10,
 		},
 		Demolition: DemolitionConfig{
-			Enabled: true, MinSpeed: DemolitionMinSpeed, RespawnSeconds: DemolitionRespawnSeconds,
+			Enabled: true, MinSpeed: RLSupersonicSpeed, RespawnSeconds: DemolitionRespawnSeconds,
 			RespawnBoost: DemolitionRespawnBoost, RespawnImmunity: 0.75, FrontDot: 0.72, MotionDot: 0.72,
 			MinClosingSpeed: 0.15, SpeedTieEpsilon: 0.05,
 		},

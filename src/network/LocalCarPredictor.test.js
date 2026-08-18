@@ -34,8 +34,8 @@ test('jump lockout prevents the floor heuristic from cancelling a jump', () => {
   predictor.setInput({ mask: 0, edges: INPUT_EDGES.JUMP });
   predictor.step(1 / 60);
 
-  assert.ok(body.translation().y > CAR_HITBOX.y + 0.05);
-  assert.ok(body.linvel().y > 10);
+  assert.ok(body.translation().y > CAR_HITBOX.y + 0.04);
+  assert.ok(body.linvel().y > 2.7);
   assert.equal(predictor.grounded, false);
 });
 
@@ -101,19 +101,19 @@ test('prediction performs a finite directional second-jump dodge', () => {
 
   assert.equal(predictor.jumpCount, 2);
   assert.ok(body.linvel().z < -CAR_HITBOX.z * 6, `forward speed was ${body.linvel().z}`);
-  assert.ok(body.angvel().x < -7, `flip angular speed was ${body.angvel().x}`);
+  assert.ok(body.angvel().x <= -5.49, `flip angular speed was ${body.angvel().x}`);
   assert.ok(predictor.dodgeTime > 0);
   assert.ok(predictor.dodgeAngleRemaining > 0);
 });
 
 test('prediction side dodges roll and push in the matching direction', () => {
   const left = startPredictorDodge(INPUT_BITS.A);
-  assert.ok(left.body.linvel().x < -8, `left dodge x speed was ${left.body.linvel().x}`);
-  assert.ok(left.body.angvel().z > 7, `left roll angular speed was ${left.body.angvel().z}`);
+  assert.ok(left.body.linvel().x <= -5, `left dodge x speed was ${left.body.linvel().x}`);
+  assert.ok(left.body.angvel().z >= 5.49, `left roll angular speed was ${left.body.angvel().z}`);
 
   const right = startPredictorDodge(INPUT_BITS.D);
-  assert.ok(right.body.linvel().x > 8, `right dodge x speed was ${right.body.linvel().x}`);
-  assert.ok(right.body.angvel().z < -7, `right roll angular speed was ${right.body.angvel().z}`);
+  assert.ok(right.body.linvel().x >= 5, `right dodge x speed was ${right.body.linvel().x}`);
+  assert.ok(right.body.angvel().z <= -5.49, `right roll angular speed was ${right.body.angvel().z}`);
 });
 
 test('prediction pure side dodge preserves vertical velocity while forward dodge keeps lift', () => {
@@ -124,7 +124,7 @@ test('prediction pure side dodge preserves vertical velocity while forward dodge
   side.vel.set(0, 6.25, 0);
   side.applySecondJumpOrDodge(0, 1);
   assert.ok(Math.abs(side.vel.y - 6.25) < 1e-9, `side dodge added vertical speed: ${side.vel.y}`);
-  assert.ok(side.vel.x < -13.9, `side dodge lateral speed was ${side.vel.x}`);
+  assert.ok(side.vel.x <= -5, `side dodge lateral speed was ${side.vel.x}`);
 
   const forward = makePredictor({ x: 0, y: 5, z: 0 }).predictor;
   forward.forward.set(0, 0, -1);
@@ -140,7 +140,7 @@ test('prediction stops a held directional dodge after one revolution', () => {
   body.setTranslation({ x: 0, y: 5, z: body.translation().z });
 
   // Keep W held: the post-dodge input latch should prevent a second pitch spin.
-  for (let index = 0; index < 120; index++) predictor.step(1 / 120);
+  for (let index = 0; index < 150; index++) predictor.step(1 / 120);
 
   assert.ok(predictor.dodgeAngleRemaining <= 1e-6);
   assert.ok(predictor.dodgeTime <= 1e-6);
@@ -179,7 +179,7 @@ test('prediction keeps a parked car attached to vertical glass until jump', () =
   assert.equal(predictor.grounded, false);
   assert.ok(predictor.groundLockout > 0);
   assert.ok(body.translation().x < beforeX);
-  assert.ok(body.linvel().x < -8);
+  assert.ok(body.linvel().x < -2.7);
 });
 
 test('prediction gives a held jump more lift than a tap', () => {
@@ -195,7 +195,7 @@ test('prediction gives a held jump more lift than a tap', () => {
     held.predictor.step(1 / 120);
   }
 
-  assert.ok(held.body.translation().y > tapped.body.translation().y + 0.15);
+  assert.ok(held.body.translation().y > tapped.body.translation().y + 0.10);
   assert.ok(held.body.linvel().y > tapped.body.linvel().y + 0.5);
 });
 
@@ -208,22 +208,36 @@ test('prediction air boost gains altitude when the nose is raised', () => {
   const startY = body.translation().y;
   for (let index = 0; index < 90; index++) predictor.step(1 / 120);
 
-  assert.ok(body.translation().y > startY + 0.5,
+  assert.ok(body.translation().y > startY + 0.4,
     `air boost failed to climb: start=${startY} end=${body.translation().y}`);
   assert.ok(body.linvel().y > 1, `air boost vertical speed was ${body.linvel().y}`);
 });
 
-test('prediction consumes boost and enforces the 120 km/h hard cap', () => {
+test('prediction consumes boost and enforces the 2300 uu/s hard cap', () => {
   const { body, predictor } = makePredictor();
   predictor.syncGrounded(true);
   predictor.setInput({ mask: INPUT_BITS.W | INPUT_BITS.BOOST, edges: 0 });
 
   for (let index = 0; index < 120; index++) predictor.step(1 / 120);
   assert.ok(predictor.boost < 67.1 && predictor.boost > 66.2, `boost after 1s was ${predictor.boost}`);
-  assert.ok(Math.hypot(body.linvel().x, body.linvel().y, body.linvel().z) * 3.6 <= 120.01);
+  assert.ok(Math.hypot(body.linvel().x, body.linvel().y, body.linvel().z) * 3.6 <= 82.81);
 
   for (let index = 0; index < 250; index++) predictor.step(1 / 120);
   assert.ok(predictor.boost <= 0.001, `boost did not empty: ${predictor.boost}`);
+});
+
+test('prediction resolves the documented 45-degree arena corner plane', () => {
+  const { body, predictor } = makePredictor({ x: 40, y: 5, z: 50 });
+  body.setLinvel({ x: 10, y: 0, z: 10 });
+  predictor.step(1 / 120);
+
+  const position = body.translation();
+  const velocity = body.linvel();
+  // Identity orientation support on a diagonal is (half width + half length)
+  // along the unnormalised x+z plane.
+  const maximumSum = 80.64 - (0.421 + 0.59004);
+  assert.ok(position.x + position.z <= maximumSum + 1e-7, JSON.stringify(position));
+  assert.ok((velocity.x + velocity.z) * Math.SQRT1_2 <= 1e-7, JSON.stringify(velocity));
 });
 
 
@@ -234,12 +248,13 @@ test('prediction preserves boosted momentum after releasing boost until braking'
   for (let index = 0; index < 240; index++) predictor.step(1 / 120);
 
   const boosted = Math.hypot(body.linvel().x, body.linvel().y, body.linvel().z) * 3.6;
-  assert.ok(boosted > 105, `boosted speed was ${boosted}`);
+  assert.ok(boosted > 82.7, `boosted speed was ${boosted}`);
 
   predictor.setInput({ mask: 0, edges: 0 });
   for (let index = 0; index < 120; index++) predictor.step(1 / 120);
   const held = Math.hypot(body.linvel().x, body.linvel().y, body.linvel().z) * 3.6;
-  assert.ok(held >= boosted - 1, `boost momentum decayed after release from ${boosted} to ${held}`);
+  assert.ok(Math.abs(held - (boosted - 5.25 * 3.6)) < 0.15,
+    `one second of 525 uu/s² coasting changed ${boosted} to ${held}`);
 
   predictor.setInput({ mask: INPUT_BITS.S, edges: 0 });
   for (let index = 0; index < 60; index++) predictor.step(1 / 120);
@@ -265,8 +280,8 @@ test('prediction scales first-jump height with continuous hold time', () => {
   const tap = apex(0);
   const medium = apex(10);
   const full = apex(28);
-  assert.ok(medium > tap + 0.65, `tap=${tap} medium=${medium}`);
-  assert.ok(full > medium + 0.65, `medium=${medium} full=${full}`);
+  assert.ok(medium > tap + 0.35, `tap=${tap} medium=${medium}`);
+  assert.ok(full > medium + 0.45, `medium=${medium} full=${full}`);
 });
 
 test('prediction drift turns harder while retaining lateral slip', () => {
@@ -335,7 +350,7 @@ test('prediction changes aerial orientation through input and brakes after relea
   const { body, predictor } = makePredictor({ x: 0, y: 12, z: 0 });
   predictor.setInput({ mask: 0, edges: 0, flags: INPUT_FLAGS.ANALOG, throttle: 1, steer: 0 });
   for (let index = 0; index < 18; index++) predictor.step(1 / 120);
-  assert.ok(body.angvel().x < -2.5, `pitch response was ${body.angvel().x}`);
+  assert.ok(body.angvel().x < -1.7, `pitch response was ${body.angvel().x}`);
   predictor.setInput({ mask: 0, edges: 0, flags: INPUT_FLAGS.ANALOG, throttle: 0, steer: 0 });
   for (let index = 0; index < 36; index++) predictor.step(1 / 120);
   const w = body.angvel();

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { ARENA_TUNING, clampPointToRoundedArena } from '../shared/arena-tuning.js';
+import { BALL_TUNING, CAR_TUNING } from '../shared/game-tuning.js';
 
-const GRAVITY = 20.5;
 const FLOOR_EPSILON = 0.03;
 
 export class BallLandingCue {
@@ -86,12 +86,13 @@ export class BallLandingCue {
   }
 
   computeImpactTime(posY, velY, radius) {
-    const groundY = Math.max(radius, 0.35);
+    const groundY = Math.max(radius, BALL_TUNING.restingHeight);
     const dy = posY - groundY;
     if (dy <= 0.0001 && velY <= 0.0001) return 0;
-    const discriminant = velY * velY + 2 * GRAVITY * Math.max(0, dy);
+    const gravity = Math.max(0.000001, CAR_TUNING.gravity);
+    const discriminant = velY * velY + 2 * gravity * Math.max(0, dy);
     if (discriminant < 0) return null;
-    const time = (velY + Math.sqrt(discriminant)) / GRAVITY;
+    const time = (velY + Math.sqrt(discriminant)) / gravity;
     if (!Number.isFinite(time) || time < 0) return null;
     return time;
   }
@@ -107,7 +108,7 @@ export class BallLandingCue {
 
     const velocity = ball?.body?.linvel?.() || { x: 0, y: 0, z: 0 };
     const radius = Math.max(0.1, Number(ball?.radius) || 0.8);
-    const groundY = Math.max(radius, 0.35);
+    const groundY = Math.max(radius, BALL_TUNING.restingHeight);
     const heightAboveGround = Math.max(0, translation.y - groundY);
 
     this.group.visible = true;

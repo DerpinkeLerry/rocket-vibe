@@ -80,16 +80,17 @@ func nearestArenaBoundary(position Vec3, arena ArenaConfig, goalOpeningHeight bo
 	absZ := math.Abs(position.Z)
 
 	if absX > straightX && absZ > straightZ {
-		center := Vec3{X: nonZeroSign(position.X) * straightX, Z: nonZeroSign(position.Z) * straightZ}
-		delta := position.Sub(center)
-		delta.Y = 0
-		distance := delta.Length()
-		if distance < 1e-9 {
-			return arenaBoundary{}, false
+		// Rocket League's plan-view corners are 45-degree planes rather than
+		// circular arcs. In each quadrant the plane connects the documented
+		// endpoints of the side and back straight walls.
+		outward := Vec3{
+			X: nonZeroSign(position.X) / math.Sqrt2,
+			Z: nonZeroSign(position.Z) / math.Sqrt2,
 		}
+		intercept := halfWidth + halfLength - arena.CornerRadius
 		return arenaBoundary{
-			Distance: arena.CornerRadius - distance,
-			Outward:  delta.Mul(1 / distance),
+			Distance: (intercept - absX - absZ) / math.Sqrt2,
+			Outward:  outward,
 		}, true
 	}
 
@@ -500,7 +501,8 @@ func resolveGoalBall(ball *Ball, config Config) {
 
 func resolveBallFlatFloor(ball *Ball, config Config) {
 	radius := config.Ball.Radius
-	penetration := radius - ball.Position.Y
+	restingHeight := math.Max(radius, config.Ball.RestingHeight)
+	penetration := restingHeight - ball.Position.Y
 	if penetration <= 0 {
 		return
 	}

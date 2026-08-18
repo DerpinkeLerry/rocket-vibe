@@ -22,32 +22,68 @@ export const INPUT_FLAGS = Object.freeze({
   ANALOG: 1 << 1
 });
 
-// Arcade handling tuned around Rocket-League-style behaviour.  The server and
-// the local predictor intentionally use the same values so input never changes
-// character when an authoritative snapshot arrives.
+// Rocket League reference handling. The server and local predictor intentionally
+// use the same values so input never changes character at snapshot boundaries.
 
 export function getDirectionalDodgeLiftScale(forwardAmount) {
   const amount = Math.min(1, Math.abs(Number(forwardAmount) || 0));
   return amount < 0.20 ? 0 : amount;
 }
 
+export const UU_PER_METRE = 100;
+export const FULL_STEER_SPEED = 12.34;
+export const FULL_STEER_TIME_CONSTANT = 0.74704;
+
+export function throttleAccelerationAtSpeed(speed) {
+  const velocityUU = Math.abs(Number(speed) || 0) * UU_PER_METRE;
+  if (velocityUU < 1400) return (1600 - (1440 / 1400) * velocityUU) / UU_PER_METRE;
+  if (velocityUU < 1410) return (160 - 16 * (velocityUU - 1400)) / UU_PER_METRE;
+  return 0;
+}
+
+export function turningCurvatureAtSpeed(speed) {
+  const velocityUU = Math.abs(Number(speed) || 0) * UU_PER_METRE;
+  let curvatureUU = 0;
+  if (velocityUU < 500) curvatureUU = 0.006900 - 5.84e-6 * velocityUU;
+  else if (velocityUU < 1000) curvatureUU = 0.005610 - 3.26e-6 * velocityUU;
+  else if (velocityUU < 1500) curvatureUU = 0.004300 - 1.95e-6 * velocityUU;
+  else if (velocityUU < 1750) curvatureUU = 0.003025 - 1.10e-6 * velocityUU;
+  else if (velocityUU < 2500) curvatureUU = 0.001800 - 4.00e-7 * velocityUU;
+  return Math.max(0, curvatureUU * UU_PER_METRE);
+}
+
+export function turningAngularSpeed(speed, steer = 1) {
+  return speed * turningCurvatureAtSpeed(speed) * Math.max(-1, Math.min(1, Number(steer) || 0));
+}
+
+export function fullSteerDecelerationAtSpeed(speed) {
+  const velocityUU = Math.abs(Number(speed) || 0) * UU_PER_METRE;
+  if (velocityUU <= 1234) return 0;
+  if (velocityUU <= 1248) return 5.185 / UU_PER_METRE;
+  if (velocityUU <= 1270) return 27.5 / UU_PER_METRE;
+  if (velocityUU <= 1322) return 65 / UU_PER_METRE;
+  if (velocityUU <= 1401) return 131.667 / UU_PER_METRE;
+  if (velocityUU <= 1824) return 325.384615 / UU_PER_METRE;
+  if (velocityUU <= 2224) return 400 / UU_PER_METRE;
+  if (velocityUU <= 2290) return 330 / UU_PER_METRE;
+  return 100 / UU_PER_METRE;
+}
+
 export const CAR_TUNING = {
-  // Internal physics units are metres/second. These caps correspond to the
-  // HUD targets requested for the slower, more readable game pace.
-  maxGroundSpeed: 70 / 3.6,
-  maxBoostSpeed: 120 / 3.6,
-  driveAcceleration: 14.0,
-  reverseAcceleration: 10.0,
-  brakeAcceleration: 28.0,
-  coastDeceleration: 3.5,
-  boostAcceleration: 16.0,
-  // Air boost is intentionally stronger than ground boost. With the current
-  // gravity this gives roughly a Rocket-League-like thrust/gravity ratio, so
-  // pitching the nose upward can genuinely gain altitude instead of only
-  // slowing the fall.
-  airBoostAcceleration: 34.0,
+  // RLBot values converted from Unreal Units to metres.
+  maxGroundSpeed: 14.10,
+  maxBoostSpeed: 23.00,
+  supersonicSpeed: 22.00,
+  driveAcceleration: 16.0,
+  reverseAcceleration: 16.0,
+  brakeAcceleration: 35.0,
+  coastDeceleration: 5.25,
+  boostAcceleration: 9.91666,
+  airBoostAcceleration: 10.58333,
+  airThrottleAcceleration: 0.66667,
+  airReverseAcceleration: 0.33334,
   boostCapacity: 100,
-  boostConsumptionPerSecond: 100 / 3,
+  boostConsumptionPerSecond: 33.3,
   grip: 18.0,
   driftGrip: 3.0,
   steerRate: 2.75,
@@ -55,61 +91,65 @@ export const CAR_TUNING = {
   steerResponse: 14.0,
   driftSteerResponse: 19.0,
   angularGroundDamping: 11.0,
-  airPitchAcceleration: 11.0,
-  airYawAcceleration: 8.8,
-  airRollAcceleration: 10.5,
+  airPitchAcceleration: 12.46,
+  airYawAcceleration: 9.11,
+  airRollAcceleration: 38.34,
   // Aerial orientation uses angular-velocity targets instead of accumulating
   // torque forever. This keeps the car stable when controls are released while
   // preserving immediate, analog pitch/yaw/roll authority when the player asks.
-  airPitchRate: 5.2,
-  airYawRate: 4.5,
-  airRollRate: 5.0,
+  airPitchRate: 5.5,
+  airYawRate: 5.5,
+  airRollRate: 5.5,
   airControlResponse: 11.5,
   airNeutralResponse: 8.5,
-  maxAirAngular: 6.6,
-  // First jump is intentionally modest. Holding jump continuously adds lift
-  // for up to 0.20 s, giving a large and controllable tap-to-full height range.
-  jumpSpeed: 10.5,
-  jumpHoldAcceleration: 32.0,
+  maxAirAngular: 5.5,
+  jumpSpeed: 2.92,
+  jumpHoldAcceleration: 14.6,
   jumpHoldDuration: 0.20,
-  doubleJumpSpeed: 10.0,
+  jumpMinimumHoldDuration: 3 / 120,
+  jumpStickyAcceleration: 3.25,
+  jumpStickyDuration: 3 / 120,
+  doubleJumpSpeed: 2.91667,
   // A dodge owns one finite 360-degree rotation.  While it is active normal
   // air torque is suppressed so holding the dodge direction cannot turn the
   // flip into an endless corkscrew.
-  dodgeImpulse: 14.0,
+  dodgeImpulse: 5.0,
   // Applied fully to forward/back dodges, proportionally to diagonals, and not
   // at all to pure A/D barrel rolls so a side dodge never changes jump height.
   dodgeLift: 1.8,
-  dodgeAngularSpeed: 11.22,
+  dodgeAngularSpeed: 5.5,
   dodgeRotation: Math.PI * 2,
   dodgeWindow: 1.25,
-  dodgeDuration: 0.56,
+  dodgeDuration: Math.PI * 2 / 5.5,
   dodgeControlScale: 0.0,
-  downAcceleration: 18.0,
+  downAcceleration: 3.25,
   wallGravityCancel: 1.0,
   surfaceNormalBlend: 0.28,
   surfaceNormalResponse: 11.0,
   surfaceAlignResponse: 16.0,
-  gravity: 20.5,
+  gravity: 6.5,
   linearDamping: 0.0,
   angularDamping: 0.55
 };
 
 export const BALL_TUNING = {
-  radius: 2.2,
-  spawnY: 5.5,
-  // Density compensates for the larger volume to keep mass near the old ball.
-  density: 0.67,
-  restitution: 0.68,
+  radius: 0.9125,
+  spawnY: 0.9315,
+  restingHeight: 0.9315,
+  // Rapier density chosen so a 0.9125 m sphere has the referenced mass 30.
+  density: 9.426143044744238,
+  mass: 30,
+  restitution: 0.60,
   friction: 0.22,
   rollingResistance: 0.18,
-  linearDamping: 0.015,
+  linearDamping: 0.030562030038766,
   angularDamping: 0.055,
   carHitPower: 0.34,
   carHitLift: 0.11,
   carHitLiftBase: 0.45,
   maxSpeed: 60,
-  maxAngularSpeed: 34
+  terminalSpeed: 212.68220703125,
+  maxAngularSpeed: 6
 };
 
 export function applyServerPhysicsConfig(config = {}) {
@@ -117,15 +157,17 @@ export function applyServerPhysicsConfig(config = {}) {
   const ball = config?.ball || {};
 
   const carMap = {
-    maxGroundSpeed: 'maxGroundSpeed', maxBoostSpeed: 'maxBoostSpeed', boostCapacity: 'boostCapacity',
+    maxGroundSpeed: 'maxGroundSpeed', maxBoostSpeed: 'maxBoostSpeed', supersonicSpeed: 'supersonicSpeed', boostCapacity: 'boostCapacity',
     boostConsumptionPerSecond: 'boostConsumptionPerSecond', driveAcceleration: 'driveAcceleration',
     reverseAcceleration: 'reverseAcceleration', brakeAcceleration: 'brakeAcceleration', coastDeceleration: 'coastDeceleration',
-    boostAcceleration: 'boostAcceleration', airBoostAcceleration: 'airBoostAcceleration', grip: 'grip', driftGrip: 'driftGrip',
+    boostAcceleration: 'boostAcceleration', airBoostAcceleration: 'airBoostAcceleration',
+    airThrottleAcceleration: 'airThrottleAcceleration', airReverseAcceleration: 'airReverseAcceleration', grip: 'grip', driftGrip: 'driftGrip',
     steerRate: 'steerRate', driftSteerRate: 'driftSteerRate', steerResponse: 'steerResponse', driftSteerResponse: 'driftSteerResponse',
     groundAngularDamping: 'angularGroundDamping', airPitchAcceleration: 'airPitchAcceleration', airYawAcceleration: 'airYawAcceleration',
     airRollAcceleration: 'airRollAcceleration', airPitchRate: 'airPitchRate', airYawRate: 'airYawRate', airRollRate: 'airRollRate',
     airControlResponse: 'airControlResponse', airNeutralResponse: 'airNeutralResponse', maxAirAngular: 'maxAirAngular',
     jumpSpeed: 'jumpSpeed', jumpHoldAcceleration: 'jumpHoldAcceleration', jumpHoldDuration: 'jumpHoldDuration',
+    jumpMinimumHoldDuration: 'jumpMinimumHoldDuration', jumpStickyAcceleration: 'jumpStickyAcceleration', jumpStickyDuration: 'jumpStickyDuration',
     doubleJumpSpeed: 'doubleJumpSpeed', dodgeImpulse: 'dodgeImpulse', dodgeLift: 'dodgeLift', dodgeAngularSpeed: 'dodgeAngularSpeed',
     dodgeRotation: 'dodgeRotation', dodgeWindow: 'dodgeWindow', dodgeDuration: 'dodgeDuration', dodgeControlScale: 'dodgeControlScale',
     downAcceleration: 'downAcceleration', wallGravityCancel: 'wallGravityCancel', surfaceAlignResponse: 'surfaceAlignResponse',
@@ -138,7 +180,7 @@ export function applyServerPhysicsConfig(config = {}) {
   const gravity = Number(config?.gravity);
   if (Number.isFinite(gravity)) CAR_TUNING.gravity = gravity;
 
-  const ballKeys = ['radius', 'spawnY', 'restitution', 'friction', 'rollingResistance', 'linearDamping', 'angularDamping', 'carHitPower', 'carHitLift', 'carHitLiftBase', 'maxSpeed', 'maxAngularSpeed'];
+  const ballKeys = ['radius', 'spawnY', 'restingHeight', 'restitution', 'friction', 'rollingResistance', 'linearDamping', 'angularDamping', 'carHitPower', 'carHitLift', 'carHitLiftBase', 'maxSpeed', 'maxAngularSpeed'];
   for (const key of ballKeys) {
     const value = Number(ball[key]);
     if (Number.isFinite(value)) BALL_TUNING[key] = value;

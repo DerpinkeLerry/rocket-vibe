@@ -4,8 +4,8 @@ const PREMIUM_CAR_CONFIGS = Object.freeze({
   octane: Object.freeze({
     name: 'OCTANE',
     url: new URL('../assets/octane-rocket-league.glb', import.meta.url).href,
-    targetLength: 3.08,
-    bottomY: -0.52,
+    targetLength: 1.18008,
+    bottomY: -0.20,
     paintMaterials: ['octane_body'],
     darkMaterials: ['paint'],
     windowMaterials: ['window'],
@@ -13,13 +13,13 @@ const PREMIUM_CAR_CONFIGS = Object.freeze({
     rimMaterials: ['dieci_rim'],
     wheelGroupPattern: /dieci - (fr|fl|br|bl) \(octane\)$/i,
     wheelSpinAxis: 'y',
-    exhaustAnchor: Object.freeze({ x: 0.34, z: 1.62 })
+    exhaustAnchor: Object.freeze({ x: 0.14, z: 0.63 })
   }),
   dominus: Object.freeze({
     name: 'DOMINUS',
     url: new URL('../assets/dominus-rocket-league.glb', import.meta.url).href,
-    targetLength: 3.16,
-    bottomY: -0.52,
+    targetLength: 1.18008,
+    bottomY: -0.20,
     paintMaterials: ['dominus_body'],
     darkMaterials: ['paint'],
     windowMaterials: ['window'],
@@ -27,13 +27,13 @@ const PREMIUM_CAR_CONFIGS = Object.freeze({
     rimMaterials: ['cristiano'],
     wheelGroupPattern: /cristiano - (fr|fl|br|bl) \(dominus\)$/i,
     wheelSpinAxis: 'y',
-    exhaustAnchor: Object.freeze({ x: 0.40, z: 1.66 })
+    exhaustAnchor: Object.freeze({ x: 0.15, z: 0.64 })
   }),
   fennec: Object.freeze({
     name: 'FENNEC',
     url: new URL('../assets/fennec-rocket-league.glb', import.meta.url).href,
-    targetLength: 3.10,
-    bottomY: -0.52,
+    targetLength: 1.18008,
+    bottomY: -0.20,
     paintMaterials: ['fennec_-_body', 'fennec - body'],
     darkMaterials: ['paint'],
     windowMaterials: ['window'],
@@ -41,7 +41,7 @@ const PREMIUM_CAR_CONFIGS = Object.freeze({
     rimMaterials: ['alpha_rim'],
     wheelGroupPattern: /alpha - (fr|fl|br|bl) \(fennec\)$/i,
     wheelSpinAxis: 'y',
-    exhaustAnchor: Object.freeze({ x: 0.34, z: 1.62 })
+    exhaustAnchor: Object.freeze({ x: 0.14, z: 0.63 })
   })
 });
 

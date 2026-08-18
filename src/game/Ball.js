@@ -250,13 +250,12 @@ export class Ball {
 
     this.body = this.world.createRigidBody(bodyDesc);
     const colliderDesc = R.ColliderDesc.ball(this.radius)
-      // Radius is much larger than before. Lower density keeps total ball mass
-      // close to v1.2 so cars can still launch it instead of hitting a boulder.
+      // Density is derived from the reference 30-unit mass at 91.25 cm radius.
       .setDensity(BALL_TUNING.density)
       .setFriction(BALL_TUNING.friction)
       .setRestitution(BALL_TUNING.restitution)
       .setRestitutionCombineRule(R.CoefficientCombineRule.Max)
-      .setContactSkin(0.01);
+      .setContactSkin(Math.max(0, BALL_TUNING.restingHeight - this.radius));
 
     this.collider = this.world.createCollider(colliderDesc, this.body);
     // Extra local solver work is cheap for a single ball and helps the sphere

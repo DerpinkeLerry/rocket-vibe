@@ -2152,7 +2152,7 @@ html, body, #app {
   margin-top: 2px;
 }
 .hud__respawn-choices button {
-  min-width: 76px;
+  min-width: 82px;
   min-height: 38px;
   padding: 5px 9px;
   border: 1px solid rgba(255,255,255,0.14);
@@ -2204,10 +2204,10 @@ html, body, #app {
   .hud__respawn-hint { font-size: 7px; }
   .hud__respawn-choices { gap: 5px; }
   .hud__respawn-choices button {
-    min-width: 68px;
+    min-width: 59px;
     min-height: 42px;
-    padding: 6px 7px;
-    font-size: 8px;
+    padding: 6px 5px;
+    font-size: 7px;
   }
   .hud__respawn-choices button kbd { display: none; }
 }

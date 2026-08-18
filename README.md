@@ -1,4 +1,15 @@
-# Rocket Vibe 1.13.6 – Arena Performance Pass
+# Rocket Vibe – RLBot Physics Reference Rework
+
+## RLBot-Referenzphysik
+
+- Die gesamte Simulation verwendet jetzt **100 Unreal Units = 1 Meter** und läuft serverseitig, offline und in der Client-Prediction mit **120 Hz**.
+- Arena, 45°-Ecken, Tor, alle 34 Boost-Pads, Kickoff- und Demo-Spawns entsprechen den veröffentlichten Soccar-Abmessungen und Koordinaten.
+- Gas nutzt die gemessene stückweise Beschleunigungskurve; Bremsen, Ausrollen, Boost, Supersonic-Schwelle und die geschwindigkeitsabhängige Lenkkurve verwenden die RLBot-Werte.
+- Sprungimpuls, 0,2-s-Hold-Kraft, Sticky Force, Double-Jump-Fenster und Luftrotation sind mit dem RLBot-Jump-Modell abgestimmt.
+- Ballradius/-masse, Ruhehöhe, Restitution, Linear-Drag sowie lineare und angulare Caps sind Referenzwerte. Auto-/Ball-Impulse berücksichtigen beide Massen.
+- Zentrale Referenz: https://wiki.rlbot.org/v4/botmaking/useful-game-values/; Sprungdetails: https://wiki.rlbot.org/v4/botmaking/jumping-physics/.
+
+Die RLBot-Seite weist selbst darauf hin, dass manche Details – besonders die exakte nicht-kreisförmige Bodenrampe, Reifen-/Gripmodell und Teile des Dodge-/Kontaktverhaltens – nicht vollständig veröffentlicht sind. Dafür verwendet das Spiel weiterhin deterministische, zwischen Go-Server, Browser-Prediction und lokalem Rapier-Modus abgestimmte Näherungen.
 
 ## v1.13.6
 
@@ -229,13 +240,13 @@ Die unteren Boden-Wand-Rundungen sind nicht mehr schwarz: Die physikalische Wand
 Der Go-Server ist die einzige Online-Autoritaet und verarbeitet:
 
 - Rocket-League-artige Bodenbeschleunigung, Bremsen, Grip, Lenkung und verbrauchbaren Boost
-- Fahrtempo ca. 70 km/h normal und maximal 120 km/h mit Boost; einmal aufgebaute Boost-Geschwindigkeit oberhalb 70 km/h bleibt ohne automatisches Zurueckbremsen erhalten, bis gebremst oder anderweitig Tempo verloren wird
+- Fahrtempo 50,76 km/h mit Gas, Supersonic ab 79,2 km/h und maximal 82,8 km/h mit Boost; darüber aufgebautes Tempo bleibt bis zum realen Speed-Cap erhalten
 - Sechs grosse 100-%-Boostpads und 28 kleine +12-%-Pads im Soccar-artigen Rotationslayout mit 10/4 Sekunden Respawn
 - Variabler Sprung durch gehaltenes Space, neutraler Doppelsprung und gerichtete Dodge/Flips mit exakt einer kontrollierten 360-Grad-Rotation
 - Pitch/Yaw/Roll in der Luft mit analoger Ziel-Winkelgeschwindigkeit; ohne Input wird Restrotation aktiv stabilisiert, damit das Auto nicht durch altes Drehmoment wild weiterspinnt
-- Separater, staerkerer Air-Boost (34 m/s² statt 16 m/s² am Boden), damit ein nach oben ausgerichtetes Auto die 20,5-m/s²-Schwerkraft ueberwinden und kontrolliert Hoehe gewinnen kann
+- Referenz-Boost mit 9,91666 m/s² am Boden und 10,58333 m/s² in der Luft bei 6,5 m/s² Schwerkraft
 - Surface-Adhesion: Rampen und senkrechte Waende halten das Auto bis zum aktiven Absprung
-- Demolition bei gegnerischem Fronttreffer ab 90 km/h, wobei ausschliesslich das schnellere Auto das langsamere demolieren kann, inklusive 4-Sekunden-Vogelperspektive und serverseitig ausgewaehltem Respawnpunkt
+- Demolition bei gegnerischem Fronttreffer ab der 79,2-km/h-Supersonic-Schwelle, wobei ausschliesslich das schnellere Auto das langsamere demolieren kann, inklusive 4-Sekunden-Vogelperspektive und serverseitig ausgewaehltem Respawnpunkt
 - Auto gegen Auto
 - Auto gegen Ball
 - Auto und Ball gegen Boden, Seitenwaende, Endwaende, Torrahmen, Tortunnel und Decke
@@ -363,7 +374,7 @@ go test ./...
 go test -race ./...
 ```
 
-Die Tests decken Fahrbewegung, 70/120-km/h-Speed-Caps und erhaltenes Boost-Momentum, Boostverbrauch, Boost-Pickups/Respawn, Sprung-Lockout, Boden-Tunneling, die Fahrt vom Boden auf senkrechtes Glas, den Ball-Uebergang an der Boden/Wand-Naht ohne Tunneling, beide farbigen Tore, Spielstand, Namen, Auto-Ball-Impuls, Input-Reihenfolge, das exakte Binaerprotokoll und einen echten HTTP/WebSocket-Verbindungsaufbau ab.
+Die Tests decken zusätzlich die exakten Arena-/Tor-/Spawn-/Boost-Koordinaten, 45°-Ecken, 120-Hz-Zeitverläufe, Gas- und Lenkkurven, 50,76/79,2/82,8-km/h-Schwellen, Bremsen/Ausrollen, Massen, Ball-Drag/Restitution/Caps, Sprung-Hold/Sticky Force, Boostverbrauch sowie die Übereinstimmung von Server und Client-Prediction ab.
 
 
 ### Mobile Bedienung

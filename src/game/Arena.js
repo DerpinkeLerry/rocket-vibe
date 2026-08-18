@@ -16,7 +16,6 @@ let GOAL_H = ARENA_TUNING.goalHeight;
 let GOAL_D = ARENA_TUNING.goalDepth;
 let GOAL_R = ARENA_TUNING.goalRampRadius;
 let GOAL_MOUTH_R = ARENA_TUNING.goalMouthRadius;
-const CORNER_SEGMENTS = 10;
 const BASKETBALL_HOOP = Object.freeze({
   height: 6.1,
   rimRadius: 12.5,
@@ -60,15 +59,17 @@ function roundedRectGeometry(width, length, radius, segments) {
   const halfWidth = width * 0.5;
   const halfLength = length * 0.5;
   const shape = new THREE.Shape();
+  // RL's four plan-view corners are single 45-degree planes. Keeping this
+  // helper name avoids churn for callers, but the generated pitch is the
+  // documented eight-sided outline rather than a circular rounded rectangle.
   shape.moveTo(-halfWidth + radius, -halfLength);
   shape.lineTo(halfWidth - radius, -halfLength);
-  shape.absarc(halfWidth - radius, -halfLength + radius, radius, -Math.PI / 2, 0, false);
+  shape.lineTo(halfWidth, -halfLength + radius);
   shape.lineTo(halfWidth, halfLength - radius);
-  shape.absarc(halfWidth - radius, halfLength - radius, radius, 0, Math.PI / 2, false);
+  shape.lineTo(halfWidth - radius, halfLength);
   shape.lineTo(-halfWidth + radius, halfLength);
-  shape.absarc(-halfWidth + radius, halfLength - radius, radius, Math.PI / 2, Math.PI, false);
+  shape.lineTo(-halfWidth, halfLength - radius);
   shape.lineTo(-halfWidth, -halfLength + radius);
-  shape.absarc(-halfWidth + radius, -halfLength + radius, radius, Math.PI, Math.PI * 1.5, false);
   shape.closePath();
 
   const geometry = new THREE.ShapeGeometry(shape, segments);
@@ -615,8 +616,8 @@ export class Arena {
     // One quiet, symmetrical end-zone shape per team. The old design stacked
     // many polygons, chevrons and crossing rails; this broad wash gives the
     // field identity without competing with gameplay markings.
-    fillWorldPolygon([[-25, -78], [25, -78], [31, -57], [20, -50], [-20, -50], [-31, -57]], blue, 0.070);
-    fillWorldPolygon([[-25, 78], [25, 78], [31, 57], [20, 50], [-20, 50], [-31, 57]], orange, 0.070);
+    fillWorldPolygon([[-18, -50.5], [18, -50.5], [25, -39], [18, -34], [-18, -34], [-25, -39]], blue, 0.070);
+    fillWorldPolygon([[-18, 50.5], [18, 50.5], [25, 39], [18, 34], [-18, 34], [-25, 39]], orange, 0.070);
 
     for (const sign of [-1, 1]) {
       const color = sign < 0 ? blue : orange;
@@ -636,19 +637,19 @@ export class Arena {
       // Three primary rotation lanes correspond to the real boost-pad rows.
       // They never cross one another, and the exact same layout is mirrored on
       // both halves so players can read it instantly while driving.
-      drawRoute([[0, sign * 68], [0, sign * 46], [0, sign * 17], [0, 0]], color, soft);
-      drawRoute([[-24, sign * 68], [-13, sign * 53], [-24, sign * 37], [-28, sign * 17], [-14, 0]], color, soft);
-      drawRoute([[24, sign * 68], [13, sign * 53], [24, sign * 37], [28, sign * 17], [14, 0]], color, soft);
+      drawRoute([[0, sign * 42.40], [0, sign * 28.16], [0, sign * 10.24], [0, 0]], color, soft);
+      drawRoute([[-17.92, sign * 41.84], [-9.40, sign * 33.08], [-17.88, sign * 23], [-20.48, sign * 10.36], [-10.24, 0]], color, soft);
+      drawRoute([[17.92, sign * 41.84], [9.40, sign * 33.08], [17.88, sign * 23], [20.48, sign * 10.36], [10.24, 0]], color, soft);
 
       // Outer wall rotation: midfield full boost -> wall small boost -> corner
       // full boost. These remain independent from the inner lanes, eliminating
       // the old web of intersecting lines around the centre of the pitch.
-      drawRoute([[-49, 0], [-48, sign * 40], [-42, sign * 66]], color, soft);
-      drawRoute([[49, 0], [48, sign * 40], [42, sign * 66]], color, soft);
+      drawRoute([[-35.84, 0], [-35.84, sign * 24.84], [-30.72, sign * 40.96]], color, soft);
+      drawRoute([[35.84, 0], [35.84, sign * 24.84], [30.72, sign * 40.96]], color, soft);
 
       // A short backline connects the three small pads directly in front of the
       // goal without extending through other routes.
-      drawRoute([[-24, sign * 68], [0, sign * 68], [24, sign * 68]], color, soft);
+      drawRoute([[-17.92, sign * 41.84], [0, sign * 42.40], [17.92, sign * 41.84]], color, soft);
     }
 
     // One subtle split midfield ring gives the floor a finished centrepiece.
@@ -1407,28 +1408,19 @@ export class Arena {
       }
     }
 
-    const corners = [
-      { start: 0, sx: 1, sz: 1 },
-      { start: Math.PI / 2, sx: -1, sz: 1 },
-      { start: Math.PI, sx: -1, sz: -1 },
-      { start: Math.PI * 1.5, sx: 1, sz: -1 }
-    ];
-    const delta = Math.PI * 0.5 / CORNER_SEGMENTS;
-    const panelRadius = CORNER_R + WALL_T * 0.5;
-    const cornerLength = 2 * panelRadius * Math.sin(delta * 0.5) * 1.025;
-    for (const corner of corners) {
-      const centerX = corner.sx * straightX;
-      const centerZ = corner.sz * straightZ;
-      for (let index = 0; index < CORNER_SEGMENTS; index++) {
-        const theta = corner.start + (index + 0.5) * delta;
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        const nx = sx * Math.SQRT1_2;
+        const nz = sz * Math.SQRT1_2;
         panels.push({
-          x: centerX + Math.cos(theta) * panelRadius,
-          z: centerZ + Math.sin(theta) * panelRadius,
-          length: cornerLength,
-          yaw: Math.PI / 2 - theta,
-          nx: Math.cos(theta),
-          nz: Math.sin(theta),
-          minY: RAMP_R
+          x: sx * (halfWidth - CORNER_R * 0.5) + nx * WALL_T * 0.5,
+          z: sz * (halfLength - CORNER_R * 0.5) + nz * WALL_T * 0.5,
+          length: CORNER_R * Math.SQRT2,
+          yaw: Math.atan2(nx, nz),
+          nx,
+          nz,
+          minY: RAMP_R,
+          arenaCorner: true
         });
       }
     }

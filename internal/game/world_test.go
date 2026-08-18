@@ -26,17 +26,17 @@ func TestConnectedCarDrivesAndRemainsSpeedLimited(t *testing.T) {
 		t.Fatalf("car did not drive forward: z=%f", car.Position.Z)
 	}
 	if speed := car.Velocity.Length(); speed > world.Config.Car.MaxBoostSpeed+1e-6 {
-		t.Fatalf("car exceeded 120 km/h speed cap: %f", speed)
+		t.Fatalf("car exceeded 2300 uu/s speed cap: %f", speed)
 	}
 }
 
 func TestNormalAndBoostTopSpeedsMatchRequestedKmh(t *testing.T) {
 	config := DefaultConfig()
-	if math.Abs(config.Car.MaxGroundSpeed*3.6-70) > 1e-9 {
-		t.Fatalf("normal top speed is %.3f km/h, want 70", config.Car.MaxGroundSpeed*3.6)
+	if math.Abs(config.Car.MaxGroundSpeed*3.6-50.76) > 1e-9 {
+		t.Fatalf("normal top speed is %.3f km/h, want 50.76", config.Car.MaxGroundSpeed*3.6)
 	}
-	if math.Abs(config.Car.MaxBoostSpeed*3.6-120) > 1e-9 {
-		t.Fatalf("boost top speed is %.3f km/h, want 120", config.Car.MaxBoostSpeed*3.6)
+	if math.Abs(config.Car.MaxBoostSpeed*3.6-82.8) > 1e-9 {
+		t.Fatalf("boost top speed is %.3f km/h, want 82.8", config.Car.MaxBoostSpeed*3.6)
 	}
 
 	world := NewWorld(config)
@@ -48,8 +48,8 @@ func TestNormalAndBoostTopSpeedsMatchRequestedKmh(t *testing.T) {
 	for range config.PhysicsHz * 5 {
 		world.Step(dt)
 	}
-	if speedKmh := world.Cars[0].Velocity.Length() * 3.6; speedKmh > 70.1 {
-		t.Fatalf("normal driving exceeded 70 km/h: %.3f", speedKmh)
+	if speedKmh := world.Cars[0].Velocity.Length() * 3.6; speedKmh > 50.77 {
+		t.Fatalf("normal driving exceeded 1410 uu/s: %.3f km/h", speedKmh)
 	}
 }
 
@@ -78,7 +78,7 @@ func TestAirBoostCanGainAltitudeWhenNoseIsRaised(t *testing.T) {
 		world.Step(dt)
 	}
 
-	if car.Position.Y <= startY+0.5 {
+	if car.Position.Y <= startY+0.4 {
 		t.Fatalf("nose-up air boost failed to gain meaningful altitude: start=%.3f end=%.3f velocity=%+v", startY, car.Position.Y, car.Velocity)
 	}
 	if car.Velocity.Y <= 1 {
@@ -105,7 +105,7 @@ func TestBoostedGroundSpeedPersistsAfterBoostReleaseUntilBraking(t *testing.T) {
 	}
 
 	before := world.Cars[0].Velocity.Length() * 3.6
-	if before < 105 {
+	if before < 82.7 {
 		t.Fatalf("car never entered boosted momentum band: %.3f km/h", before)
 	}
 
@@ -117,8 +117,9 @@ func TestBoostedGroundSpeedPersistsAfterBoostReleaseUntilBraking(t *testing.T) {
 		world.Step(dt)
 	}
 	afterCoast := world.Cars[0].Velocity.Length() * 3.6
-	if afterCoast < before-1.0 {
-		t.Fatalf("boosted momentum decayed after releasing boost/throttle: before=%.3f after=%.3f", before, afterCoast)
+	expectedCoast := before - config.Car.CoastDeceleration*3.6
+	if math.Abs(afterCoast-expectedCoast) > 0.15 {
+		t.Fatalf("one second of 525 uu/s² coasting gave %.3f km/h, want %.3f", afterCoast, expectedCoast)
 	}
 
 	for step := 0; step < config.PhysicsHz/2; step++ {
@@ -193,7 +194,7 @@ func TestSmallAndLargeBoostPadsCollectAndRespawn(t *testing.T) {
 
 	// Full corner pad fills to 100.
 	car.Boost = 12
-	large := &world.BoostPads[0]
+	large := &world.BoostPads[3]
 	car.Position = Vec3{X: large.Position.X, Y: config.Car.HalfExtents.Y, Z: large.Position.Z}
 	world.collectBoostPads()
 	if car.Boost != config.Car.BoostCapacity {
@@ -262,11 +263,11 @@ func TestBoostPadLayoutMatchesSoccarReference(t *testing.T) {
 	if full != 6 || small != 28 {
 		t.Fatalf("pad split is %d full / %d small, want 6 / 28", full, small)
 	}
-	if got := world.BoostPads[2].Position; got.X != -49 || got.Z != 0 {
-		t.Fatalf("left midfield full pad is %+v, want x=-49 z=0", got)
+	if got := world.BoostPads[15].Position; got.X != -35.84 || got.Z != 0 {
+		t.Fatalf("left midfield full pad is %+v, want x=-35.84 z=0", got)
 	}
-	if got := world.BoostPads[33].Position; got.X != 24 || got.Z != 68 {
-		t.Fatalf("final small pad is %+v, want x=24 z=68", got)
+	if got := world.BoostPads[33].Position; got.X != 0 || got.Z != 42.40 {
+		t.Fatalf("final small pad is %+v, want x=0 z=42.40", got)
 	}
 }
 
@@ -336,7 +337,7 @@ func TestHardLandingCannotTunnelOrBounceBackUp(t *testing.T) {
 	world := NewWorld(config)
 	world.SetConnected(0, true)
 	car := &world.Cars[0]
-	car.Position = Vec3{Y: 2.2}
+	car.Position = Vec3{X: 10, Y: 2.2}
 	car.Rotation = IdentityQuat()
 	car.Velocity = Vec3{Y: -60}
 
@@ -376,7 +377,7 @@ func TestCarWallContactTurnsIntoRampClimb(t *testing.T) {
 	}
 }
 
-func TestCarCannotEscapeRoundedCorner(t *testing.T) {
+func TestCarCannotEscapeDiagonalArenaCorner(t *testing.T) {
 	config := DefaultConfig()
 	world := NewWorld(config)
 	car := &world.Cars[0]
@@ -394,11 +395,11 @@ func TestCarCannotEscapeRoundedCorner(t *testing.T) {
 	support := orientedBoxSupport(car.Rotation, config.Car.HalfExtents, normal)
 	maximumDistance := config.Arena.CornerRadius - support
 	if distance.Length() > maximumDistance+1e-7 {
-		t.Fatalf("car escaped rounded corner: distance=%f max=%f", distance.Length(), maximumDistance)
+		t.Fatalf("car escaped diagonal corner: distance=%f max=%f", distance.Length(), maximumDistance)
 	}
 	boundary, ok := nearestArenaBoundary(car.Position, config.Arena, false)
 	if !ok {
-		t.Fatal("rounded corner boundary was not found")
+		t.Fatal("diagonal corner boundary was not found")
 	}
 	horizontal := config.Arena.RampRadius - boundary.Distance
 	vertical := car.Position.Y - config.Arena.RampRadius
@@ -467,7 +468,7 @@ func TestHoldingJumpAddsExtraLift(t *testing.T) {
 		tapped.Step(dt)
 		held.Step(dt)
 	}
-	if held.Cars[0].Position.Y <= tapped.Cars[0].Position.Y+0.15 {
+	if held.Cars[0].Position.Y <= tapped.Cars[0].Position.Y+0.10 {
 		t.Fatalf("holding jump did not add meaningful lift: tapY=%f heldY=%f", tapped.Cars[0].Position.Y, held.Cars[0].Position.Y)
 	}
 	if held.Cars[0].Velocity.Y <= tapped.Cars[0].Velocity.Y+0.5 {
@@ -703,7 +704,7 @@ func TestNegativeZBlueGoalScoresForOrange(t *testing.T) {
 	}
 }
 
-func TestBallBouncesInsideRoundedCorner(t *testing.T) {
+func TestBallBouncesInsideDiagonalArenaCorner(t *testing.T) {
 	config := DefaultConfig()
 	world := NewWorld(config)
 	straightX := config.Arena.Width*0.5 - config.Arena.CornerRadius
@@ -719,7 +720,7 @@ func TestBallBouncesInsideRoundedCorner(t *testing.T) {
 	delta.Y = 0
 	maximumDistance := config.Arena.CornerRadius - config.Ball.Radius
 	if delta.Length() > maximumDistance+1e-7 {
-		t.Fatalf("ball escaped rounded corner: distance=%f max=%f", delta.Length(), maximumDistance)
+		t.Fatalf("ball escaped diagonal corner: distance=%f max=%f", delta.Length(), maximumDistance)
 	}
 	if outward := world.Ball.Velocity.Dot(normal); outward >= 0 {
 		t.Fatalf("ball did not bounce inward from glass: %f", outward)
@@ -731,10 +732,10 @@ func TestCarTransfersMomentumToBall(t *testing.T) {
 	world := NewWorld(config)
 	world.SetConnected(0, true)
 	car := &world.Cars[0]
-	car.Position = Vec3{Y: 0.9}
+	car.Position = Vec3{Y: 1.2}
 	car.Rotation = IdentityQuat()
 	car.Velocity = Vec3{Z: -15}
-	world.Ball.Position = Vec3{Y: 1.1, Z: -2.5}
+	world.Ball.Position = Vec3{Y: 1.2, Z: -1.45}
 	world.Ball.Velocity = Vec3{}
 
 	resolveCarBall(car, &world.Ball, config)
@@ -859,7 +860,8 @@ func TestCarHitIsForwardBiasedWithModerateLift(t *testing.T) {
 	car.Rotation = IdentityQuat()
 	car.Velocity = Vec3{Z: -16}
 	ball := &world.Ball
-	ball.Position = Vec3{Y: config.Car.HalfExtents.Y, Z: -3.55}
+	car.Position = Vec3{Y: 1.2}
+	ball.Position = Vec3{Y: 1.2, Z: -1.45}
 	ball.Velocity = Vec3{}
 	ball.AngularVelocity = Vec3{}
 
@@ -1011,13 +1013,13 @@ func TestJumpHeightScalesWithContinuousHoldDuration(t *testing.T) {
 	medium := simulateFirstJumpApex(t, 0.085)
 	full := simulateFirstJumpApex(t, DefaultConfig().Car.JumpHoldDuration+0.04)
 
-	if medium <= tap+0.65 {
+	if medium <= tap+0.30 {
 		t.Fatalf("medium jump was not meaningfully higher than tap: tap=%f medium=%f", tap, medium)
 	}
-	if full <= medium+0.65 {
+	if full <= medium+0.45 {
 		t.Fatalf("full jump was not meaningfully higher than medium: medium=%f full=%f", medium, full)
 	}
-	if full <= tap+1.7 {
+	if full <= tap+0.9 {
 		t.Fatalf("jump hold range is too small to aim flip height: tap=%f full=%f", tap, full)
 	}
 }
@@ -1229,6 +1231,7 @@ func TestAnalogAirInputUsesPartialPitchInsteadOfDigitalSnap(t *testing.T) {
 		world.SetConnected(0, true)
 		car := &world.Cars[0]
 		car.Position.Y = 8
+		car.Rotation = IdentityQuat()
 		car.GroundLockout = 1
 		car.Grounded = false
 		if !world.SetInput(0, Input{Sequence: 1, Flags: InputFlagAnalog, Throttle: amount}) {
@@ -1241,7 +1244,7 @@ func TestAnalogAirInputUsesPartialPitchInsteadOfDigitalSnap(t *testing.T) {
 	}
 	soft := run(0.25)
 	full := run(1)
-	if soft <= 0 || full <= soft*2.2 {
+	if soft <= 0 || full <= soft*1.8 {
 		t.Fatalf("analog air pitch snapped like digital input: soft=%.4f full=%.4f", soft, full)
 	}
 }
@@ -1252,6 +1255,7 @@ func TestAirRotationSettlesQuicklyWithoutControlInput(t *testing.T) {
 	world.SetConnected(0, true)
 	car := &world.Cars[0]
 	car.Position = Vec3{Y: 12}
+	car.Rotation = IdentityQuat()
 	car.Grounded = false
 	car.GroundLockout = 1
 	car.AngularVelocity = Vec3{X: 4.2, Y: -2.8, Z: 3.4}
@@ -1273,6 +1277,7 @@ func TestAirRotationTracksInputThenBrakesOnRelease(t *testing.T) {
 	world.SetConnected(0, true)
 	car := &world.Cars[0]
 	car.Position = Vec3{Y: 12}
+	car.Rotation = IdentityQuat()
 	car.Grounded = false
 	car.GroundLockout = 1
 	dt := 1 / float64(config.PhysicsHz)
@@ -1282,7 +1287,7 @@ func TestAirRotationTracksInputThenBrakesOnRelease(t *testing.T) {
 	for range 18 {
 		world.Step(dt)
 	}
-	if car.AngularVelocity.X > -2.5 {
+	if car.AngularVelocity.X > -1.7 {
 		t.Fatalf("air pitch did not respond strongly enough: %+v", car.AngularVelocity)
 	}
 	if !world.SetInput(0, Input{Sequence: 2, Flags: InputFlagAnalog}) {
