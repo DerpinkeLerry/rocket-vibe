@@ -21,6 +21,7 @@ import { HighSpeedEffects } from './HighSpeedEffects.js';
 import { BallLandingCue } from './BallLandingCue.js';
 import { getSoundDesign } from './SoundDesign.js';
 import { normalizeSoloBotConfig, SoloBotController } from './SoloBot.js';
+import { getPhysicsInterpolationAlpha } from './PhysicsInterpolation.js';
 import { ARENA_TUNING, CAR_HITBOX } from '../shared/arena-tuning.js';
 import { CAR_TUNING } from '../shared/game-tuning.js';
 import { evaluateDemolitionSnapshot } from '../shared/demolition-respawn.js';
@@ -1099,12 +1100,17 @@ export class Game {
       const renderDt = this.lastRenderTime === 0 ? frameDt : Math.min(now - this.lastRenderTime, 0.08);
       this.lastRenderTime = now;
 
+      const physicsAlpha = getPhysicsInterpolationAlpha(
+        this.accumulator,
+        this.fixedDt,
+        !this.networked && !this.replayActive
+      );
       for (const car of this.cars) {
         if (!car.group.visible) continue;
-        car.syncVisual();
+        car.syncVisual(physicsAlpha);
         car.updateBoostEffects?.(renderDt);
       }
-      this.ball.syncVisual();
+      this.ball.syncVisual(physicsAlpha);
       this.ballLandingCue?.update(this.ball, renderDt);
       if (!this.replayActive && !this.demolitionRespawnActive && this.input.consumePressed('KeyC')) {
         this.setCameraMode(this.chaseCamera.toggleMode());
@@ -1685,6 +1691,8 @@ export class Game {
 
   stepOffline(dt) {
     if (this.offlineMatchOver) return;
+    for (const car of this.cars) car.captureVisualTransform?.();
+    this.ball.captureVisualTransform?.();
     if (this.offlineGoalTimeRemaining > 0) {
       this.offlineGoalTimeRemaining = Math.max(0, this.offlineGoalTimeRemaining - dt);
       this.ball.fixedUpdate(dt);

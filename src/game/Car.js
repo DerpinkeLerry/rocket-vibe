@@ -15,6 +15,7 @@ import { getCarStyle, normalizeCarStyle, shouldUsePremiumCarModel } from '../sha
 import { getBoostStyle, normalizeBoostStyle } from '../shared/boost-styles.js';
 import { BoostTrail } from './BoostTrail.js';
 import { createPremiumCarVisual, getPremiumCarExhaustAnchor } from './PremiumCarModels.js';
+import { getUprightRecoveryRotation, shouldUseCarRecoveryJump } from './CarRecovery.js';
 
 const VEC3_UP = new THREE.Vector3(0, 1, 0);
 const VEC3_FORWARD = new THREE.Vector3(0, 0, -1);
@@ -104,8 +105,14 @@ export class Car {
     this.surfaceBack = new THREE.Vector3();
     this.surfaceMatrix = new THREE.Matrix4();
     this.surfaceTargetQ = new THREE.Quaternion();
+    this.visualPreviousPosition = new THREE.Vector3();
+    this.visualPreviousQuaternion = new THREE.Quaternion();
+    this.visualPosition = new THREE.Vector3();
+    this.visualQuaternion = new THREE.Quaternion();
+    this.visualBodyQuaternion = new THREE.Quaternion();
 
     this.createPhysics();
+    this.resetVisualInterpolation();
     this.createVisual();
     this.createNameTag();
   }
@@ -816,7 +823,9 @@ export class Car {
     }
 
     if (this.input.consumePressed('Space')) {
-      if (driveGrounded && this.jumpCount === 0) {
+      if (this.tryRecoveryJump()) {
+        driveGrounded = false;
+      } else if (driveGrounded && this.jumpCount === 0) {
         const lin = this.body.linvel();
         this.body.setLinvel({
           x: lin.x + this.groundNormal.x * CAR_TUNING.jumpSpeed,
@@ -878,6 +887,59 @@ export class Car {
     // the dodge now, then clear its angular component on the following frame.
     this.driveDodgeRotation(dt);
     this.updateVisualAnimation(dt, driveGrounded ? sideInput : 0, speedForward, boosting);
+  }
+
+  isNearRecoveryFloor() {
+    if (!this.world || !this.RAPIER || this.clientOnly) return false;
+    const position = this.body.translation();
+    if (position.y > 1.55) return false;
+    const ray = new this.RAPIER.Ray(
+      { x: position.x, y: position.y + 0.08, z: position.z },
+      { x: 0, y: -1, z: 0 }
+    );
+    const hit = this.world.castRayAndGetNormal(ray, 1.7, true, undefined, undefined, undefined, this.body);
+    return Boolean(hit && Number(hit.normal?.y) > 0.55);
+  }
+
+  tryRecoveryJump() {
+    const rotation = this.body.rotation();
+    const velocity = this.body.linvel();
+    if (!this.canUseRecoveryJump(rotation, velocity)) return false;
+
+    const upright = getUprightRecoveryRotation(rotation, velocity);
+    const angular = this.body.angvel();
+    this.body.setRotation(upright, true);
+    this.body.setLinvel({
+      x: velocity.x * 0.82,
+      y: Math.max(Number(velocity.y) || 0, CAR_TUNING.jumpSpeed * 0.92),
+      z: velocity.z * 0.82
+    }, true);
+    this.body.setAngvel({
+      x: 0,
+      y: clamp(Number(angular.y) || 0, -1.2, 1.2),
+      z: 0
+    }, true);
+    this.jumpCount = 1;
+    this.jumpHoldTime = 0;
+    this.jumpHoldActive = false;
+    this.jumpStickyTime = 0;
+    this.airTime = 0;
+    this.grounded = false;
+    this.groundContactLockout = 0.16;
+    this.dodgeAngleRemaining = 0;
+    this.dodgeStopPending = false;
+    return true;
+  }
+
+  canUseRecoveryJump(rotation = this.body.rotation(), velocity = this.body.linvel()) {
+    const recoveryCandidate = shouldUseCarRecoveryJump({
+      rotation,
+      grounded: this.grounded,
+      nearFloor: true,
+      airTime: this.airTime,
+      verticalSpeed: velocity.y
+    });
+    return recoveryCandidate && this.isNearRecoveryFloor();
   }
 
   projectForwardToSurface() {
@@ -1175,16 +1237,33 @@ export class Car {
     }
   }
 
-  syncVisual() {
+  captureVisualTransform() {
+    const position = this.body.translation();
+    const rotation = this.body.rotation();
+    this.visualPreviousPosition.set(position.x, position.y, position.z);
+    this.visualPreviousQuaternion.set(rotation.x, rotation.y, rotation.z, rotation.w).normalize();
+  }
+
+  resetVisualInterpolation() {
+    this.captureVisualTransform();
+    this.visualPosition.copy(this.visualPreviousPosition);
+    this.visualQuaternion.copy(this.visualPreviousQuaternion);
+  }
+
+  syncVisual(interpolationAlpha = 1) {
     const p = this.body.translation();
     const r = this.body.rotation();
-    this.group.position.set(p.x, p.y, p.z);
-    this.group.quaternion.set(r.x, r.y, r.z, r.w);
+    const alpha = clamp(Number(interpolationAlpha) || 0, 0, 1);
+    this.visualPosition.copy(this.visualPreviousPosition).lerp({ x: p.x, y: p.y, z: p.z }, alpha);
+    this.visualBodyQuaternion.set(r.x, r.y, r.z, r.w).normalize();
+    this.visualQuaternion.copy(this.visualPreviousQuaternion).slerp(this.visualBodyQuaternion, alpha).normalize();
+    this.group.position.copy(this.visualPosition);
+    this.group.quaternion.copy(this.visualQuaternion);
 
     if (this.shadow) {
-      this.shadow.position.x = p.x;
-      this.shadow.position.z = p.z;
-      const height = Math.max(0, p.y - CAR_HITBOX.y);
+      this.shadow.position.x = this.visualPosition.x;
+      this.shadow.position.z = this.visualPosition.z;
+      const height = Math.max(0, this.visualPosition.y - CAR_HITBOX.y);
       const shadowScale = THREE.MathUtils.clamp(1.0 - height * 0.035, 0.58, 1.0);
       this.shadow.scale.set(0.72 * CAR_VISUAL_SCALE * shadowScale, CAR_VISUAL_SCALE * shadowScale, 1);
       this.shadow.material.opacity = THREE.MathUtils.clamp(0.24 - height * 0.01, 0.05, 0.24);
@@ -1247,5 +1326,6 @@ export class Car {
     this.boost = CAR_TUNING.boostCapacity;
     this.boosting = false;
     this.boostVisualHold = 0;
+    this.resetVisualInterpolation();
   }
 }

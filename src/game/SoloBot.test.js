@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   SOLO_DIFFICULTIES,
+  SoloBotController,
   chooseSoloBotTarget,
   computeSoloBotDrive,
   normalizeSoloBotConfig
 } from './SoloBot.js';
+import { VirtualInput } from '../network/VirtualInput.js';
 
 test('solo bot config supports three teammates, four opponents and three difficulties', () => {
   assert.deepEqual(SOLO_DIFFICULTIES.map((difficulty) => difficulty.id), ['rookie', 'pro', 'all-star']);
@@ -88,4 +90,35 @@ test('bot drive steers, drifts and boosts only on a clean line', () => {
   assert.ok(straight.steer < 0, straight);
   assert.equal(turn.boost, false);
   assert.equal(turn.drift, true);
+});
+
+test('every bot difficulty requests a stabilised recovery jump when overturned', () => {
+  const input = new VirtualInput();
+  const car = {
+    team: 'blue',
+    grounded: false,
+    airTime: 0.5,
+    jumpCount: 0,
+    boost: 100,
+    group: { visible: true },
+    canUseRecoveryJump: () => true,
+    getBoost: () => 100,
+    body: {
+      translation: () => ({ x: 0, y: 0.55, z: -8 }),
+      linvel: () => ({ x: 0, y: 0, z: 0 }),
+      rotation: () => ({ x: 1, y: 0, z: 0, w: 0 })
+    }
+  };
+  const ball = {
+    body: {
+      translation: () => ({ x: 0, y: 1.2, z: 0 }),
+      linvel: () => ({ x: 0, y: 0, z: 0 }),
+      rotation: () => ({ x: 0, y: 0, z: 0, w: 1 })
+    }
+  };
+  const bot = new SoloBotController(car, input, { team: 'blue', difficulty: 'rookie' });
+  for (let frame = 0; frame < 40; frame++) bot.update(1 / 120, ball, [car]);
+  assert.equal(input.consumePressed('Space'), true);
+  assert.ok(bot.recoveryControlRemaining > 0);
+  assert.deepEqual(input.getDriveAxes(), { throttle: 0, steer: 0, analog: true });
 });

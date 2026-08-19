@@ -181,9 +181,12 @@ export class ChaseCamera {
       return;
     }
 
-    const p = this.car.body.translation();
-    const r = this.car.body.rotation();
-    const bp = this.ball.body.translation();
+    // Offline physics is fixed at 120 Hz while rendering can have an uneven
+    // cadence. Follow the interpolated visual pose so the camera and the car
+    // never disagree by one physics tick during Solo matches.
+    const p = this.car.visualPosition ?? this.car.body.translation();
+    const r = this.car.visualQuaternion ?? this.car.body.rotation();
+    const bp = this.ball.visualPosition ?? this.ball.body.translation();
 
     this.carPosition.set(p.x, p.y, p.z);
     this.ballPosition.set(bp.x, bp.y, bp.z);

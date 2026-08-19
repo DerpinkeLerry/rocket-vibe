@@ -1,5 +1,6 @@
 import { ARENA_TUNING } from '../shared/arena-tuning.js';
 import { INPUT_FLAGS } from '../shared/game-tuning.js';
+import { shouldUseCarRecoveryJump } from './CarRecovery.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, Number(value) || 0));
 const smoothstep = (a, b, value) => {
@@ -173,6 +174,8 @@ export class SoloBotController {
     this.jumpHeldFor = 0;
     this.secondJumpReady = false;
     this.stuckFor = 0;
+    this.recoveryFor = 0;
+    this.recoveryControlRemaining = 0;
     this.drive = { throttle: 0, steer: 0, boost: false, drift: false, angle: 0, distance: Infinity };
     this.target = { x: 0, y: 0, z: 0, role: 'support', ballDistance: Infinity };
   }
@@ -184,6 +187,8 @@ export class SoloBotController {
     this.jumpHeldFor = 0;
     this.secondJumpReady = false;
     this.stuckFor = 0;
+    this.recoveryFor = 0;
+    this.recoveryControlRemaining = 0;
   }
 
   update(dt, ball, cars) {
@@ -191,10 +196,21 @@ export class SoloBotController {
     this.decisionRemaining -= dt;
     this.jumpCooldown = Math.max(0, this.jumpCooldown - dt);
     this.jumpHeldFor = Math.max(0, this.jumpHeldFor - dt);
+    this.recoveryControlRemaining = Math.max(0, this.recoveryControlRemaining - dt);
     const carState = readBodyState(this.car);
     const ballState = readBodyState(ball);
     const speed = Math.hypot(carState.velocity.x, carState.velocity.z);
     this.stuckFor = speed < 0.7 && Math.abs(this.drive.throttle) > 0.7 ? this.stuckFor + dt : Math.max(0, this.stuckFor - dt * 2);
+    const recoveryNeeded = typeof this.car.canUseRecoveryJump === 'function'
+      ? this.car.canUseRecoveryJump(carState.rotation, carState.velocity)
+      : shouldUseCarRecoveryJump({
+          rotation: carState.rotation,
+          grounded: this.car.grounded,
+          nearFloor: carState.position.y <= 1.35,
+          airTime: this.car.airTime,
+          verticalSpeed: carState.velocity.y
+        });
+    this.recoveryFor = recoveryNeeded ? this.recoveryFor + dt : Math.max(0, this.recoveryFor - dt * 3);
     let edges = 0;
 
     if (this.decisionRemaining <= 0) {
@@ -219,7 +235,14 @@ export class SoloBotController {
 
       const verticalDelta = ballState.position.y - carState.position.y;
       const canReachBall = this.target.role === 'attack' || this.target.role === 'clear';
-      if (this.profile.jump && canReachBall && this.car.grounded && this.jumpCooldown <= 0
+      if (this.recoveryFor >= 0.16 && this.jumpCooldown <= 0) {
+        edges |= 1;
+        this.jumpHeldFor = 0.06;
+        this.jumpCooldown = 0.62;
+        this.secondJumpReady = false;
+        this.recoveryFor = 0;
+        this.recoveryControlRemaining = 0.30;
+      } else if (this.profile.jump && canReachBall && this.car.grounded && this.jumpCooldown <= 0
         && this.target.ballDistance < 4.8 && verticalDelta > 0.72 && verticalDelta < 3.8
         && Math.abs(this.drive.angle) < 0.30) {
         edges |= 1;
@@ -241,15 +264,16 @@ export class SoloBotController {
     }
 
     let mask = 0;
-    if (this.drive.boost) mask |= 1 << 6;
+    const stabilizingRecovery = this.recoveryControlRemaining > 0;
+    if (this.drive.boost && !stabilizingRecovery) mask |= 1 << 6;
     if (this.jumpHeldFor > 0) mask |= 1 << 7;
-    const flags = INPUT_FLAGS.ANALOG | (this.drive.drift ? INPUT_FLAGS.DRIFT : 0);
+    const flags = INPUT_FLAGS.ANALOG | (this.drive.drift && !stabilizingRecovery ? INPUT_FLAGS.DRIFT : 0);
     this.input.applyPacket({
       mask,
       flags,
       edges,
-      throttle: this.drive.throttle,
-      steer: this.drive.steer
+      throttle: stabilizingRecovery ? 0 : this.drive.throttle,
+      steer: stabilizingRecovery ? 0 : this.drive.steer
     });
     return Object.freeze({ ...this.drive, target: this.target });
   }

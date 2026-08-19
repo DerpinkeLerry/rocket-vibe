@@ -229,8 +229,14 @@ export class Ball {
     this.proceduralVisual = null;
     this.premiumVisual = null;
     this.premiumVisualLoad = null;
+    this.visualPreviousPosition = new THREE.Vector3();
+    this.visualPreviousQuaternion = new THREE.Quaternion();
+    this.visualPosition = new THREE.Vector3();
+    this.visualQuaternion = new THREE.Quaternion();
+    this.visualBodyQuaternion = new THREE.Quaternion();
 
     this.createPhysics();
+    this.resetVisualInterpolation();
     this.createVisual();
   }
 
@@ -478,16 +484,33 @@ export class Ball {
     }
   }
 
-  syncVisual() {
+  captureVisualTransform() {
+    const position = this.body.translation();
+    const rotation = this.body.rotation();
+    this.visualPreviousPosition.set(position.x, position.y, position.z);
+    this.visualPreviousQuaternion.set(rotation.x, rotation.y, rotation.z, rotation.w).normalize();
+  }
+
+  resetVisualInterpolation() {
+    this.captureVisualTransform();
+    this.visualPosition.copy(this.visualPreviousPosition);
+    this.visualQuaternion.copy(this.visualPreviousQuaternion);
+  }
+
+  syncVisual(interpolationAlpha = 1) {
     const p = this.body.translation();
     const r = this.body.rotation();
-    this.mesh.position.set(p.x, p.y, p.z);
-    this.mesh.quaternion.set(r.x, r.y, r.z, r.w);
+    const alpha = THREE.MathUtils.clamp(Number(interpolationAlpha) || 0, 0, 1);
+    this.visualPosition.copy(this.visualPreviousPosition).lerp({ x: p.x, y: p.y, z: p.z }, alpha);
+    this.visualBodyQuaternion.set(r.x, r.y, r.z, r.w).normalize();
+    this.visualQuaternion.copy(this.visualPreviousQuaternion).slerp(this.visualBodyQuaternion, alpha).normalize();
+    this.mesh.position.copy(this.visualPosition);
+    this.mesh.quaternion.copy(this.visualQuaternion);
 
     if (this.shadow) {
-      this.shadow.position.x = p.x;
-      this.shadow.position.z = p.z;
-      const height = Math.max(0, p.y - this.radius);
+      this.shadow.position.x = this.visualPosition.x;
+      this.shadow.position.z = this.visualPosition.z;
+      const height = Math.max(0, this.visualPosition.y - this.radius);
       const scale = THREE.MathUtils.clamp(1.12 - height * 0.045, 0.5, 1.12);
       this.shadow.scale.setScalar(scale);
       this.shadow.material.opacity = THREE.MathUtils.clamp(0.3 - height * 0.016, 0.06, 0.3);
@@ -525,5 +548,6 @@ export class Ball {
     this.carContactStates = new WeakMap();
     this.pendingCarHits.length = 0;
     this.pendingHitSpeed = 0;
+    this.resetVisualInterpolation();
   }
 }
