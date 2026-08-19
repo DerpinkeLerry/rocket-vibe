@@ -114,7 +114,8 @@ export function getMobileBallContactTarget(options = {}) {
   const ballVelocity = options.ballVelocity ?? {};
   const goal = options.goalPosition ?? null;
   const fxRaw = Number(forward.x) || 0;
-  const fzRaw = Number(forward.z) || -1;
+  const forwardZ = Number(forward.z);
+  const fzRaw = Number.isFinite(forwardZ) ? forwardZ : -1;
   const forwardLength = Math.max(1e-6, Math.hypot(fxRaw, fzRaw));
   const fx = fxRaw / forwardLength;
   const fz = fzRaw / forwardLength;
@@ -169,10 +170,10 @@ export function getMobileBallContactTarget(options = {}) {
   const signedAngle = Math.atan2(fz * dx - fx * dz, fx * dx + fz * dz);
   const verticalDelta = (Number(ball.y) || 0) - (Number(car.y) || 0);
   const reachable = options.enabled !== false
-    && distance <= 22
+    && distance <= 11.5
     && verticalDelta >= -1.5
     && verticalDelta <= 4.2
-    && forwardDot >= Math.cos(1.12);
+    && forwardDot >= Math.cos(0.82);
   return Object.freeze({
     reachable,
     distance,
@@ -193,26 +194,35 @@ export function applyMobileBallContactAssist(manualSteer, options = {}) {
   const throttle = Number(options.throttle) || 0;
   const airborne = Boolean(options.airborne);
   if (!options.reachable || (!airborne && throttle <= 0.05)
-    || distance <= 0.35 || Math.abs(angle) <= 0.008 || Math.abs(angle) >= 1.12) {
+    || distance <= 0.35 || distance > 11.5 || (airborne && distance > 6.5)
+    || Math.abs(angle) <= 0.012 || Math.abs(angle) >= 0.82) {
     return Object.freeze({ steer, strength: 0, correction: 0, active: false });
   }
 
-  const desiredSteer = clamp(angle / 0.28, -1, 1);
-  const distanceBlend = 1 - smoothstep(7, 22, distance);
-  const angleBlend = 1 - smoothstep(0.84, 1.12, Math.abs(angle));
-  let strength = (0.52 + distanceBlend * 0.34) * angleBlend * (airborne ? 0.72 : 1);
-
-  // Medium opposing input is now intentionally corrected: the requested strong
-  // helper should be obvious. A nearly full deliberate counter-steer still wins
-  // so players can abort the approach or choose a sharp angled touch.
-  if (steer * desiredSteer < -0.04) {
-    const override = smoothstep(0.62, 0.98, Math.abs(steer));
-    strength *= 1 - override * 0.88;
-  } else if (Math.abs(steer) > 0.94) {
-    strength *= 0.35;
+  const desiredSteer = clamp(angle / 0.58, -1, 1);
+  // Never pull a deliberate turn back toward the calculated line. The helper
+  // may fill in understeer, but oversteer and creative angled touches remain
+  // exactly as the player entered them.
+  if (steer * desiredSteer > 0 && Math.abs(steer) >= Math.abs(desiredSteer)) {
+    return Object.freeze({ steer, strength: 0, correction: 0, active: false });
   }
 
-  const maximumCorrection = airborne ? 0.48 : 0.72;
+  const proximity = 1 - smoothstep(3.8, 11.5, distance);
+  const angleBlend = 1 - smoothstep(0.56, 0.82, Math.abs(angle));
+  const alignmentValue = Number(options.shotAlignment);
+  const shotAlignment = Number.isFinite(alignmentValue) ? clamp(alignmentValue, 0, 1) : 1;
+  const shotSetupBlend = 0.68 + shotAlignment * 0.32;
+  let strength = (0.08 + proximity * 0.18) * angleBlend * shotSetupBlend * (airborne ? 0.42 : 1);
+
+  // Any counter-steer is treated as player intent, not as an error. Keep only
+  // a smoothly fading nudge so the player can pass, dribble or abort a shot
+  // naturally without a hard transition as the stick crosses its centre.
+  if (steer * desiredSteer < 0) {
+    const opposition = clamp(Math.abs(steer) / 0.28, 0, 1);
+    strength *= (1 - opposition) ** 2;
+  }
+
+  const maximumCorrection = airborne ? 0.10 : 0.18;
   const correction = clamp((desiredSteer - steer) * strength, -maximumCorrection, maximumCorrection);
   const assistedSteer = clamp(steer + correction, -1, 1);
   return Object.freeze({
@@ -513,7 +523,6 @@ export class MobileControls {
 
   setBallAssistActive(active, strength = 0) {
     const nextActive = Boolean(active);
-    if (nextActive && !this.ballAssistActive) vibrate([4, 12, 4]);
     this.ballAssistActive = nextActive;
     this.el?.classList.toggle('is-ball-assist', this.ballAssistActive);
     this.ballContactMarker?.classList.toggle('is-active', this.ballAssistActive);

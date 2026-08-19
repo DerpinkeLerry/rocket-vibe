@@ -148,11 +148,18 @@ test('mobile contact targeting leads the moving ball, prepares shots and rejects
     carForward: { x: 0, z: -1 },
     ballPosition: { x: 0, y: 1.2, z: 5 }
   });
+  const far = getMobileBallContactTarget({
+    carPosition: { x: 0, y: 0.5, z: 18 },
+    carForward: { x: 0, z: -1 },
+    ballPosition: { x: 0, y: 1.2, z: 0 },
+    goalPosition: { x: 0, z: -51.2 }
+  });
   assert.equal(high.reachable, false);
   assert.equal(behind.reachable, false);
+  assert.equal(far.reachable, false);
 });
 
-test('mobile contact assist strongly corrects misses while preserving a full deliberate override', () => {
+test('mobile contact assist gently corrects the shot line while preserving player intent', () => {
   const corrected = applyMobileBallContactAssist(0, {
     reachable: true,
     signedAngle: 0.20,
@@ -161,7 +168,7 @@ test('mobile contact assist strongly corrects misses while preserving a full del
     airborne: false
   });
   assert.equal(corrected.active, true);
-  assert.ok(corrected.steer > 0.52 && corrected.steer <= 0.72, corrected);
+  assert.ok(corrected.steer > 0.06 && corrected.steer < 0.14, corrected);
 
   const mediumOpposition = applyMobileBallContactAssist(-0.7, {
     reachable: true,
@@ -170,8 +177,16 @@ test('mobile contact assist strongly corrects misses while preserving a full del
     throttle: 1,
     airborne: false
   });
-  assert.ok(mediumOpposition.steer > -0.15, mediumOpposition);
-  assert.equal(mediumOpposition.active, true);
+  assert.ok(mediumOpposition.steer <= -0.69, mediumOpposition);
+
+  const lightOpposition = applyMobileBallContactAssist(-0.15, {
+    reachable: true,
+    signedAngle: 0.20,
+    distance: 5,
+    throttle: 1,
+    airborne: false
+  });
+  assert.ok(lightOpposition.steer < -0.12, lightOpposition);
 
   const fullOverride = applyMobileBallContactAssist(-1, {
     reachable: true,
@@ -180,7 +195,27 @@ test('mobile contact assist strongly corrects misses while preserving a full del
     throttle: 1,
     airborne: false
   });
-  assert.ok(fullOverride.steer < -0.7, fullOverride);
+  assert.equal(fullOverride.steer, -1);
+
+  const deliberateOversteer = applyMobileBallContactAssist(0.65, {
+    reachable: true,
+    signedAngle: 0.20,
+    distance: 5,
+    throttle: 1,
+    airborne: false
+  });
+  assert.equal(deliberateOversteer.steer, 0.65);
+  assert.equal(deliberateOversteer.active, false);
+
+  const tooFar = applyMobileBallContactAssist(0, {
+    reachable: true,
+    signedAngle: 0.20,
+    distance: 14,
+    throttle: 1,
+    airborne: false
+  });
+  assert.equal(tooFar.active, false);
+  assert.equal(tooFar.steer, 0);
 
   const airborne = applyMobileBallContactAssist(0.2, {
     reachable: true,
@@ -190,5 +225,5 @@ test('mobile contact assist strongly corrects misses while preserving a full del
     airborne: true
   });
   assert.equal(airborne.active, true);
-  assert.ok(airborne.steer > 0.4, airborne);
+  assert.ok(airborne.steer > 0.2 && airborne.steer < 0.24, airborne);
 });

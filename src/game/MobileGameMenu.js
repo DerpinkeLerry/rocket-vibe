@@ -56,7 +56,7 @@ export class MobileGameMenu {
           <div class="mobile-game-menu__home" data-menu-home>
             ${this.showBallAssist ? `
               <label class="mobile-game-menu__assist" data-ball-assist-setting>
-                <span><strong>TOR-ASSISTENT</strong><small>Richtet Ballkontakte aufs gegnerische Tor aus</small></span>
+                <span><strong>TOR-ASSISTENT</strong><small>Sanfte Korrektur kurz vor dem Abschluss</small></span>
                 <input type="checkbox" data-ball-assist-toggle aria-label="Tor-Assistent aktivieren" ${this.ballAssistEnabled ? 'checked' : ''} />
               </label>` : ''}
             <button class="mobile-game-menu__primary" type="button" data-camera-settings>KAMERA-EINSTELLUNGEN</button>
