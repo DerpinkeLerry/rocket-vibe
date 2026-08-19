@@ -3158,6 +3158,21 @@ section.lobby-settings-section .lobby-settings-grid { padding: 0; }
 .mobile-game-menu__account { padding: 13px 2px; color: rgba(222,238,250,.48); font-size: 10px; }
 .mobile-game-menu__account strong { color: #b9ecff; }
 .mobile-game-menu__home { display: grid; gap: 10px; margin-top: auto; margin-bottom: auto; }
+.mobile-game-menu__assist {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 11px;
+  border: 1px solid rgba(255,255,255,.13);
+  border-radius: 11px;
+  background: rgba(255,255,255,.045);
+}
+.mobile-game-menu__assist.is-enabled { border-color: rgba(76,210,255,.48); background: rgba(26,139,194,.18); }
+.mobile-game-menu__assist > span { display: grid; gap: 3px; min-width: 0; }
+.mobile-game-menu__assist strong { color: #edf8ff; font-size: 9px; letter-spacing: .09em; }
+.mobile-game-menu__assist small { overflow: hidden; color: rgba(211,230,245,.48); font-size: 8px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.mobile-game-menu__assist input { flex: 0 0 auto; width: 21px; height: 21px; margin: 0; accent-color: #42cbff; }
 .mobile-game-menu__home button,
 .mobile-game-menu__savebar button,
 .mobile-game-menu__subhead button,
@@ -3209,6 +3224,7 @@ section.lobby-settings-section .lobby-settings-grid { padding: 0; }
   .mobile-camera-setting { padding: 6px 8px; }
   .mobile-camera-setting input[type="range"] { min-height: 19px; }
   .mobile-game-menu__home { grid-template-columns: 1fr 1fr; }
+  .mobile-game-menu__assist { grid-column: 1 / -1; }
   .mobile-game-menu__home .mobile-game-menu__danger { grid-column: 1 / -1; margin-top: 0; }
 }
 
@@ -3603,6 +3619,7 @@ section.lobby-settings-section .lobby-settings-grid { padding: 0; }
   gap: 6px;
   margin: 2px 0 0;
 }
+.mobile-game-menu__assist { grid-column: 1 / -1; padding: 7px 9px; border-radius: 9px; }
 .mobile-game-menu__home button { min-height: 40px; padding: 7px 8px; border-radius: 9px; font-size: 8px; line-height: 1.2; }
 .mobile-game-menu__home .mobile-game-menu__primary { grid-column: 1 / -1; }
 .mobile-game-menu__home .mobile-game-menu__danger { margin-top: 0; }

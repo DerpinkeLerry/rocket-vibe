@@ -31,6 +31,10 @@ export class MobileGameMenu {
     this.onCameraMode = options.onCameraMode;
     this.onOpenChange = options.onOpenChange;
     this.onLeave = options.onLeave;
+    this.showBallAssist = Boolean(options.showBallAssist);
+    this.getBallAssistEnabled = options.getBallAssistEnabled;
+    this.onBallAssistChange = options.onBallAssistChange;
+    this.ballAssistEnabled = this.getBallAssistEnabled?.() !== false;
     this.open = false;
     this.savedSettings = normalizeCameraSettings(this.getCameraSettings?.());
     this.draftSettings = { ...this.savedSettings };
@@ -50,6 +54,11 @@ export class MobileGameMenu {
           </header>
           <div class="mobile-game-menu__account">${this.isGuest ? 'Gastmodus' : 'Angemeldet als'} <strong>${escapeHtml(this.accountName)}</strong></div>
           <div class="mobile-game-menu__home" data-menu-home>
+            ${this.showBallAssist ? `
+              <label class="mobile-game-menu__assist" data-ball-assist-setting>
+                <span><strong>TOR-ASSISTENT</strong><small>Richtet Ballkontakte aufs gegnerische Tor aus</small></span>
+                <input type="checkbox" data-ball-assist-toggle aria-label="Tor-Assistent aktivieren" ${this.ballAssistEnabled ? 'checked' : ''} />
+              </label>` : ''}
             <button class="mobile-game-menu__primary" type="button" data-camera-settings>KAMERA-EINSTELLUNGEN</button>
             <button class="mobile-game-menu__secondary" type="button" data-game-menu-close>WEITERSPIELEN</button>
             <button class="mobile-game-menu__danger" type="button" data-leave-match>MATCH VERLASSEN</button>
@@ -102,6 +111,10 @@ export class MobileGameMenu {
     this.el.querySelector('[data-camera-reset]').addEventListener('click', () => this.resetCamera());
     this.leaveButton = this.el.querySelector('[data-leave-match]');
     this.leaveButton.addEventListener('click', () => this.leaveMatch());
+    this.ballAssistToggle = this.el.querySelector('[data-ball-assist-toggle]');
+    this.ballAssistToggle?.addEventListener('change', () => {
+      this.setBallAssistEnabled(this.ballAssistToggle.checked);
+    });
     this.cameraForm.addEventListener('input', (event) => this.updateDraft(event.target));
     this.cameraForm.addEventListener('submit', (event) => this.saveCamera(event));
     for (const button of this.cameraForm.querySelectorAll('[data-camera-mode]')) {
@@ -115,6 +128,7 @@ export class MobileGameMenu {
     this.open = true;
     this.savedSettings = normalizeCameraSettings(this.getCameraSettings?.());
     this.draftSettings = { ...this.savedSettings };
+    this.syncBallAssist();
     this.renderCameraForm();
     this.showHome(false);
     this.overlay.hidden = false;
@@ -153,6 +167,20 @@ export class MobileGameMenu {
     this.cameraForm.hidden = false;
     this.el.classList.add('is-camera-editor');
     this.cameraForm.querySelector('input')?.focus?.({ preventScroll: true });
+  }
+
+  syncBallAssist() {
+    if (!this.ballAssistToggle) return;
+    this.ballAssistEnabled = this.getBallAssistEnabled?.() !== false;
+    this.ballAssistToggle.checked = this.ballAssistEnabled;
+    this.el.querySelector('[data-ball-assist-setting]')?.classList.toggle('is-enabled', this.ballAssistEnabled);
+  }
+
+  setBallAssistEnabled(enabled) {
+    this.ballAssistEnabled = Boolean(enabled);
+    this.ballAssistToggle.checked = this.ballAssistEnabled;
+    this.el.querySelector('[data-ball-assist-setting]')?.classList.toggle('is-enabled', this.ballAssistEnabled);
+    this.onBallAssistChange?.(this.ballAssistEnabled);
   }
 
   updateDraft(target) {

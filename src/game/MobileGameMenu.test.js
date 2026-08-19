@@ -23,6 +23,15 @@ test('mobile menu can leave the match and edit account or session camera setting
   assert.match(gameSource, /this\.network\?\.disconnect\?\.\(\)/);
 });
 
+test('mobile match menu exposes the default-on persistent goal assist toggle', () => {
+  assert.match(menuSource, /data-ball-assist-toggle/);
+  assert.match(menuSource, /TOR-ASSISTENT/);
+  assert.match(menuSource, /onBallAssistChange/);
+  assert.match(gameSource, /showBallAssist:\s*this\.mobileControls\.enabled/);
+  assert.match(gameSource, /loadGameplaySettings\(this\.accountName, this\.isGuest \? null : globalThis\.localStorage\)/);
+  assert.match(gameSource, /setMobileBallAssistEnabled/);
+});
+
 test('match menu is available on desktop and leave returns directly to the lobby browser', () => {
   assert.match(gameSource, /new MobileGameMenu[\s\S]*?enabled: true/);
   assert.match(cssSource, /\.mobile-game-menu\s*\{\s*display:\s*block;/);

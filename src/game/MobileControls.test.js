@@ -125,6 +125,19 @@ test('mobile contact targeting leads the moving ball, prepares shots and rejects
   assert.ok(shotSetup.shotAlignment > 0.8, shotSetup);
   assert.ok(shotSetup.aimX > 2, shotSetup);
 
+  const lateralShot = getMobileBallContactTarget({
+    carPosition: { x: 8, y: 0.5, z: 0 },
+    carVelocity: { x: -8, y: 0, z: 0 },
+    carForward: { x: -1, z: 0 },
+    ballPosition: { x: 0, y: 1.2, z: 0 },
+    ballVelocity: { x: 0, y: 0, z: 0 },
+    goalPosition: { x: 0, z: -51.2 }
+  });
+  assert.equal(lateralShot.reachable, true);
+  assert.ok(lateralShot.shotAlignment < 0.2, lateralShot);
+  assert.ok(lateralShot.goalBias >= 0.72, lateralShot);
+  assert.ok(lateralShot.aimZ > 1.2, lateralShot);
+
   const high = getMobileBallContactTarget({
     carPosition: { x: 0, y: 0.5, z: 0 },
     carForward: { x: 0, z: -1 },

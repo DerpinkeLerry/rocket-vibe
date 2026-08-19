@@ -8,6 +8,7 @@ import { Input } from './Input.js';
 import { getMobileBallContactTarget, MobileControls } from './MobileControls.js';
 import { MobileGameMenu } from './MobileGameMenu.js';
 import { loadCameraSettings } from './CameraSettings.js';
+import { loadGameplaySettings, saveGameplaySettings } from './GameplaySettings.js';
 import { Hud } from './Hud.js';
 import { ChatPanel } from './ChatPanel.js';
 import { getPerformanceProfile, togglePerformanceProfile } from './PerformanceProfile.js';
@@ -58,6 +59,7 @@ export class Game {
     this.isGuest = Boolean(options.isGuest);
     this.accountName = String(options.accountUsername || this.playerName || 'Gast');
     this.cameraSettings = loadCameraSettings(this.accountName, this.isGuest ? null : globalThis.localStorage);
+    this.gameplaySettings = loadGameplaySettings(this.accountName, this.isGuest ? null : globalThis.localStorage);
     this.gameMode = network?.matchConfig?.gameMode === 'basketball' || options.gameMode === 'basketball' ? 'basketball' : 'normal';
     this.quickChatOptions = network?.quickChats?.length ? network.quickChats : QUICK_CHAT_OPTIONS;
     this.profile = getPerformanceProfile(this.networked, options.graphicsMode);
@@ -310,6 +312,7 @@ export class Game {
       team: this.playerTeam
     });
     this.mobileControls = new MobileControls(this.root, this.input);
+    this.mobileControls.setBallContactAssistEnabled?.(this.gameplaySettings.mobileBallAssist);
     this.mobileControls.setCameraMode?.(this.chaseCamera.getMode());
     this.chatPanel = new ChatPanel(this.root, {
       quickChats: this.quickChatOptions,
@@ -327,6 +330,9 @@ export class Game {
       accountName: this.accountName,
       isGuest: this.isGuest,
       persistSettings: !this.isGuest,
+      showBallAssist: this.mobileControls.enabled,
+      getBallAssistEnabled: () => this.gameplaySettings.mobileBallAssist,
+      onBallAssistChange: (enabled) => this.setMobileBallAssistEnabled(enabled),
       getCameraSettings: () => this.chaseCamera.getSettings(),
       onCameraPreview: (settings) => this.applyCameraSettings(settings),
       onCameraMode: (mode) => this.setCameraMode(mode),
@@ -944,6 +950,16 @@ export class Game {
     return this.cameraSettings;
   }
 
+  setMobileBallAssistEnabled(enabled) {
+    this.gameplaySettings = saveGameplaySettings(
+      this.accountName,
+      { ...this.gameplaySettings, mobileBallAssist: Boolean(enabled) },
+      this.isGuest ? null : globalThis.localStorage
+    );
+    this.mobileControls.setBallContactAssistEnabled?.(this.gameplaySettings.mobileBallAssist);
+    return this.gameplaySettings.mobileBallAssist;
+  }
+
   leaveMatch() {
     if (this.leavingMatch) return;
     this.leavingMatch = true;
@@ -1059,7 +1075,8 @@ export class Game {
         airborne: !this.car.grounded
       });
       this.mobileControls.setBallContactTarget?.(getMobileBallContactTarget({
-        enabled: !this.replayActive
+        enabled: this.gameplaySettings.mobileBallAssist
+          && !this.replayActive
           && !this.kickoffActive
           && !this.goalCelebrationActive
           && !this.demolitionRespawnActive,

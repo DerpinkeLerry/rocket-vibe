@@ -134,13 +134,13 @@ export function getMobileBallContactTarget(options = {}) {
   const predictedBallX = (Number(ball.x) || 0) + (Number(ballVelocity.x) || 0) * leadTime * leadScale;
   const predictedBallZ = (Number(ball.z) || 0) + (Number(ballVelocity.z) || 0) * leadTime * leadScale;
 
-  // When the player is already approaching from behind the ball, aim the car
-  // at the useful contact side. This turns the helper into a shot assist rather
-  // than a pure ball-centre magnet, while wrong-side approaches still favour a
-  // simple, reliable touch.
+  // Aim for the side of the ball opposite the attacking goal. Keeping a strong
+  // goal bias even on a lateral approach is important on touch screens: aiming
+  // at the centre would straighten the car and actively fight an angled shot.
   let aimX = predictedBallX;
   let aimZ = predictedBallZ;
   let shotAlignment = 0;
+  let goalBias = 0;
   if (goal) {
     const goalDx = (Number(goal.x) || 0) - predictedBallX;
     const goalDz = (Number(goal.z) || 0) - predictedBallZ;
@@ -152,8 +152,11 @@ export function getMobileBallContactTarget(options = {}) {
     const ballFromCarDistance = Math.max(1e-6, Math.hypot(ballFromCarX, ballFromCarZ));
     const approachDot = (ballFromCarX * shotX + ballFromCarZ * shotZ) / ballFromCarDistance;
     shotAlignment = smoothstep(-0.12, 0.72, approachDot);
-    const setupBlend = smoothstep(1.8, 5.5, initialDistance);
-    const contactOffset = 1.62 * shotAlignment * setupBlend;
+    // Even a perpendicular approach keeps 72% of the shot setup. Alignment
+    // only fine-tunes it; it no longer decides whether goal aiming happens.
+    goalBias = 0.72 + shotAlignment * 0.28;
+    const contactReach = smoothstep(0.72, 1.85, initialDistance);
+    const contactOffset = 1.72 * goalBias * contactReach;
     aimX -= shotX * contactOffset;
     aimZ -= shotZ * contactOffset;
   }
@@ -177,6 +180,7 @@ export function getMobileBallContactTarget(options = {}) {
     verticalDelta,
     leadTime,
     shotAlignment,
+    goalBias,
     aimX,
     aimZ
   });
@@ -266,6 +270,7 @@ export class MobileControls {
     this.currentSteer = 0;
     this.vehicleSpeedKmh = 0;
     this.vehicleAirborne = false;
+    this.ballContactAssistEnabled = options.ballContactAssistEnabled !== false;
     this.ballContactTarget = null;
     this.ballAssistActive = false;
     this.analogFrame = 0;
@@ -365,12 +370,27 @@ export class MobileControls {
   }
 
   setBallContactTarget(target = null) {
-    this.ballContactTarget = target;
+    this.ballContactTarget = this.ballContactAssistEnabled ? target : null;
     if (this.stickPointerId !== null) this.recalculateTargets();
-    if (!target?.reachable) {
+    if (!this.ballContactTarget?.reachable) {
       this.setBallAssistActive(false);
       this.ballContactMarker?.classList.remove('is-visible');
     }
+  }
+
+  setBallContactAssistEnabled(enabled = true) {
+    this.ballContactAssistEnabled = Boolean(enabled);
+    if (!this.ballContactAssistEnabled) {
+      this.ballContactTarget = null;
+      this.setBallAssistActive(false);
+      this.ballContactMarker?.classList.remove('is-visible');
+    }
+    if (this.stickPointerId !== null) this.recalculateTargets();
+    return this.ballContactAssistEnabled;
+  }
+
+  getBallContactAssistEnabled() {
+    return this.ballContactAssistEnabled;
   }
 
   setBallContactScreenPosition({ x = 0, y = 0, visible = false } = {}) {
@@ -478,11 +498,13 @@ export class MobileControls {
       drift: this.input.isDown('ControlLeft', 'ControlRight'),
       airborne: this.vehicleAirborne || this.jumpControlSources.size > 0
     });
-    const assist = applyMobileBallContactAssist(axes.steer, {
-      ...this.ballContactTarget,
-      throttle: axes.throttle,
-      airborne: this.vehicleAirborne || this.jumpControlSources.size > 0
-    });
+    const assist = this.ballContactAssistEnabled
+      ? applyMobileBallContactAssist(axes.steer, {
+          ...this.ballContactTarget,
+          throttle: axes.throttle,
+          airborne: this.vehicleAirborne || this.jumpControlSources.size > 0
+        })
+      : { steer: axes.steer, strength: 0, correction: 0, active: false };
     this.targetThrottle = axes.throttle;
     this.targetSteer = assist.steer;
     this.setBallAssistActive(assist.active, assist.strength);
