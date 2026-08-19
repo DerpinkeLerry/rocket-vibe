@@ -11,6 +11,7 @@ import { refreshArenaRuntimeTuning } from './game/Arena.js';
 import { preloadInitialGameAssets } from './game/InitialGameLoader.js';
 import { JoinLoadingScreen } from './game/JoinLoadingScreen.js';
 import { getSoundDesign } from './game/SoundDesign.js';
+import { normalizeSoloBotConfig, SOLO_DIFFICULTIES } from './game/SoloBot.js';
 import { requestAuthentication } from './auth/AccountGate.js';
 import './style.css';
 
@@ -67,6 +68,51 @@ function consumeLobbyReturnRequest() {
     // A locked-down embedded browser may keep the harmless return marker.
   }
   return true;
+}
+
+function consumeSoloReturnRequest() {
+  const url = new URL(window.location.href);
+  if (url.searchParams.get('return') !== 'solo') return false;
+  url.searchParams.delete('return');
+  try {
+    window.history.replaceState(null, '', url.toString());
+  } catch {
+    // A locked-down embedded browser may keep the harmless return marker.
+  }
+  return true;
+}
+
+function requestPlayMode(root, account = null) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'play-mode-screen';
+    overlay.innerHTML = `
+      <section class="play-mode-card" aria-labelledby="play-mode-title">
+        <div class="join-card__eyebrow">ROCKET VIBE</div>
+        <h1 id="play-mode-title">Wie möchtest du spielen?</h1>
+        <p><strong>${escapeHtml(account?.guest ? 'Gast' : account?.username || 'Fahrer')}</strong>, wähle deinen Match-Typ.</p>
+        <div class="play-mode-grid">
+          <button type="button" class="play-mode-choice play-mode-choice--solo" data-play-mode="solo">
+            <span class="play-mode-choice__icon" aria-hidden="true">◉</span>
+            <span><strong>SOLO</strong><small>Eigenes Match konfigurieren und mit KI-Mitspielern oder KI-Gegnern starten.</small></span>
+            <b>LOKAL</b>
+          </button>
+          <button type="button" class="play-mode-choice play-mode-choice--multi" data-play-mode="multiplayer">
+            <span class="play-mode-choice__icon" aria-hidden="true">◎</span>
+            <span><strong>MULTIPLAYER</strong><small>Öffentliche Lobbies durchsuchen, erstellen und online mit anderen spielen.</small></span>
+            <b>ONLINE</b>
+          </button>
+        </div>
+      </section>`;
+    root.appendChild(overlay);
+    for (const button of overlay.querySelectorAll('[data-play-mode]')) {
+      button.addEventListener('click', () => {
+        const mode = button.dataset.playMode === 'solo' ? 'solo' : 'multiplayer';
+        overlay.remove();
+        resolve(mode);
+      });
+    }
+  });
 }
 
 function boostColor(value) {
@@ -478,6 +524,94 @@ function lobbyCreationMarkup(defaults) {
     </form>`;
 }
 
+function soloDifficultyOptions(selected = 'pro') {
+  return SOLO_DIFFICULTIES.map((difficulty) => `
+    <option value="${difficulty.id}" ${difficulty.id === selected ? 'selected' : ''}>${difficulty.name} · ${difficulty.description}</option>`).join('');
+}
+
+function soloCreationMarkup(defaults) {
+  const rules = defaults.rules || {};
+  const config = defaults.config || {};
+  return `
+    <form class="lobby-create-card solo-create-card" data-solo-match-form novalidate>
+      <div class="lobby-create-card__top">
+        <button class="lobby-back" type="button" data-solo-back>← MODUS</button>
+        <div>
+          <div class="join-card__eyebrow">LOKALES MATCH</div>
+          <h1>Solo konfigurieren</h1>
+        </div>
+      </div>
+      <p class="lobby-create-card__intro">Stelle Teams, KI-Stärke, Regeln und Physik zusammen. Alle KI-Fahrer verwenden echte Fahrzeuginputs und dieselbe 120-Hz-Physik wie du.</p>
+
+      <section class="solo-ai-section" aria-labelledby="solo-ai-title">
+        <div class="solo-ai-section__heading">
+          <div><span>TEAM BUILDER</span><h2 id="solo-ai-title">KI-Fahrer</h2></div>
+          <output data-solo-team-summary>1 ORANGE · 1 BLAU</output>
+        </div>
+        <div class="solo-ai-grid">
+          <article class="solo-ai-team solo-ai-team--orange">
+            <header><span>DEIN TEAM</span><strong>ORANGE</strong></header>
+            ${renderLobbyRangeControl('solo.teammates', 'KI-Mitspieler', 0, 3, 1, 'Bots', 0)}
+            <label class="solo-difficulty"><span>Schwierigkeit deiner KI</span><select name="teammateDifficulty">${soloDifficultyOptions('pro')}</select></label>
+          </article>
+          <article class="solo-ai-team solo-ai-team--blue">
+            <header><span>GEGNER</span><strong>BLAU</strong></header>
+            ${renderLobbyRangeControl('solo.opponents', 'KI-Gegner', 0, 4, 1, 'Bots', 1)}
+            <label class="solo-difficulty"><span>Schwierigkeit der Gegner</span><select name="opponentDifficulty">${soloDifficultyOptions('pro')}</select></label>
+          </article>
+        </div>
+        <div class="solo-difficulty-legend">
+          ${SOLO_DIFFICULTIES.map((difficulty) => `<span><b>${difficulty.name}</b>${difficulty.description}</span>`).join('')}
+        </div>
+      </section>
+
+      <div class="lobby-preset-row" role="group" aria-label="Physics-Presets">
+        <button type="button" data-lobby-preset="standard">STANDARD</button>
+        <button type="button" data-lobby-preset="moon">MOONBALL</button>
+        <button type="button" data-lobby-preset="pinball">PINBALL</button>
+        <button type="button" data-lobby-preset="chaos">CHAOS</button>
+      </div>
+
+      <section class="lobby-settings-section lobby-settings-section--open">
+        <h2>Spielmodus & Regeln</h2>
+        <fieldset class="lobby-mode-select">
+          <legend>Spielmodus</legend>
+          <div class="lobby-mode-select__grid">
+            <label class="lobby-mode-choice${config.gameMode === 'basketball' ? '' : ' is-selected'}" data-lobby-mode-choice="normal">
+              <input type="radio" name="gameMode" value="normal" ${config.gameMode === 'basketball' ? '' : 'checked'} />
+              <strong>NORMAL</strong><span>Soccar-Arena mit klassischen Toren.</span>
+            </label>
+            <label class="lobby-mode-choice${config.gameMode === 'basketball' ? ' is-selected' : ''}" data-lobby-mode-choice="basketball">
+              <input type="radio" name="gameMode" value="basketball" ${config.gameMode === 'basketball' ? 'checked' : ''} />
+              <strong>BASKETBALL</strong><span>Holzboden, Basketball und erhöhte Körbe.</span>
+            </label>
+          </div>
+        </fieldset>
+        <div class="lobby-settings-grid">
+          ${renderLobbyRangeControl('rules.matchSeconds', 'Matchdauer', 0, 3600, 15, 's', Number(rules.matchSeconds) || 300, 1, '0 = ∞')}
+          ${renderLobbyRangeControl('rules.scoreLimit', 'Scorelimit', 0, 99, 1, 'Tore', Number(rules.scoreLimit) || 0, 1, '0 = ∞')}
+          ${renderLobbyRangeControl('rules.goalCelebrationSeconds', 'Torjubel', 0.35, 10, 0.05, 's', Math.max(0.35, Number(rules.goalCelebrationSeconds) || 1.25))}
+        </div>
+        <div class="lobby-toggle-grid">
+          <label><input type="checkbox" data-lobby-setting-bool="rules.overtimeOnTie" ${rules.overtimeOnTie ? 'checked' : ''}/><span>Overtime bei Gleichstand</span></label>
+          <label><input type="checkbox" data-lobby-setting-bool="rules.allowCarReset" ${rules.allowCarReset ? 'checked' : ''}/><span>Auto-Reset mit R</span></label>
+          <label><input type="checkbox" data-lobby-setting-bool="rules.allowBallReset" ${rules.allowBallReset ? 'checked' : ''}/><span>Ball-Reset mit B</span></label>
+        </div>
+      </section>
+
+      ${LOBBY_PHYSICS_SECTIONS.filter((section) => section.title !== 'Demolition-Physik').map((section, index) => `
+        <details class="lobby-settings-section" ${index === 0 ? 'open' : ''}>
+          <summary><span>${escapeHtml(section.title)}</span><small>${escapeHtml(section.hint || 'Werte frei anpassen')}</small></summary>
+          <div class="lobby-settings-grid">
+            ${section.fields.map((field) => renderNumericLobbyField(defaults, field)).join('')}
+          </div>
+        </details>`).join('')}
+
+      <div class="join-card__error" data-solo-create-error aria-live="polite"></div>
+      <button class="lobby-create-submit solo-create-submit" type="submit">SOLO-MATCH STARTEN</button>
+    </form>`;
+}
+
 function applyLobbyPreset(form, defaults, preset) {
   const selectedMode = form.elements.gameMode?.value === 'basketball' ? 'basketball' : 'normal';
   const values = cloneSettings(defaults);
@@ -536,6 +670,29 @@ function collectLobbySettings(form, defaults) {
   return request;
 }
 
+function collectSoloSettings(form, defaults) {
+  const request = cloneSettings(defaults);
+  request.name = 'Solo Match';
+  request.config.gameMode = form.elements.gameMode?.value === 'basketball' ? 'basketball' : 'normal';
+  for (const input of form.querySelectorAll('[data-lobby-setting]')) {
+    if (input.dataset.lobbySetting.startsWith('solo.')) continue;
+    const scale = Number(input.dataset.scale) || 1;
+    const value = Number(input.value);
+    if (Number.isFinite(value)) writePath(request, input.dataset.lobbySetting, value / scale);
+  }
+  for (const input of form.querySelectorAll('[data-lobby-setting-bool]')) {
+    writePath(request, input.dataset.lobbySettingBool, Boolean(input.checked));
+  }
+  request.bots = normalizeSoloBotConfig({
+    teammates: Number(form.querySelector('[data-lobby-setting="solo.teammates"]')?.value),
+    opponents: Number(form.querySelector('[data-lobby-setting="solo.opponents"]')?.value),
+    teammateDifficulty: form.elements.teammateDifficulty?.value,
+    opponentDifficulty: form.elements.opponentDifficulty?.value
+  });
+  request.config.maxPlayers = 1 + request.bots.teammates + request.bots.opponents;
+  return request;
+}
+
 function validateLobbyCreationForm(form, error) {
   const invalid = Array.from(form.querySelectorAll('input')).find((input) => !input.checkValidity());
   if (!invalid) return true;
@@ -553,7 +710,7 @@ function validateLobbyCreationForm(form, error) {
   return false;
 }
 
-function requestLobby(root, notice = '') {
+function requestLobby(root, notice = '', options = {}) {
   return new Promise(async (resolve, reject) => {
     const overlay = document.createElement('div');
     overlay.className = 'lobby-screen';
@@ -575,12 +732,16 @@ function requestLobby(root, notice = '') {
         <div class="lobby-browser">
           <header class="lobby-browser__header">
             <div><div class="join-card__eyebrow">ROCKET VIBE</div><h1>LOBBIES</h1></div>
-            <button type="button" class="lobby-create-button" data-create-lobby>+ LOBBY ERSTELLEN</button>
+            <div class="lobby-browser__actions">
+              ${options.allowModeBack ? '<button type="button" class="lobby-back" data-lobby-mode-back>← MODUS</button>' : ''}
+              <button type="button" class="lobby-create-button" data-create-lobby>+ LOBBY ERSTELLEN</button>
+            </div>
           </header>
           ${message ? `<div class="lobby-browser__notice">${escapeHtml(message)}</div>` : ''}
           <div class="lobby-list" data-lobby-list><div class="lobby-list__loading">Lobbies werden geladen …</div></div>
         </div>`;
       overlay.querySelector('[data-create-lobby]').addEventListener('click', showCreation);
+      overlay.querySelector('[data-lobby-mode-back]')?.addEventListener('click', () => finish(null));
       await refreshList();
     };
 
@@ -685,6 +846,56 @@ function requestLobby(root, notice = '') {
       defaults = await fetchLobbyJSON('/api/lobbies/defaults');
       await showBrowser();
       refreshTimer = setInterval(refreshList, 2500);
+    } catch (error) {
+      overlay.remove();
+      reject(error);
+    }
+  });
+}
+
+function requestSoloMatch(root) {
+  return new Promise(async (resolve, reject) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'lobby-screen solo-screen';
+    root.appendChild(overlay);
+    try {
+      const defaults = await fetchLobbyJSON('/api/lobbies/defaults');
+      overlay.innerHTML = soloCreationMarkup(defaults);
+      const form = overlay.querySelector('[data-solo-match-form]');
+      const error = overlay.querySelector('[data-solo-create-error]');
+      bindLobbyRangeOutputs(form);
+      syncLobbyModeConstraints(form);
+
+      const syncTeamSummary = () => {
+        const teammates = Math.round(Number(form.querySelector('[data-lobby-setting="solo.teammates"]')?.value) || 0);
+        const opponents = Math.round(Number(form.querySelector('[data-lobby-setting="solo.opponents"]')?.value) || 0);
+        const summary = form.querySelector('[data-solo-team-summary]');
+        if (summary) summary.textContent = `${1 + teammates} ORANGE · ${opponents} BLAU`;
+      };
+      for (const input of form.querySelectorAll('[data-lobby-setting^="solo."]')) input.addEventListener('input', syncTeamSummary);
+      syncTeamSummary();
+
+      overlay.querySelector('[data-solo-back]').addEventListener('click', () => {
+        overlay.remove();
+        resolve(null);
+      });
+      for (const button of overlay.querySelectorAll('[data-lobby-preset]')) {
+        button.addEventListener('click', () => applyLobbyPreset(form, defaults, button.dataset.lobbyPreset));
+      }
+      for (const choice of form.querySelectorAll('[data-lobby-mode-choice]')) {
+        choice.addEventListener('change', () => {
+          form.querySelectorAll('[data-lobby-mode-choice]').forEach((entry) => entry.classList.toggle('is-selected', entry === choice));
+          syncLobbyModeConstraints(form);
+        });
+      }
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        error.textContent = '';
+        if (!validateLobbyCreationForm(form, error)) return;
+        const settings = collectSoloSettings(form, defaults);
+        overlay.remove();
+        resolve(settings);
+      });
     } catch (error) {
       overlay.remove();
       reject(error);
@@ -874,13 +1085,36 @@ async function boot() {
   let identity = null;
   let account = null;
   let loadingScreen = null;
+  let soloSettings = null;
 
   if (multiplayerEnabled) {
     const returnToLobbies = consumeLobbyReturnRequest();
-    account = await requestAuthentication(app, { autoContinue: returnToLobbies });
+    const returnToSolo = !returnToLobbies && consumeSoloReturnRequest();
+    account = returnToSolo
+      ? await requestAuthentication(app, { autoContinue: returnToSolo })
+      : await requestAuthentication(app, { autoContinue: returnToLobbies });
+    let launchMode = returnToLobbies ? 'multiplayer' : (returnToSolo ? 'solo' : null);
     let lobbyNotice = '';
-    while (!network) {
-      const lobby = await requestLobby(app, lobbyNotice);
+    while (!network && !soloSettings) {
+      if (!launchMode) launchMode = await requestPlayMode(app, account);
+      if (launchMode === 'solo') {
+        soloSettings = await requestSoloMatch(app);
+        if (!soloSettings) {
+          launchMode = null;
+          continue;
+        }
+        identity = await requestPlayerIdentity(app, null, account);
+        identity.soloConfig = soloSettings;
+        identity.gameMode = soloSettings.config?.gameMode === 'basketball' ? 'basketball' : 'normal';
+        break;
+      }
+
+      const lobby = await requestLobby(app, lobbyNotice, { allowModeBack: true });
+      if (!lobby) {
+        launchMode = null;
+        lobbyNotice = '';
+        continue;
+      }
       identity = await requestPlayerIdentity(app, lobby, account);
       loadingScreen = new JoinLoadingScreen(app);
       loadingScreen.setStage('LOBBY WIRD VERBUNDEN', 0.08, lobby.name || 'Online-Match');
@@ -897,11 +1131,25 @@ async function boot() {
         lobbyNotice = `Beitritt fehlgeschlagen: ${error.message}`;
       }
     }
-    loadingScreen.setStage('SPIELREGELN WERDEN SYNCHRONISIERT', 0.22, 'Server-Konfiguration');
-    applyServerPhysicsConfig(network.matchConfig);
-    applyServerArenaConfig(network.matchConfig);
-    applyServerHitboxConfig(network.matchConfig);
-    // No Rapier import in the browser for online play. The Go server owns physics.
+
+    if (network) {
+      loadingScreen.setStage('SPIELREGELN WERDEN SYNCHRONISIERT', 0.22, 'Server-Konfiguration');
+      applyServerPhysicsConfig(network.matchConfig);
+      applyServerArenaConfig(network.matchConfig);
+      applyServerHitboxConfig(network.matchConfig);
+      // No Rapier import in the browser for online play. The Go server owns physics.
+    } else {
+      applyServerPhysicsConfig(soloSettings.config);
+      applyServerArenaConfig(soloSettings.config);
+      applyServerHitboxConfig(soloSettings.config);
+      loadingScreen = new JoinLoadingScreen(app);
+      loadingScreen.setStage('SOLO-PHYSIK WIRD GELADEN', 0.08, `${1 + soloSettings.bots.teammates} gegen ${soloSettings.bots.opponents} · KI ${soloSettings.bots.opponentDifficulty.toUpperCase()}`);
+      await loadingScreen.nextPaint();
+      const rapierModule = await import('@dimforge/rapier3d-compat');
+      RAPIER = rapierModule.default;
+      await RAPIER.init();
+      loadingScreen.setStage('KI & PHYSIK SIND BEREIT', 0.22, 'Rapier 3D · 120 Hz');
+    }
   } else {
     identity = await requestPlayerIdentity(app);
     loadingScreen = new JoinLoadingScreen(app);
@@ -919,7 +1167,7 @@ async function boot() {
   // them only after the server lobby config has been applied.
   refreshArenaRuntimeTuning();
   const profile = getPerformanceProfile(Boolean(network), identity?.graphicsMode);
-  const gameMode = network?.matchConfig?.gameMode === 'basketball' ? 'basketball' : 'normal';
+  const gameMode = network?.matchConfig?.gameMode === 'basketball' || identity?.gameMode === 'basketball' ? 'basketball' : 'normal';
   const assetResult = await preloadInitialGameAssets({
     network,
     identity,

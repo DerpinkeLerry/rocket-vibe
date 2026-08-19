@@ -38,6 +38,7 @@ export class Car {
     this.ultraHigh = Boolean(options.ultraHigh) && !this.lowDetail;
     this.premiumVisualsEnabled = options.initiallyVisible !== false;
     this.clientOnly = Boolean(options.clientOnly);
+    this.allowReset = options.allowReset !== false;
 
     const spawn = options.spawn ?? { x: 0, y: CAR_HITBOX.y, z: 25.6 };
     this.spawn = new THREE.Vector3(spawn.x, spawn.y, spawn.z);
@@ -767,7 +768,8 @@ export class Car {
   }
 
   fixedUpdate(dt) {
-    if (this.input.consumePressed('KeyR') || this.body.translation().y < -8) {
+    const resetPressed = this.input.consumePressed('KeyR');
+    if ((resetPressed && this.allowReset) || this.body.translation().y < -8) {
       this.reset();
       return;
     }

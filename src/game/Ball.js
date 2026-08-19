@@ -214,6 +214,8 @@ export class Ball {
     this.maxSpeed = BALL_TUNING.maxSpeed;
     this.maxAngularSpeed = BALL_TUNING.maxAngularSpeed;
     this.carContactActive = false;
+    this.carContactStates = new WeakMap();
+    this.pendingCarHits = [];
     this.pendingHitSpeed = 0;
     this.pendingHitNormal = new THREE.Vector3();
     this.hitBallPos = new THREE.Vector3();
@@ -378,7 +380,10 @@ export class Ball {
     const distance = this.hitDelta.length();
     const contactRange = this.radius + CAR_HITBOX.x;
     if (distance > contactRange) {
-      if (distance > this.radius + CAR_HITBOX.z) this.carContactActive = false;
+      if (distance > this.radius + CAR_HITBOX.z) {
+        this.carContactStates.set(car, false);
+        this.carContactActive = false;
+      }
       this.pendingHitSpeed = 0;
       return;
     }
@@ -396,35 +401,48 @@ export class Ball {
     const relativeY = carVel.y - ballVel.y;
     const relativeZ = carVel.z - ballVel.z;
     const closingSpeed = relativeX * this.hitNormal.x + relativeY * this.hitNormal.y + relativeZ * this.hitNormal.z;
-    if (!this.carContactActive && closingSpeed > 1.0) {
+    const contactActive = Boolean(this.carContactStates.get(car));
+    if (!contactActive && closingSpeed > 1.0) {
       this.pendingHitSpeed = closingSpeed;
       this.pendingHitNormal.copy(this.hitNormal);
+      this.pendingCarHits.push({ speed: closingSpeed, normal: this.hitNormal.clone() });
     }
+    this.carContactStates.set(car, true);
     this.carContactActive = true;
   }
 
+  beginCarHitFrame() {
+    this.pendingCarHits.length = 0;
+    this.pendingHitSpeed = 0;
+  }
+
   applyPreparedCarHit() {
-    if (this.clientOnly || this.pendingHitSpeed <= 0) return;
-    const impactSpeed = this.pendingHitSpeed;
-    const extraForward = THREE.MathUtils.clamp(impactSpeed * BALL_TUNING.carHitPower, 0, 7.5);
-    const liftRamp = THREE.MathUtils.clamp((impactSpeed - 1) / 4, 0, 1);
-    const lift = THREE.MathUtils.clamp(
-      (BALL_TUNING.carHitLiftBase + impactSpeed * BALL_TUNING.carHitLift) * liftRamp,
-      0,
-      3.25
-    );
-    const velocity = this.body.linvel();
-    let x = velocity.x + this.pendingHitNormal.x * extraForward;
-    let y = velocity.y + this.pendingHitNormal.y * extraForward + lift;
-    let z = velocity.z + this.pendingHitNormal.z * extraForward;
-    const speed = Math.hypot(x, y, z);
-    if (speed > this.maxSpeed) {
-      const scale = this.maxSpeed / speed;
-      x *= scale;
-      y *= scale;
-      z *= scale;
+    if (this.clientOnly) return;
+    const hits = this.pendingCarHits.length > 0
+      ? this.pendingCarHits.splice(0)
+      : (this.pendingHitSpeed > 0 ? [{ speed: this.pendingHitSpeed, normal: this.pendingHitNormal }] : []);
+    for (const hit of hits) {
+      const impactSpeed = hit.speed;
+      const extraForward = THREE.MathUtils.clamp(impactSpeed * BALL_TUNING.carHitPower, 0, 7.5);
+      const liftRamp = THREE.MathUtils.clamp((impactSpeed - 1) / 4, 0, 1);
+      const lift = THREE.MathUtils.clamp(
+        (BALL_TUNING.carHitLiftBase + impactSpeed * BALL_TUNING.carHitLift) * liftRamp,
+        0,
+        3.25
+      );
+      const velocity = this.body.linvel();
+      let x = velocity.x + hit.normal.x * extraForward;
+      let y = velocity.y + hit.normal.y * extraForward + lift;
+      let z = velocity.z + hit.normal.z * extraForward;
+      const speed = Math.hypot(x, y, z);
+      if (speed > this.maxSpeed) {
+        const scale = this.maxSpeed / speed;
+        x *= scale;
+        y *= scale;
+        z *= scale;
+      }
+      this.body.setLinvel({ x, y, z }, true);
     }
-    this.body.setLinvel({ x, y, z }, true);
     this.pendingHitSpeed = 0;
   }
 
@@ -504,6 +522,8 @@ export class Ball {
     this.body.resetForces(true);
     this.body.resetTorques(true);
     this.carContactActive = false;
+    this.carContactStates = new WeakMap();
+    this.pendingCarHits.length = 0;
     this.pendingHitSpeed = 0;
   }
 }

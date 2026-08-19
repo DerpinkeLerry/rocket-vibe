@@ -17,7 +17,17 @@ export class BoostPads {
     this.activeMask = ALL_BOOST_PADS_MASK;
     this.lowMesh = null;
     this.lowDummy = null;
-    this.pads = this.lowDetail ? this.createUltraLowPads() : BOOST_PADS.map((spec) => this.createPad(spec));
+    const tuning = options.tuning || {};
+    this.padSpecs = BOOST_PADS.map((spec) => ({
+      ...spec,
+      amount: spec.kind === 'large'
+        ? (Number.isFinite(Number(tuning.fullAmount)) ? Math.max(0, Number(tuning.fullAmount)) : spec.amount)
+        : (Number.isFinite(Number(tuning.smallAmount)) ? Math.max(0, Number(tuning.smallAmount)) : spec.amount),
+      respawn: spec.kind === 'large'
+        ? (Number.isFinite(Number(tuning.fullRespawnSeconds)) ? Math.max(0.1, Number(tuning.fullRespawnSeconds)) : spec.respawn)
+        : (Number.isFinite(Number(tuning.smallRespawnSeconds)) ? Math.max(0.1, Number(tuning.smallRespawnSeconds)) : spec.respawn)
+    }));
+    this.pads = this.lowDetail ? this.createUltraLowPads() : this.padSpecs.map((spec) => this.createPad(spec));
   }
 
   createUltraLowPads() {
@@ -32,7 +42,7 @@ export class BoostPads {
     this.lowMesh.userData.cameraOcclusionIgnore = true;
     this.lowDummy = new THREE.Object3D();
 
-    const pads = BOOST_PADS.map((spec, index) => ({
+    const pads = this.padSpecs.map((spec, index) => ({
       spec,
       index,
       group: null,
@@ -151,10 +161,10 @@ export class BoostPads {
     }
   }
 
-  updateOffline(car, dt) {
-    const p = car?.body?.translation?.();
-    if (!p) return;
-
+  updateOffline(carOrCars, dt) {
+    const cars = (Array.isArray(carOrCars) ? carOrCars : [carOrCars])
+      .filter((car) => car?.body?.translation && car?.group?.visible !== false);
+    if (cars.length === 0) return;
     for (const pad of this.pads) {
       if (!pad.active) {
         pad.respawnRemaining = Math.max(0, pad.respawnRemaining - dt);
@@ -166,15 +176,17 @@ export class BoostPads {
         continue;
       }
 
-      if (p.y > 2.45) continue;
-      if (!isWithinBoostPadPickup(pad.spec, p.x, p.z)) continue;
-
-      const collected = car.collectBoostPad?.(pad.spec.amount, pad.spec.kind === 'large');
-      if (!collected) continue;
-      pad.active = false;
-      pad.respawnRemaining = pad.spec.respawn;
-      this.activeMask = withBoostPadActive(this.activeMask, pad.spec.id, false);
-      this.applyVisualState(pad);
+      for (const car of cars) {
+        const p = car.body.translation();
+        if (p.y > 2.45 || !isWithinBoostPadPickup(pad.spec, p.x, p.z)) continue;
+        const collected = car.collectBoostPad?.(pad.spec.amount, pad.spec.kind === 'large');
+        if (!collected) continue;
+        pad.active = false;
+        pad.respawnRemaining = pad.spec.respawn;
+        this.activeMask = withBoostPadActive(this.activeMask, pad.spec.id, false);
+        this.applyVisualState(pad);
+        break;
+      }
     }
   }
 

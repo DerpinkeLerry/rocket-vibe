@@ -19,6 +19,7 @@ import { DemolitionExplosion } from './DemolitionExplosion.js';
 import { HighSpeedEffects } from './HighSpeedEffects.js';
 import { BallLandingCue } from './BallLandingCue.js';
 import { getSoundDesign } from './SoundDesign.js';
+import { normalizeSoloBotConfig, SoloBotController } from './SoloBot.js';
 import { ARENA_TUNING, CAR_HITBOX } from '../shared/arena-tuning.js';
 import { CAR_TUNING } from '../shared/game-tuning.js';
 import { evaluateDemolitionSnapshot } from '../shared/demolition-respawn.js';
@@ -45,6 +46,10 @@ export class Game {
     this.RAPIER = RAPIER;
     this.network = network;
     this.networked = Boolean(network);
+    this.soloConfig = !this.networked && options.soloConfig ? options.soloConfig : null;
+    this.soloMode = Boolean(this.soloConfig);
+    this.soloBotConfig = normalizeSoloBotConfig(this.soloConfig?.bots);
+    this.soloRules = this.soloConfig?.rules || {};
     this.playerId = network?.playerId ?? 0;
     this.playerName = network?.playerName || options.playerName || 'Spieler';
     this.playerCarStyle = normalizeCarStyle(network?.carStyle || options.carStyle || DEFAULT_CAR_STYLE);
@@ -89,6 +94,11 @@ export class Game {
     this.offlinePreviousBallPosition = new THREE.Vector3(0, 0, 0);
     this.offlineQuickChatUsed = 0;
     this.offlineQuickChatCooldownUntil = 0;
+    this.offlineMatchRemaining = Number(this.soloRules.matchSeconds) > 0 ? Number(this.soloRules.matchSeconds) : null;
+    this.offlineMatchOver = false;
+    this.offlineOvertime = false;
+    this.offlineLastClockSecond = null;
+    this.offlineEndAfterCelebration = false;
     this.demolishedPlayers = new Set();
     this.demolitionRespawnActive = false;
     this.demolitionRespawnEndsAt = 0;
@@ -163,7 +173,9 @@ export class Game {
     } else {
       this.world = new RAPIER.World({ x: 0, y: -CAR_TUNING.gravity, z: 0 });
       this.world.timestep = this.fixedDt;
-      this.world.numSolverIterations = 8;
+      this.world.numSolverIterations = this.soloMode
+        ? Math.max(1, Math.min(12, Math.round(Number(this.soloConfig?.config?.solverSteps) || 8)))
+        : 8;
       this.world.maxCcdSubsteps = 4;
     }
 
@@ -177,7 +189,11 @@ export class Game {
       createPhysics: !this.networked,
       gameMode: this.gameMode
     });
-    this.boostPads = new BoostPads(this.scene, { lowDetail: this.profile.lowDetail, ultraHigh: this.profile.ultraHigh });
+    this.boostPads = new BoostPads(this.scene, {
+      lowDetail: this.profile.lowDetail,
+      ultraHigh: this.profile.ultraHigh,
+      tuning: this.soloConfig?.config?.boostPads
+    });
     this.goalExplosion = new GoalExplosion(this.scene, {
       lowDetail: this.profile.lowDetail,
       ultraHigh: this.profile.ultraHigh,
@@ -198,25 +214,38 @@ export class Game {
       normalizeBoostStyle(player?.boostStyle)
     ]));
 
+    const orangeBotConfigs = PLAYER_CONFIGS.filter((config, index) => config.team === 'orange' && index !== 0)
+      .slice(0, this.soloBotConfig.teammates)
+      .map((config, roleIndex) => ({ ...config, botDifficulty: this.soloBotConfig.teammateDifficulty, roleIndex }));
+    const blueBotConfigs = PLAYER_CONFIGS.filter((config) => config.team === 'blue')
+      .slice(0, this.soloBotConfig.opponents)
+      .map((config, roleIndex) => ({ ...config, botDifficulty: this.soloBotConfig.opponentDifficulty, roleIndex }));
     const lobbyCapacity = Math.max(1, Math.min(PLAYER_CONFIGS.length, Number(network?.maxPlayers) || 4));
-    this.cars = PLAYER_CONFIGS.slice(0, lobbyCapacity).map((config, index) => new Car(
+    const carConfigs = this.networked
+      ? PLAYER_CONFIGS.slice(0, lobbyCapacity)
+      : this.soloMode
+        ? [PLAYER_CONFIGS[0], ...orangeBotConfigs, ...blueBotConfigs]
+        : PLAYER_CONFIGS.slice(0, lobbyCapacity);
+    this.botInputs = carConfigs.map((config, index) => index > 0 && config.botDifficulty ? new VirtualInput() : null);
+    this.cars = carConfigs.map((config, index) => new Car(
       this.scene,
       this.world,
       RAPIER,
-      !this.networked && index === 0 ? this.input : this.passiveInput,
+      !this.networked && index === 0 ? this.input : (this.botInputs[index] || this.passiveInput),
       {
         ...config,
         lowDetail: this.profile.lowDetail,
         ultraHigh: this.profile.ultraHigh,
         clientOnly: this.networked,
-        playerName: index === this.playerId ? this.playerName : `Spieler ${index + 1}`,
-        carStyle: index === this.playerId ? this.playerCarStyle : (initialCarStyles.get(index) || DEFAULT_CAR_STYLE),
-        boostStyle: index === this.playerId ? this.playerBoostStyle : (initialBoostStyles.get(index) || DEFAULT_BOOST_STYLE),
+        allowReset: !this.soloMode || this.soloRules.allowCarReset !== false,
+        playerName: index === this.playerId ? this.playerName : (config.botDifficulty ? `${config.botDifficulty.toUpperCase()} BOT ${config.roleIndex + 1}` : `Spieler ${index + 1}`),
+        carStyle: index === this.playerId ? this.playerCarStyle : (initialCarStyles.get(index) || this.playerCarStyle || DEFAULT_CAR_STYLE),
+        boostStyle: index === this.playerId ? this.playerBoostStyle : (initialBoostStyles.get(index) || this.playerBoostStyle || DEFAULT_BOOST_STYLE),
         mobile: this.profile.mobile,
         localPlayer: index === this.playerId,
         initiallyVisible: this.networked
           ? (index === this.playerId || this.connectedPlayers.has(index))
-          : index === 0
+          : (this.soloMode || index === 0)
       }
     ));
     [this.car0, this.car1, this.car2, this.car3] = this.cars;
@@ -229,12 +258,30 @@ export class Game {
 
     if (this.networked) {
       this.setRoster(network?.players ?? [...this.connectedPlayers], network?.maxPlayers ?? 4);
+    } else if (this.soloMode) {
+      this.connectedPlayers = new Set(this.cars.map((_, index) => index));
+      for (let index = 0; index < this.cars.length; index++) {
+        const car = this.cars[index];
+        car.setPlayerIdentity(index === 0 ? this.playerName : car.playerName, carConfigs[index].team, index === 0);
+        car.setCarStyle(this.playerCarStyle);
+        car.setBoostStyle(this.playerBoostStyle);
+        this.setCarVisible(index, true);
+      }
     } else {
       for (let i = 1; i < this.cars.length; i++) this.setCarVisible(i, false);
       this.car0.setPlayerIdentity(this.playerName, 'orange', true);
       this.car0.setCarStyle(this.playerCarStyle);
       this.car0.setBoostStyle(this.playerBoostStyle);
     }
+
+    this.soloBots = this.soloMode
+      ? this.cars.slice(1).map((car, botIndex) => new SoloBotController(car, this.botInputs[botIndex + 1], {
+          team: car.team,
+          difficulty: carConfigs[botIndex + 1].botDifficulty,
+          roleIndex: carConfigs[botIndex + 1].roleIndex,
+          seed: botIndex + 1
+        }))
+      : [];
 
     this.car = this.cars[this.playerId] ?? this.car0;
     this.localPredictor = this.networked
@@ -257,7 +304,7 @@ export class Game {
       lan: this.networked,
       playerId: this.playerId,
       playerCount: this.connectedPlayers.size,
-      maxPlayers: network?.maxPlayers ?? 4,
+      maxPlayers: this.soloMode ? this.cars.length : (network?.maxPlayers ?? 4),
       performanceProfile: this.profile.name,
       playerName: this.playerName,
       team: this.playerTeam
@@ -913,7 +960,8 @@ export class Game {
     // session directly at the lobby browser instead of showing the account gate.
     const destination = new URL(window.location.href);
     destination.hash = '';
-    destination.searchParams.set('return', 'lobbies');
+    if (this.soloMode) destination.searchParams.set('return', 'solo');
+    else destination.searchParams.set('return', 'lobbies');
     const destinationHref = destination.toString();
     try {
       window.location.replace(destinationHref);
@@ -942,6 +990,9 @@ export class Game {
     // frame timing here so that time is never mistaken for one huge game step.
     this.lastTime = performance.now() / 1000;
     this.hud.setPerformance(this.profile.name, this.measuredFps, this.renderPixelRatio);
+    if (this.soloMode && this.offlineMatchRemaining !== null) {
+      this.handleMatchClock({ seconds: Math.ceil(this.offlineMatchRemaining), overtime: false }, true);
+    }
     this.soundDesign.unlock();
     this.soundDesign.resetGameplayTracking();
     this.soundDesign.play('matchReady', { volume: 0.82 });
@@ -1583,53 +1634,99 @@ export class Game {
     this.lastReconciledTick = -1;
   }
 
+  updateOfflineMatchClock(dt) {
+    if (!this.soloMode || this.offlineMatchOver || this.offlineOvertime || this.offlineMatchRemaining === null) return;
+    this.offlineMatchRemaining = Math.max(0, this.offlineMatchRemaining - dt);
+    const second = Math.ceil(this.offlineMatchRemaining);
+    if (second !== this.offlineLastClockSecond) {
+      this.offlineLastClockSecond = second;
+      this.handleMatchClock({ seconds: second, overtime: false });
+    }
+    if (this.offlineMatchRemaining > 0) return;
+    if (this.orangeScore === this.blueScore && this.soloRules.overtimeOnTie) {
+      this.offlineOvertime = true;
+      this.handleMatchClock({ seconds: 0, overtime: true });
+      return;
+    }
+    this.finishOfflineMatch('time');
+  }
+
+  finishOfflineMatch(reason = 'complete') {
+    if (this.offlineMatchOver) return;
+    this.offlineMatchOver = true;
+    this.offlineEndAfterCelebration = false;
+    for (const bot of this.soloBots) bot.reset();
+    this.hud.showMatchOver?.({
+      reason,
+      orangeScore: this.orangeScore,
+      blueScore: this.blueScore,
+      persistent: true
+    });
+    this.soundDesign.stopGameplay();
+    this.soundDesign.play('matchEnd', { volume: 0.95 });
+  }
+
   stepOffline(dt) {
+    if (this.offlineMatchOver) return;
     if (this.offlineGoalTimeRemaining > 0) {
       this.offlineGoalTimeRemaining = Math.max(0, this.offlineGoalTimeRemaining - dt);
       this.ball.fixedUpdate(dt);
       this.offlinePreviousBallPosition.copy(this.ball.body.translation());
       this.world.step();
-      this.car0.enforceSpeedLimit();
+      for (const car of this.cars) car.enforceSpeedLimit();
       if (this.offlineGoalTimeRemaining <= 0) {
-        this.car0.reset();
-        this.ball.reset();
-        this.boostPads.resetAll();
         this.goalCelebrationActive = false;
         this.goalCelebrationUntil = 0;
         this.chaseCamera?.setGoalCelebrationActive?.(false);
+        if (this.offlineEndAfterCelebration) {
+          this.finishOfflineMatch('score');
+        } else {
+          for (const car of this.cars) car.reset();
+          for (const bot of this.soloBots) bot.reset();
+          this.ball.reset();
+          this.boostPads.resetAll();
+          this.soundDesign.resetGameplayTracking();
+        }
       }
       return;
     }
 
-    if (this.input.consumePressed('KeyB')) this.ball.reset();
-    this.car0.fixedUpdate(dt);
+    this.updateOfflineMatchClock(dt);
+    if (this.offlineMatchOver) return;
+    const wantsBallReset = this.input.consumePressed('KeyB');
+    if (wantsBallReset && this.soloRules.allowBallReset !== false) this.ball.reset();
+    for (const bot of this.soloBots) bot.update(dt, this.ball, this.cars);
+    for (const car of this.cars) car.fixedUpdate(dt);
     this.ball.fixedUpdate(dt);
-    this.ball.prepareCarHit(this.car0);
+    this.ball.beginCarHitFrame?.();
+    for (const car of this.cars) this.ball.prepareCarHit(car);
     this.offlinePreviousBallPosition.copy(this.ball.body.translation());
     this.world.step();
     this.ball.applyPreparedCarHit();
-    this.car0.enforceSpeedLimit();
-    this.boostPads.updateOffline(this.car0, dt);
+    for (const car of this.cars) car.enforceSpeedLimit();
+    this.boostPads.updateOffline(this.cars, dt);
     this.detectOfflineGoal();
   }
 
   applyOfflineGoalKnockback(goalSign) {
     const sign = goalSign >= 0 ? 1 : -1;
-    const position = this.car0.body.translation();
     const originZ = this.gameMode === 'basketball'
       ? sign * (ARENA_TUNING.length * 0.5 - 11.5)
       : sign * (ARENA_TUNING.length * 0.5 + 1.4);
-    let x = position.x;
-    let z = position.z - originZ;
-    const length = Math.hypot(x, z) || 1;
-    x /= length;
-    z /= length;
-    if (!Number.isFinite(x) || !Number.isFinite(z)) {
-      x = 0;
-      z = -sign;
+    for (const car of this.cars) {
+      const position = car.body.translation();
+      let x = position.x;
+      let z = position.z - originZ;
+      const length = Math.hypot(x, z) || 1;
+      x /= length;
+      z /= length;
+      if (!Number.isFinite(x) || !Number.isFinite(z)) {
+        x = 0;
+        z = -sign;
+      }
+      car.body.setLinvel({ x: x * 29.5, y: 13.0, z: z * 29.5 }, true);
+      car.body.setAngvel({ x: 4.6, y: sign * 2.1, z: -sign * 5.0 }, true);
     }
-    this.car0.body.setLinvel({ x: x * 29.5, y: 13.0, z: z * 29.5 }, true);
-    this.car0.body.setAngvel({ x: 4.6, y: sign * 2.1, z: -sign * 5.0 }, true);
     this.ball.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
     this.ball.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
   }
@@ -1666,7 +1763,10 @@ export class Game {
     if (goalSign > 0) this.blueScore += 1;
     else this.orangeScore += 1;
 
-    const durationMs = 1250;
+    const configuredCelebration = Number(this.soloRules.goalCelebrationSeconds);
+    const durationMs = this.soloMode && Number.isFinite(configuredCelebration)
+      ? Math.max(350, configuredCelebration * 1000)
+      : 1250;
     this.offlineGoalTimeRemaining = durationMs / 1000;
     this.goalCelebrationActive = durationMs > 0;
     this.goalCelebrationUntil = performance.now() / 1000 + this.offlineGoalTimeRemaining;
@@ -1684,6 +1784,9 @@ export class Game {
     this.soundDesign.stopGameplay();
     this.applyOfflineGoalKnockback(goalSign);
     this.hud.setScore(this.orangeScore, this.blueScore);
+    const scoreLimit = Math.max(0, Math.round(Number(this.soloRules.scoreLimit) || 0));
+    this.offlineEndAfterCelebration = this.soloMode
+      && ((scoreLimit > 0 && Math.max(this.orangeScore, this.blueScore) >= scoreLimit) || this.offlineOvertime);
   }
 
   applyNetworkState(dt, now) {

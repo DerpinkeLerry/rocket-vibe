@@ -243,6 +243,7 @@ export class Hud {
     const outcome = orange === blue ? 'UNENTSCHIEDEN' : (orange > blue ? 'ORANGE GEWINNT' : 'BLAU GEWINNT');
     this.matchOver.textContent = `${outcome} · ${orange}:${blue}`;
     this.matchOver.hidden = false;
+    if (result?.persistent) return;
     this.matchOverTimer = setTimeout(() => { this.matchOver.hidden = true; }, 2300);
   }
 
